@@ -1,0 +1,149 @@
+# Azure DevOps Pipeline für das Herunterladen und Bereitstellen von Kartendaten
+# Lädt OpenStreetMap-Tiles für Hessen herunter und stellt sie als Build-Artifact bereit
+
+trigger:
+  branches:
+    include:
+      - main
+      - develop
+  paths:
+    include:
+      - scripts/download_tiles.py
+      - azure-pipelines.yml
+
+# Optional: Zeitgesteuerte Builds für regelmäßige Kartenupdates
+# schedules:
+#   - cron: "0 0 1 * *"  # Jeden ersten Tag des Monats um Mitternacht
+#     displayName: Monatlicher Karten-Update
+#     branches:
+#       include:
+#         - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  pythonVersion: '3.10'
+  outputFileName: 'hessen.mbtiles'
+  # Optional: Cache-Verzeichnis für schnellere Builds
+  # tilesCache: $(Pipeline.Workspace)/.tiles_cache
+
+stages:
+  - stage: BuildMapTiles
+    displayName: 'Kartendaten herunterladen'
+    jobs:
+      - job: DownloadTiles
+        displayName: 'Tiles herunterladen und MBTiles erstellen'
+        timeoutInMinutes: 120  # 2 Stunden Timeout (Downloads können lange dauern)
+
+        steps:
+          - task: UsePythonVersion@0
+            displayName: 'Python $(pythonVersion) verwenden'
+            inputs:
+              versionSpec: '$(pythonVersion)'
+              addToPath: true
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+            displayName: 'Python Dependencies installieren'
+
+          # Optional: Cache für Tiles wiederherstellen
+          # - task: Cache@2
+          #   displayName: 'Tiles-Cache wiederherstellen'
+          #   inputs:
+          #     key: 'tiles | "$(Agent.OS)" | scripts/download_tiles.py'
+          #     path: $(tilesCache)
+          #     restoreKeys: |
+          #       tiles | "$(Agent.OS)"
+
+          - script: |
+              cd scripts
+              python download_tiles.py
+            displayName: 'Kartendaten herunterladen'
+            env:
+              # Optional: Cache-Verzeichnis setzen
+              # TILES_CACHE_DIR: $(tilesCache)
+              # User-Agent für OpenStreetMap-Anfragen
+              HTTP_USER_AGENT: 'OfflineMapApp-CI/1.0 (Azure DevOps Build)'
+
+          # Validierung der erstellten Datei
+          - script: |
+              if [ ! -f "scripts/$(outputFileName)" ]; then
+                echo "Fehler: MBTiles-Datei wurde nicht erstellt!"
+                exit 1
+              fi
+
+              FILE_SIZE=$(stat -f%z "scripts/$(outputFileName)" 2>/dev/null || stat -c%s "scripts/$(outputFileName)")
+              FILE_SIZE_MB=$((FILE_SIZE / 1024 / 1024))
+
+              echo "Dateigröße: ${FILE_SIZE_MB} MB"
+
+              if [ $FILE_SIZE -lt 1048576 ]; then
+                echo "Warnung: Datei ist sehr klein (< 1 MB), möglicherweise unvollständig"
+                exit 1
+              fi
+
+              echo "##vso[task.setvariable variable=fileSizeMB]$FILE_SIZE_MB"
+            displayName: 'MBTiles-Datei validieren'
+
+          # Artifact veröffentlichen
+          - task: PublishBuildArtifacts@1
+            displayName: 'MBTiles als Artifact veröffentlichen'
+            inputs:
+              PathtoPublish: 'scripts/$(outputFileName)'
+              ArtifactName: 'map-tiles'
+              publishLocation: 'Container'
+
+          # Build-Zusammenfassung
+          - script: |
+              echo "==================================================="
+              echo "Build erfolgreich abgeschlossen!"
+              echo "==================================================="
+              echo "Artifact: map-tiles"
+              echo "Datei: $(outputFileName)"
+              echo "Größe: $(fileSizeMB) MB"
+              echo "==================================================="
+              echo ""
+              echo "Download-URL (nach Build):"
+              echo "https://dev.azure.com/{organization}/{project}/_apis/build/builds/$(Build.BuildId)/artifacts?artifactName=map-tiles&api-version=7.0"
+            displayName: 'Build-Zusammenfassung anzeigen'
+
+  # Optional: Deployment-Stage für Azure Blob Storage
+  # - stage: DeployToStorage
+  #   displayName: 'Zu Azure Blob Storage hochladen'
+  #   dependsOn: BuildMapTiles
+  #   condition: succeeded()
+  #   jobs:
+  #     - deployment: UploadToBlob
+  #       displayName: 'Upload zu Blob Storage'
+  #       environment: 'production'
+  #       pool:
+  #         vmImage: 'ubuntu-latest'
+  #       strategy:
+  #         runOnce:
+  #           deploy:
+  #             steps:
+  #               - download: current
+  #                 artifact: map-tiles
+  #
+  #               - task: AzureCLI@2
+  #                 displayName: 'Upload zu Azure Blob Storage'
+  #                 inputs:
+  #                   azureSubscription: '<Your-Azure-Service-Connection>'
+  #                   scriptType: 'bash'
+  #                   scriptLocation: 'inlineScript'
+  #                   inlineScript: |
+  #                     az storage blob upload \
+  #                       --account-name <storage-account-name> \
+  #                       --container-name map-tiles \
+  #                       --name $(outputFileName) \
+  #                       --file $(Pipeline.Workspace)/map-tiles/$(outputFileName) \
+  #                       --overwrite true
+  #
+  #                     echo "Upload erfolgreich abgeschlossen"
+  #
+  #                     # Public URL ausgeben
+  #                     BLOB_URL="https://<storage-account-name>.blob.core.windows.net/map-tiles/$(outputFileName)"
+  #                     echo "##vso[task.setvariable variable=blobUrl]$BLOB_URL"
+  #                     echo "Download-URL: $BLOB_URL"
