@@ -3,7 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_mbtiles/flutter_map_mbtiles.dart';
+import 'package:mbtiles/mbtiles.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
+import 'package:vector_map_tiles/vector_map_tiles.dart';
+import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
+import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 import '../config/map_config.dart';
 
 /// Widget zur Darstellung der Karte mit MBTiles
@@ -18,11 +22,17 @@ class MapView extends StatefulWidget {
 
 class _MapViewState extends State<MapView> {
   final MapController _mapController = MapController();
-  MbTilesTileProvider? _tileProvider;
+  MbTilesTileProvider? _rasterTileProvider;
+  MbTiles? _vectorMbTiles;
+  TileProviders? _vectorTileProviders;
+  vtr.Theme? _vectorTheme;
   bool _isLoading = true;
   String? _errorMessage;
 
   static const Set<String> _rasterFormats = {'png', 'jpg', 'jpeg', 'webp'};
+
+  bool get _isVectorMode =>
+      _vectorTileProviders != null && _vectorTheme != null;
 
   @override
   void initState() {
@@ -31,6 +41,8 @@ class _MapViewState extends State<MapView> {
   }
 
   Future<void> _initializeTileProvider() async {
+    _disposeTileResources();
+
     if (widget.mbtilesPath == null) {
       setState(() {
         _isLoading = false;
@@ -41,21 +53,50 @@ class _MapViewState extends State<MapView> {
 
     try {
       final format = await _readMbtilesFormat(widget.mbtilesPath!);
+
+      if (format == 'pbf') {
+        final mbtiles = MbTiles(path: widget.mbtilesPath!);
+        final provider = MbTilesVectorTileProvider(mbtiles: mbtiles);
+
+        if (!mounted) {
+          mbtiles.close();
+          return;
+        }
+
+        setState(() {
+          _vectorMbTiles = mbtiles;
+          _vectorTheme = vtr.ProvidedThemes.lightTheme();
+          // Mehrere Source-IDs verbessern die Kompatibilitaet unterschiedlicher Styles.
+          _vectorTileProviders = TileProviders({
+            'openmaptiles': provider,
+            'versatiles-shortbread': provider,
+            'shortbread': provider,
+          });
+          _isLoading = false;
+          _errorMessage = null;
+        });
+        return;
+      }
+
       if (format != null && !_rasterFormats.contains(format)) {
         setState(() {
           _isLoading = false;
           _errorMessage =
               'Nicht unterstütztes MBTiles-Format: $format. '
-              'Diese App unterstützt aktuell Raster-Formate '
-              '(png/jpg/webp), aber keine Vektor-Tiles (pbf).';
+              'Erwartet werden Raster (png/jpg/webp) oder Vektor (pbf).';
         });
         return;
       }
 
       final provider = MbTilesTileProvider.fromPath(path: widget.mbtilesPath!);
 
+      if (!mounted) {
+        provider.dispose();
+        return;
+      }
+
       setState(() {
-        _tileProvider = provider;
+        _rasterTileProvider = provider;
         _isLoading = false;
         _errorMessage = null;
       });
@@ -65,6 +106,16 @@ class _MapViewState extends State<MapView> {
         _errorMessage = 'Fehler beim Laden der Kartendaten: $e';
       });
     }
+  }
+
+  void _disposeTileResources() {
+    _rasterTileProvider?.dispose();
+    _rasterTileProvider = null;
+
+    _vectorMbTiles?.close();
+    _vectorMbTiles = null;
+    _vectorTileProviders = null;
+    _vectorTheme = null;
   }
 
   Future<String?> _readMbtilesFormat(String path) async {
@@ -108,6 +159,7 @@ class _MapViewState extends State<MapView> {
 
   @override
   void dispose() {
+    _disposeTileResources();
     _mapController.dispose();
     super.dispose();
   }
@@ -151,15 +203,22 @@ class _MapViewState extends State<MapView> {
         ),
       ),
       children: [
-        TileLayer(
-          tileProvider: _tileProvider,
-          urlTemplate: 'mbtiles://hessen',
-          maxZoom: MapConfig.maxZoom.toDouble(),
-          // Platzhalter für nicht geladene Tiles
-          errorTileCallback: (tile, error, stackTrace) {
-            debugPrint('Fehler beim Laden von Tile $tile: $error');
-          },
-        ),
+        if (_vectorTileProviders != null && _vectorTheme != null)
+          VectorTileLayer(
+            tileProviders: _vectorTileProviders!,
+            theme: _vectorTheme!,
+            maximumZoom: MapConfig.maxZoom.toDouble(),
+          )
+        else
+          TileLayer(
+            tileProvider: _rasterTileProvider,
+            urlTemplate: 'mbtiles://hessen',
+            maxZoom: MapConfig.maxZoom.toDouble(),
+            // Platzhalter für nicht geladene Tiles
+            errorTileCallback: (tile, error, stackTrace) {
+              debugPrint('Fehler beim Laden von Tile $tile: $error');
+            },
+          ),
         // Attribution Layer
         RichAttributionWidget(
           attributions: [
@@ -171,7 +230,51 @@ class _MapViewState extends State<MapView> {
             ),
           ],
         ),
+        Positioned(
+          top: 12,
+          right: 12,
+          child: IgnorePointer(child: _buildModeBadge(context)),
+        ),
       ],
+    );
+  }
+
+  Widget _buildModeBadge(BuildContext context) {
+    final isVector = _isVectorMode;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isVector
+            ? colorScheme.tertiaryContainer
+            : colorScheme.primaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              isVector ? Icons.layers : Icons.grid_on,
+              size: 14,
+              color: isVector
+                  ? colorScheme.onTertiaryContainer
+                  : colorScheme.onPrimaryContainer,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              isVector ? 'Vektor MBTiles (PBF)' : 'Raster MBTiles',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: isVector
+                    ? colorScheme.onTertiaryContainer
+                    : colorScheme.onPrimaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

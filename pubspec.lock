@@ -322,7 +322,7 @@ packages:
     source: hosted
     version: "0.13.0"
   mbtiles:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: mbtiles
       sha256: "3255bee8bed9ad5bdd1cbc3589edfcd67fb9c44f67a039deb45393cf50a45850"
@@ -647,7 +647,7 @@ packages:
     source: hosted
     version: "4.5.3"
   vector_map_tiles:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: vector_map_tiles
       sha256: e35f090c428f05e44dd525fa4fedaafd1dbcd28b656cb0ea908528c6ce84a87d
@@ -688,7 +688,7 @@ packages:
     source: hosted
     version: "0.0.2"
   vector_tile_renderer:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: vector_tile_renderer
       sha256: "99530edb073c1cea3c6a4bdb5ca9a5c6779c25ddf1a645678458504708dc221c"
