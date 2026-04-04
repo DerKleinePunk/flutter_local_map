@@ -651,7 +651,7 @@ packages:
     description:
       path: "."
       ref: "9.0.0-beta.8"
-      resolved-ref: "5933887ebf39938414d7d242ae89239a0223c39d"
+      resolved-ref: "7352b6886581865cb2ef9ee66757bf3e322374ad"
       url: "https://github.com/DerKleinePunk/flutter-vector-map-tiles.git"
     source: git
     version: "9.0.0-beta.8"

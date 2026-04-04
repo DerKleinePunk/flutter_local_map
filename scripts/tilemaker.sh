@@ -42,11 +42,19 @@ if [ -f "$OUTPUT_MBTILES" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
   exit 0
 fi
 
+if [ ! -f "$COASTLINE_DIR/water_polygons.shp" ] || [ ! -f "$COASTLINE_DIR/water_polygons.shx" ] || [ ! -f "$COASTLINE_DIR/water_polygons.dbf" ]; then
+  echo "[error] Fehlende Shapefile-Bestandteile in $COASTLINE_DIR"
+  echo "        Erwartet: water_polygons.shp, water_polygons.shx, water_polygons.dbf"
+  exit 1
+fi
+
 docker run -it --rm --pull always \
+  -w /data \
   -v "$WORK_DIR:/data" \
   -v "$PROJECT_ROOT:/workspace" \
   ghcr.io/systemed/tilemaker:master \
     --input /data/$PBF_FILE \
     --output /data/$OUTPUT_MBTILES \
     --config /workspace/scripts/tilemaker/config-openmaptiles-z16.json \
-    --process /usr/src/app/resources/process-openmaptiles.lua
+    --process /usr/src/app/resources/process-openmaptiles.lua \
+    --store /data/temp

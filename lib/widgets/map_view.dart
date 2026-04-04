@@ -1,6 +1,8 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_mbtiles/flutter_map_mbtiles.dart';
 import 'package:mbtiles/mbtiles.dart';
@@ -35,7 +37,8 @@ class _MapViewState extends State<MapView> {
 
   static const Set<String> _rasterFormats = {'png', 'jpg', 'jpeg', 'webp'};
   static const String _defaultVectorStyleUri =
-      'https://tiles.versatiles.org/assets/styles/colorful.json';
+      'https://maputnik.github.io/osm-liberty/style.json';
+  static const String _localVectorStyleAsset = 'assets/maps/style.json';
 
   bool get _isVectorMode =>
       _vectorTileProviders != null && _vectorTheme != null;
@@ -62,10 +65,8 @@ class _MapViewState extends State<MapView> {
       final format = metadata.format;
       final minZoom = metadata.minZoom ?? MapConfig.minZoom.toDouble();
       final maxZoom = metadata.maxZoom ?? MapConfig.maxZoom.toDouble();
-      final boundedInitialZoom = MapConfig.initialZoom.toDouble().clamp(
-        minZoom,
-        maxZoom,
-      );
+      final boundedInitialZoom =
+          MapConfig.initialZoom.toDouble().clamp(minZoom, maxZoom);
 
       if (format == 'pbf') {
         final mbtiles = MbTiles(path: widget.mbtilesPath!);
@@ -76,6 +77,7 @@ class _MapViewState extends State<MapView> {
         TileProviders vectorTileProviders;
 
         try {
+          debugPrint('Lade Remote-Style von: $_defaultVectorStyleUri');
           final style = await StyleReader(uri: _defaultVectorStyleUri).read();
           final providerBySource = <String, VectorTileProvider>{
             for (final sourceId in style.providers.tileProviderBySource.keys)
@@ -86,18 +88,60 @@ class _MapViewState extends State<MapView> {
             throw StateError('Style enthält keine Tile-Quellen.');
           }
 
+          providerBySource.addAll({
+              'openmaptiles': provider,
+          });
+
           vectorTheme = style.theme;
           vectorSprites = style.sprites;
           vectorTileProviders = TileProviders(providerBySource);
-        } catch (_) {
-          // Fallback, falls der Online-Style/Glyphs nicht erreichbar sind.
-          vectorTheme = vtr.ProvidedThemes.lightTheme();
-          vectorSprites = null;
-          vectorTileProviders = TileProviders({
-            'openmaptiles': provider,
-            'versatiles-shortbread': provider,
-            'shortbread': provider,
-          });
+          debugPrint(
+            'Remote-Style geladen: ${style.theme.layers.length} Layer, Sprites: ${style.sprites != null}',
+          );
+        } catch (e) {
+          debugPrint('Remote-Style fehlgeschlagen: $e');
+          debugPrint('Versuche lokalen Asset-Style: $_localVectorStyleAsset');
+
+          try {
+            final styleText = await rootBundle.loadString(_localVectorStyleAsset);
+            final decoded = jsonDecode(styleText);
+
+            if (decoded is! Map<String, dynamic>) {
+              throw StateError('Lokaler Style ist kein JSON-Objekt.');
+            }
+
+            final sources = decoded['sources'];
+            if (sources is! Map<String, dynamic> || sources.isEmpty) {
+              throw StateError('Lokaler Style enthält keine Sources.');
+            }
+
+            vectorTheme = vtr.ThemeReader(logger: const vtr.Logger.noop()).read(
+              decoded,
+            );
+            vectorSprites = null;
+            vectorTileProviders = TileProviders({
+              for (final sourceId in sources.keys) sourceId: provider,
+            });
+
+            vectorTileProviders.tileProviderBySource.addAll({
+              'openmaptiles': provider,
+              'versatiles-shortbread': provider,
+              'shortbread': provider,
+            });
+            debugPrint(
+              'Lokaler Asset-Style geladen: ${vectorTheme.layers.length} Layer, Sources: ${sources.keys.join(', ')}',
+            );
+          } catch (assetError) {
+            debugPrint('Lokaler Asset-Style fehlgeschlagen: $assetError');
+            debugPrint('Verwende Fallback-Theme ohne Labels');
+            vectorTheme = vtr.ProvidedThemes.lightTheme();
+            vectorSprites = null;
+            vectorTileProviders = TileProviders({
+              'openmaptiles': provider,
+              'versatiles-shortbread': provider,
+              'shortbread': provider,
+            });
+          }
         }
 
         if (!mounted) {
@@ -391,5 +435,9 @@ class _MbtilesMetadataInfo {
   final double? minZoom;
   final double? maxZoom;
 
-  const _MbtilesMetadataInfo({this.format, this.minZoom, this.maxZoom});
+  const _MbtilesMetadataInfo({
+    this.format,
+    this.minZoom,
+    this.maxZoom,
+  });
 }

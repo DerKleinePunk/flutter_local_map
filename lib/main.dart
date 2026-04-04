@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'config/map_config.dart';
 import 'services/map_downloader.dart';
@@ -5,8 +8,35 @@ import 'widgets/map_view.dart';
 import 'widgets/download_overlay.dart';
 import 'widgets/storage_settings_dialog.dart';
 
+void _logError(String source, Object error, StackTrace? stack) {
+  final timestamp = DateTime.now().toIso8601String();
+  // ignore: avoid_print
+  print('[$timestamp] [$source] $error');
+  if (stack != null) {
+    // ignore: avoid_print
+    print(stack);
+  }
+}
+
 void main() {
-  runApp(const MyApp());
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    _logError(
+      'FlutterError',
+      details.exception,
+      details.stack,
+    );
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    _logError('PlatformDispatcher', error, stack);
+    return true;
+  };
+
+  runZonedGuarded(() {
+    runApp(const MyApp());
+  }, (error, stack) {
+    _logError('runZonedGuarded', error, stack);
+  });
 }
 
 class MyApp extends StatelessWidget {
@@ -50,7 +80,7 @@ class _MapHomePageState extends State<MapHomePage> {
     _downloader = await StoragePreferences.createDownloader();
     await _downloader.initialize();
     final isAvailable = await _downloader.isMapDownloaded();
-    
+
     if (isAvailable) {
       final path = await _downloader.getMBTilesPath();
       if (mounted) {
@@ -129,9 +159,9 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Future<void> _showStorageSettings() async {
     final currentLocation = await StoragePreferences.loadStorageLocation();
-    
+
     if (!mounted) return;
-    
+
     final result = await showDialog<MapStorageLocation>(
       context: context,
       builder: (context) => StorageSettingsDialog(
