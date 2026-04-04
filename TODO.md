@@ -16,7 +16,7 @@
   - Fallback nur bei Fehler: `vtr.ProvidedThemes.lightTheme()`
   - Bug fixen: Nach erfolgreichem `ThemeReader` nicht auf `lightTheme()` überschreiben.
 
-- [ ] Vector Source-Mapping robust machen
+- [x] Vector Source-Mapping robust machen
   - Sources aus lokalem Style ableiten.
   - Nur notwendige Aliase ergänzen.
   - Leeres Source-Mapping verhindern.

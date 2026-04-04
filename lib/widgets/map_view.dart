@@ -23,6 +23,12 @@ class MapView extends StatefulWidget {
 }
 
 class _MapViewState extends State<MapView> {
+  static const Set<String> _knownVectorSourceAliases = {
+    'openmaptiles',
+    'versatiles-shortbread',
+    'shortbread',
+  };
+
   final MapController _mapController = MapController();
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
@@ -90,11 +96,10 @@ class _MapViewState extends State<MapView> {
           ).read(decoded);
           vectorSprites = null;
 
-          vectorTileProviders = TileProviders({
-            'openmaptiles': provider,
-            'versatiles-shortbread': provider,
-            'shortbread': provider,
-          });
+          vectorTileProviders = _buildVectorTileProviders(
+            styleJson: decoded,
+            provider: provider,
+          );
 
           debugPrint(
             'Lokaler Asset-Style geladen: ${vectorTheme.layers.length} Layer, Sources: ${vectorTileProviders.tileProviderBySource.keys.join(', ')}',
@@ -104,11 +109,7 @@ class _MapViewState extends State<MapView> {
           debugPrint('Verwende Fallback-Theme ohne Labels');
           vectorTheme = vtr.ProvidedThemes.lightTheme();
           vectorSprites = null;
-          vectorTileProviders = TileProviders({
-            'openmaptiles': provider,
-            'versatiles-shortbread': provider,
-            'shortbread': provider,
-          });
+          vectorTileProviders = _buildFallbackVectorTileProviders(provider);
         }
 
         if (!mounted) {
@@ -175,6 +176,66 @@ class _MapViewState extends State<MapView> {
 
     _activeMinZoom = MapConfig.minZoom.toDouble();
     _activeMaxZoom = MapConfig.maxZoom.toDouble();
+  }
+
+  TileProviders _buildVectorTileProviders({
+    required Map<String, dynamic> styleJson,
+    required VectorTileProvider provider,
+  }) {
+    final sourceIds = <String>{
+      ..._extractSourceIdsFromStyleSources(styleJson),
+      ..._extractSourceIdsFromLayers(styleJson),
+    };
+
+    if (sourceIds.isEmpty) {
+      throw StateError('Lokaler Style enthält keine Tile-Quellen.');
+    }
+
+    if (sourceIds.any(_knownVectorSourceAliases.contains)) {
+      sourceIds.addAll(_knownVectorSourceAliases);
+    }
+
+    return TileProviders({
+      for (final sourceId in sourceIds) sourceId: provider,
+    });
+  }
+
+  TileProviders _buildFallbackVectorTileProviders(VectorTileProvider provider) {
+    return TileProviders({
+      for (final sourceId in _knownVectorSourceAliases) sourceId: provider,
+    });
+  }
+
+  Set<String> _extractSourceIdsFromStyleSources(
+    Map<String, dynamic> styleJson,
+  ) {
+    final sources = styleJson['sources'];
+    if (sources is! Map) {
+      return const <String>{};
+    }
+
+    return sources.keys.whereType<String>().toSet();
+  }
+
+  Set<String> _extractSourceIdsFromLayers(Map<String, dynamic> styleJson) {
+    final layers = styleJson['layers'];
+    if (layers is! List) {
+      return const <String>{};
+    }
+
+    final sourceIds = <String>{};
+    for (final layer in layers) {
+      if (layer is! Map) {
+        continue;
+      }
+
+      final sourceId = layer['source'];
+      if (sourceId is String && sourceId.isNotEmpty) {
+        sourceIds.add(sourceId);
+      }
+    }
+
+    return sourceIds;
   }
 
   Future<_MbtilesMetadataInfo> _readMbtilesMetadata(String path) async {
