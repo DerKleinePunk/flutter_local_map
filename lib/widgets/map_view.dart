@@ -26,10 +26,16 @@ class _MapViewState extends State<MapView> {
   MbTiles? _vectorMbTiles;
   TileProviders? _vectorTileProviders;
   vtr.Theme? _vectorTheme;
+  SpriteStyle? _vectorSprites;
+  double _activeMinZoom = MapConfig.minZoom.toDouble();
+  double _activeMaxZoom = MapConfig.maxZoom.toDouble();
+  double _currentZoom = MapConfig.initialZoom.toDouble();
   bool _isLoading = true;
   String? _errorMessage;
 
   static const Set<String> _rasterFormats = {'png', 'jpg', 'jpeg', 'webp'};
+  static const String _defaultVectorStyleUri =
+      'https://tiles.versatiles.org/assets/styles/colorful.json';
 
   bool get _isVectorMode =>
       _vectorTileProviders != null && _vectorTheme != null;
@@ -52,11 +58,47 @@ class _MapViewState extends State<MapView> {
     }
 
     try {
-      final format = await _readMbtilesFormat(widget.mbtilesPath!);
+      final metadata = await _readMbtilesMetadata(widget.mbtilesPath!);
+      final format = metadata.format;
+      final minZoom = metadata.minZoom ?? MapConfig.minZoom.toDouble();
+      final maxZoom = metadata.maxZoom ?? MapConfig.maxZoom.toDouble();
+      final boundedInitialZoom = MapConfig.initialZoom.toDouble().clamp(
+        minZoom,
+        maxZoom,
+      );
 
       if (format == 'pbf') {
         final mbtiles = MbTiles(path: widget.mbtilesPath!);
         final provider = MbTilesVectorTileProvider(mbtiles: mbtiles);
+
+        vtr.Theme vectorTheme;
+        SpriteStyle? vectorSprites;
+        TileProviders vectorTileProviders;
+
+        try {
+          final style = await StyleReader(uri: _defaultVectorStyleUri).read();
+          final providerBySource = <String, VectorTileProvider>{
+            for (final sourceId in style.providers.tileProviderBySource.keys)
+              sourceId: provider,
+          };
+
+          if (providerBySource.isEmpty) {
+            throw StateError('Style enthält keine Tile-Quellen.');
+          }
+
+          vectorTheme = style.theme;
+          vectorSprites = style.sprites;
+          vectorTileProviders = TileProviders(providerBySource);
+        } catch (_) {
+          // Fallback, falls der Online-Style/Glyphs nicht erreichbar sind.
+          vectorTheme = vtr.ProvidedThemes.lightTheme();
+          vectorSprites = null;
+          vectorTileProviders = TileProviders({
+            'openmaptiles': provider,
+            'versatiles-shortbread': provider,
+            'shortbread': provider,
+          });
+        }
 
         if (!mounted) {
           mbtiles.close();
@@ -65,13 +107,12 @@ class _MapViewState extends State<MapView> {
 
         setState(() {
           _vectorMbTiles = mbtiles;
-          _vectorTheme = vtr.ProvidedThemes.lightTheme();
-          // Mehrere Source-IDs verbessern die Kompatibilitaet unterschiedlicher Styles.
-          _vectorTileProviders = TileProviders({
-            'openmaptiles': provider,
-            'versatiles-shortbread': provider,
-            'shortbread': provider,
-          });
+          _vectorTheme = vectorTheme;
+          _vectorSprites = vectorSprites;
+          _vectorTileProviders = vectorTileProviders;
+          _activeMinZoom = minZoom;
+          _activeMaxZoom = maxZoom;
+          _currentZoom = boundedInitialZoom;
           _isLoading = false;
           _errorMessage = null;
         });
@@ -97,6 +138,9 @@ class _MapViewState extends State<MapView> {
 
       setState(() {
         _rasterTileProvider = provider;
+        _activeMinZoom = minZoom;
+        _activeMaxZoom = maxZoom;
+        _currentZoom = boundedInitialZoom;
         _isLoading = false;
         _errorMessage = null;
       });
@@ -116,30 +160,52 @@ class _MapViewState extends State<MapView> {
     _vectorMbTiles = null;
     _vectorTileProviders = null;
     _vectorTheme = null;
+    _vectorSprites = null;
+
+    _activeMinZoom = MapConfig.minZoom.toDouble();
+    _activeMaxZoom = MapConfig.maxZoom.toDouble();
   }
 
-  Future<String?> _readMbtilesFormat(String path) async {
+  Future<_MbtilesMetadataInfo> _readMbtilesMetadata(String path) async {
     if (!File(path).existsSync()) {
-      return null;
+      return const _MbtilesMetadataInfo();
     }
 
     sqlite.Database? db;
     try {
       db = sqlite.sqlite3.open(path, mode: sqlite.OpenMode.readOnly);
-      final result = db.select(
-        "SELECT value FROM metadata WHERE name = 'format' LIMIT 1",
+      final rows = db.select(
+        "SELECT name, value FROM metadata WHERE name IN ('format', 'minzoom', 'maxzoom')",
       );
 
-      if (result.isEmpty) {
-        return null;
+      String? format;
+      double? minZoom;
+      double? maxZoom;
+
+      for (final row in rows) {
+        final name = row['name'];
+        final value = row['value'];
+
+        if (name == 'format' && value is String) {
+          format = value.toLowerCase();
+        } else if (name == 'minzoom' && value != null) {
+          minZoom = double.tryParse(value.toString());
+        } else if (name == 'maxzoom' && value != null) {
+          maxZoom = double.tryParse(value.toString());
+        }
       }
 
-      final value = result.first['value'];
-      if (value is String) {
-        return value.toLowerCase();
+      if (minZoom != null && maxZoom != null && minZoom > maxZoom) {
+        final tmp = minZoom;
+        minZoom = maxZoom;
+        maxZoom = tmp;
       }
 
-      return null;
+      return _MbtilesMetadataInfo(
+        format: format,
+        minZoom: minZoom,
+        maxZoom: maxZoom,
+      );
     } finally {
       db?.close();
     }
@@ -194,9 +260,16 @@ class _MapViewState extends State<MapView> {
       mapController: _mapController,
       options: MapOptions(
         initialCenter: MapConfig.center,
-        initialZoom: MapConfig.initialZoom.toDouble(),
-        minZoom: MapConfig.minZoom.toDouble(),
-        maxZoom: MapConfig.maxZoom.toDouble(),
+        initialZoom: _currentZoom,
+        minZoom: _activeMinZoom,
+        maxZoom: _activeMaxZoom,
+        onPositionChanged: (camera, hasGesture) {
+          if (!mounted) return;
+          if ((camera.zoom - _currentZoom).abs() < 0.01) return;
+          setState(() {
+            _currentZoom = camera.zoom;
+          });
+        },
         // Begrenze die Kamera auf die Hessen-Bounding-Box
         cameraConstraint: CameraConstraint.containCenter(
           bounds: MapConfig.hessenBounds,
@@ -207,13 +280,14 @@ class _MapViewState extends State<MapView> {
           VectorTileLayer(
             tileProviders: _vectorTileProviders!,
             theme: _vectorTheme!,
-            maximumZoom: MapConfig.maxZoom.toDouble(),
+            sprites: _vectorSprites,
+            maximumZoom: _activeMaxZoom,
           )
         else
           TileLayer(
             tileProvider: _rasterTileProvider,
             urlTemplate: 'mbtiles://hessen',
-            maxZoom: MapConfig.maxZoom.toDouble(),
+            maxZoom: _activeMaxZoom,
             // Platzhalter für nicht geladene Tiles
             errorTileCallback: (tile, error, stackTrace) {
               debugPrint('Fehler beim Laden von Tile $tile: $error');
@@ -229,6 +303,11 @@ class _MapViewState extends State<MapView> {
               },
             ),
           ],
+        ),
+        Positioned(
+          top: 12,
+          left: 12,
+          child: IgnorePointer(child: _buildZoomBadge(context)),
         ),
         Positioned(
           top: 12,
@@ -277,4 +356,40 @@ class _MapViewState extends State<MapView> {
       ),
     );
   }
+
+  Widget _buildZoomBadge(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.zoom_in, size: 14, color: colorScheme.onSurfaceVariant),
+            const SizedBox(width: 6),
+            Text(
+              'Zoom ${_currentZoom.toStringAsFixed(1)}',
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MbtilesMetadataInfo {
+  final String? format;
+  final double? minZoom;
+  final double? maxZoom;
+
+  const _MbtilesMetadataInfo({this.format, this.minZoom, this.maxZoom});
 }

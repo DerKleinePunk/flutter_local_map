@@ -649,10 +649,11 @@ packages:
   vector_map_tiles:
     dependency: "direct main"
     description:
-      name: vector_map_tiles
-      sha256: e35f090c428f05e44dd525fa4fedaafd1dbcd28b656cb0ea908528c6ce84a87d
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: "9.0.0-beta.8"
+      resolved-ref: "5933887ebf39938414d7d242ae89239a0223c39d"
+      url: "https://github.com/DerKleinePunk/flutter-vector-map-tiles.git"
+    source: git
     version: "9.0.0-beta.8"
   vector_map_tiles_mbtiles:
     dependency: "direct main"

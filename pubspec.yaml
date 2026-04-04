@@ -76,6 +76,10 @@ dependency_overrides:
       url: https://github.com/DerKleinePunk/flutter_map_plugins
       ref: to_flutter_map_8
       path: vector_map_tiles_mbtiles
+  vector_map_tiles:
+    git:
+      url: https://github.com/DerKleinePunk/flutter-vector-map-tiles.git
+      ref: 9.0.0-beta.8
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
