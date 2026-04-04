@@ -1,0 +1,4 @@
+docker run -it --rm -v $(pwd):/data \
+   --entrypoint /usr/src/app/tilemaker-server \
+   ghcr.io/systemed/tilemaker:master
+   tilemaker --help

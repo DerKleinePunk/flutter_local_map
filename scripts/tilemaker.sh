@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -36,6 +36,29 @@ else
   unzip -o "$WATER_ZIP" -d "$COASTLINE_DIR"
 fi
 
+if ! [ -f "ne_10m_antarctic_ice_shelves_polys.zip" ]; then
+  curl --proto '=https' --tlsv1.3 -sSfO https://naciscdn.org/naturalearth/10m/physical/ne_10m_antarctic_ice_shelves_polys.zip
+fi
+
+mkdir -p landcover
+mkdir -p landcover/ne_10m_antarctic_ice_shelves_polys
+unzip -o ne_10m_antarctic_ice_shelves_polys.zip -d landcover/ne_10m_antarctic_ice_shelves_polys
+
+if ! [ -f "ne_10m_urban_areas.zip" ]; then
+  curl --proto '=https' --tlsv1.3 -sSfO https://naciscdn.org/naturalearth/10m/cultural/ne_10m_urban_areas.zip
+fi
+
+mkdir -p landcover/ne_10m_urban_areas
+unzip -o ne_10m_urban_areas.zip -d landcover/ne_10m_urban_areas
+
+
+if ! [ -f "ne_10m_glaciated_areas.zip" ]; then
+  curl --proto '=https' --tlsv1.3 -sSfO https://naciscdn.org/naturalearth/10m/physical/ne_10m_glaciated_areas.zip
+fi
+
+mkdir -p landcover/ne_10m_glaciated_areas
+unzip -o ne_10m_glaciated_areas.zip -d landcover/ne_10m_glaciated_areas
+
 if [ -f "$OUTPUT_MBTILES" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
   echo "[skip] $OUTPUT_MBTILES existiert bereits."
   echo "       Setze FORCE_REBUILD=1, um die Datei neu zu erzeugen."
@@ -48,6 +71,11 @@ if [ ! -f "$COASTLINE_DIR/water_polygons.shp" ] || [ ! -f "$COASTLINE_DIR/water_
   exit 1
 fi
 
+TILEMAKER_REBUILD_ARG=()
+if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+  TILEMAKER_REBUILD_ARG+=(--merge)
+fi
+
 docker run -it --rm --pull always \
   -w /data \
   -v "$WORK_DIR:/data" \
@@ -57,4 +85,5 @@ docker run -it --rm --pull always \
     --output /data/$OUTPUT_MBTILES \
     --config /workspace/scripts/tilemaker/config-openmaptiles-z16.json \
     --process /usr/src/app/resources/process-openmaptiles.lua \
+    "${TILEMAKER_REBUILD_ARG[@]}" \
     --store /data/temp

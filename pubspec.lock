@@ -562,10 +562,10 @@ packages:
     dependency: "direct main"
     description:
       name: sqlite3
-      sha256: caa693ad15a587a2b4fde093b728131a1827903872171089dedb16f7665d3a91
+      sha256: b3fe250b4ebd681a8ba20b12794c42b00c1375e5b51005568f0b8731265beb03
       url: "https://pub.dev"
     source: hosted
-    version: "3.2.0"
+    version: "3.3.0"
   sqlite3_flutter_libs:
     dependency: transitive
     description:
@@ -651,7 +651,7 @@ packages:
     description:
       path: "."
       ref: "9.0.0-beta.8"
-      resolved-ref: "7352b6886581865cb2ef9ee66757bf3e322374ad"
+      resolved-ref: "47160a3e38c66808cbced0e634e2d78669c71c58"
       url: "https://github.com/DerKleinePunk/flutter-vector-map-tiles.git"
     source: git
     version: "9.0.0-beta.8"
