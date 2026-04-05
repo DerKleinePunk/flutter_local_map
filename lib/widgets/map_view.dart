@@ -91,6 +91,11 @@ class _MapViewState extends State<MapView> {
             throw StateError('Lokaler Style ist kein JSON-Objekt.');
           }
 
+          _validateStyleCompatibility(
+            styleJson: decoded,
+            mbtilesMetadata: metadata,
+          );
+
           vectorTheme = vtr.ThemeReader(
             logger: const vtr.Logger.console(),
           ).read(decoded);
@@ -238,6 +243,85 @@ class _MapViewState extends State<MapView> {
     return sourceIds;
   }
 
+  Set<String> _extractSourceLayerIds(Map<String, dynamic> styleJson) {
+    final layers = styleJson['layers'];
+    if (layers is! List) {
+      return const <String>{};
+    }
+
+    final sourceLayerIds = <String>{};
+    for (final layer in layers) {
+      if (layer is! Map) {
+        continue;
+      }
+
+      final sourceLayerId = layer['source-layer'];
+      if (sourceLayerId is String && sourceLayerId.isNotEmpty) {
+        sourceLayerIds.add(sourceLayerId);
+      }
+    }
+
+    return sourceLayerIds;
+  }
+
+  void _validateStyleCompatibility({
+    required Map<String, dynamic> styleJson,
+    required _MbtilesMetadataInfo mbtilesMetadata,
+  }) {
+    if (mbtilesMetadata.vectorLayerIds.isEmpty) {
+      return;
+    }
+
+    final styleSourceLayerIds = _extractSourceLayerIds(styleJson);
+    if (styleSourceLayerIds.isEmpty) {
+      return;
+    }
+
+    final matchedLayerCount = styleSourceLayerIds
+        .where(mbtilesMetadata.vectorLayerIds.contains)
+        .length;
+
+    if (matchedLayerCount > 0) {
+      return;
+    }
+
+    throw StateError(
+      'Lokaler Style ist nicht mit dem MBTiles-Schema kompatibel. '
+      'MBTiles-Layer: ${mbtilesMetadata.vectorLayerIds.join(', ')}, '
+      'Style-Layer: ${styleSourceLayerIds.join(', ')}',
+    );
+  }
+
+  Set<String> _extractVectorLayerIdsFromMetadataJson(String metadataJson) {
+    try {
+      final decoded = jsonDecode(metadataJson);
+      if (decoded is! Map<String, dynamic>) {
+        return const <String>{};
+      }
+
+      final vectorLayers = decoded['vector_layers'];
+      if (vectorLayers is! List) {
+        return const <String>{};
+      }
+
+      final ids = <String>{};
+      for (final layer in vectorLayers) {
+        if (layer is! Map) {
+          continue;
+        }
+
+        final id = layer['id'];
+        if (id is String && id.isNotEmpty) {
+          ids.add(id);
+        }
+      }
+
+      return ids;
+    } catch (_) {
+      return const <String>{};
+    }
+  }
+
   Future<_MbtilesMetadataInfo> _readMbtilesMetadata(String path) async {
     if (!File(path).existsSync()) {
       return const _MbtilesMetadataInfo();
@@ -247,12 +331,13 @@ class _MapViewState extends State<MapView> {
     try {
       db = sqlite.sqlite3.open(path, mode: sqlite.OpenMode.readOnly);
       final rows = db.select(
-        "SELECT name, value FROM metadata WHERE name IN ('format', 'minzoom', 'maxzoom')",
+        "SELECT name, value FROM metadata WHERE name IN ('format', 'minzoom', 'maxzoom', 'json')",
       );
 
       String? format;
       double? minZoom;
       double? maxZoom;
+      Set<String> vectorLayerIds = const <String>{};
 
       for (final row in rows) {
         final name = row['name'];
@@ -264,6 +349,8 @@ class _MapViewState extends State<MapView> {
           minZoom = double.tryParse(value.toString());
         } else if (name == 'maxzoom' && value != null) {
           maxZoom = double.tryParse(value.toString());
+        } else if (name == 'json' && value is String) {
+          vectorLayerIds = _extractVectorLayerIdsFromMetadataJson(value);
         }
       }
 
@@ -277,6 +364,7 @@ class _MapViewState extends State<MapView> {
         format: format,
         minZoom: minZoom,
         maxZoom: maxZoom,
+        vectorLayerIds: vectorLayerIds,
       );
     } finally {
       db?.close();
@@ -462,6 +550,12 @@ class _MbtilesMetadataInfo {
   final String? format;
   final double? minZoom;
   final double? maxZoom;
+  final Set<String> vectorLayerIds;
 
-  const _MbtilesMetadataInfo({this.format, this.minZoom, this.maxZoom});
+  const _MbtilesMetadataInfo({
+    this.format,
+    this.minZoom,
+    this.maxZoom,
+    this.vectorLayerIds = const <String>{},
+  });
 }

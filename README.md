@@ -68,6 +68,26 @@ Verhalten:
 
 Wenn `minzoom`/`maxzoom` vorhanden sind, werden diese direkt als aktive Zoom-Grenzen verwendet.
 
+## Style-Thema fuer Vektor-MBTiles (wichtig)
+
+Die Datei [assets/maps/style.json](assets/maps/style.json) ist auf das von Tilemaker erzeugte OpenMapTiles-Schema ausgelegt.
+
+Wichtig fuer sichtbare Vektor-Karten:
+
+- Die in `source-layer` verwendeten Layernamen muessen zu den `vector_layers` in den MBTiles-Metadaten passen.
+- Dieses Projekt nutzt Tilemaker mit OpenMapTiles-Schema (z. B. Layer wie `water`, `waterway`, `transportation`, `boundary`, `building`, `landuse`, `landcover`, `park`).
+- Ein Style fuer ein anderes Schema (z. B. Shortbread) fuehrt zu leeren Kartenflaechen.
+
+Offline-first Verhalten:
+
+- Der Vektor-Style wird ausschliesslich lokal aus [assets/maps/style.json](assets/maps/style.json) geladen.
+- Remote-Styles, Remote-Glyphs und Remote-Sprites sind nicht Teil des Standardpfads.
+- Bei Inkompatibilitaet zwischen Style und MBTiles-Schema faellt die App auf ein internes Fallback-Theme zurueck.
+
+Hinweis:
+
+- Raster-MBTiles sind davon nicht betroffen und werden weiterhin ueber den Rasterpfad angezeigt.
+
 ## Abhaengigkeiten und Fork-Overrides
 
 Das Projekt nutzt fuer Flutter Map 8.x Fork-Overrides in [pubspec.yaml](pubspec.yaml):
@@ -124,8 +144,8 @@ Relevante Einstellungen in [lib/config/map_config.dart](lib/config/map_config.da
 
 ### Vektorlabels fehlen
 
-- Der Style kann online geladen werden; ohne Erreichbarkeit greift ein Fallback-Theme
-- Internetzugriff auf den Style-Endpunkt pruefen
+- Dieser Offline-Style rendert bewusst ohne externe Glyph/Sprite-Abhaengigkeiten.
+- Wenn Labels benoetigt werden, muessen Glyphs/Sprites lokal bereitgestellt und im Style lokal referenziert werden.
 
 ### Zoom scheint begrenzt
 
