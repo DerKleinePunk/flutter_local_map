@@ -30,22 +30,21 @@ Future<void> main() async {
 
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
-    _logError(
-      'FlutterError',
-      details.exception,
-      details.stack,
-    );
+    _logError('FlutterError', details.exception, details.stack);
   };
   PlatformDispatcher.instance.onError = (error, stack) {
     _logError('PlatformDispatcher', error, stack);
     return true;
   };
 
-  runZonedGuarded(() {
-    runApp(const MyApp());
-  }, (error, stack) {
-    _logError('runZonedGuarded', error, stack);
-  });
+  runZonedGuarded(
+    () {
+      runApp(const MyApp());
+    },
+    (error, stack) {
+      _logError('runZonedGuarded', error, stack);
+    },
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -173,9 +172,8 @@ class _MapHomePageState extends State<MapHomePage> {
 
     final result = await showDialog<MapStorageLocation>(
       context: context,
-      builder: (context) => StorageSettingsDialog(
-        currentLocation: currentLocation,
-      ),
+      builder: (context) =>
+          StorageSettingsDialog(currentLocation: currentLocation),
     );
 
     if (result != null && mounted) {
@@ -272,9 +270,7 @@ class _MapHomePageState extends State<MapHomePage> {
 
   Widget _buildBody() {
     if (!_isInitialized) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (!_isMapAvailable) {
