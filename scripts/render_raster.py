@@ -13,6 +13,8 @@ Beispiel (Testgebiet Vogelsberg):
 
 Beispiel (Hessen komplett):
   python render_raster.py germany.mbtiles germany_raster.mbtiles --maxzoom 14
+
+Rendert mit tileserver-gl eimbautem Style 'osm-bright'
 """
 
 import sys
@@ -38,12 +40,10 @@ except ImportError:
 
 TILESERVER_PORT = 7654
 TILESERVER_IMAGE = "maptiler/tileserver-gl"
-#STYLE_NAME = "navigation"
-STYLE_NAME = "basic-preview"
+STYLE_NAME = "osm-bright"
 
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
-STYLE_SOURCE = PROJECT_ROOT / "assets" / "maps" / "style_navigation.json"
 WORK_DIR = PROJECT_ROOT / "map" / "tiles-germany"
 TMP_DIR = WORK_DIR / "_tileserver_tmp"
 
@@ -140,26 +140,10 @@ def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_m
 # tileserver-gl vorbereiten und starten
 # ---------------------------------------------------------------------------
 
-def adapt_style(style_path: Path, data_key: str) -> dict:
-    """Passt style_navigation.json für tileserver-gl an."""
-    with open(style_path, encoding="utf-8") as f:
-        style = json.load(f)
-
-    for src in style.get("sources", {}).values():
-        if src.get("type") == "vector":
-            # tileserver-gl erwartet mbtiles://{datakey} statt tiles-Array
-            src.pop("tiles", None)
-            src.pop("minzoom", None)
-            src.pop("maxzoom", None)
-            src["url"] = f"mbtiles://{{{data_key}}}"
-
-    # tileserver-gl liefert Fonts selbst aus
-    style["glyphs"] = "{fontstack}/{range}.pbf"
-    style.pop("sprite", None)
-    return style
+# Style-Adaption nicht nötig - verwenden wir tileserver-gl eigene osm-bright
 
 
-def start_tileserver(mbtiles_name: str) -> None:
+def start_tileserver(mbtiles_name: str, bbox_str: str) -> None:
     global _container_id
 
     TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -169,32 +153,33 @@ def start_tileserver(mbtiles_name: str) -> None:
     dst = TMP_DIR / "source.mbtiles"
     shutil.copy2(src, dst)
 
-    # Adaptierten Style schreiben
-    data_key = "v3"
-    style = adapt_style(STYLE_SOURCE, data_key)
-    (TMP_DIR / "style.json").write_text(json.dumps(style, indent=2), encoding="utf-8")
+    bounds = list(map(float, bbox_str.split(",")))
 
-    # tileserver-gl config.json
+    # tileserver-gl config.json mit eingebautem osm-bright Style
     config = {
         "options": {
             "paths": {
-                "root": "/usr/src/app/node_modules/tileserver-gl-styles",
                 "fonts": "fonts",
-                #"sprites": "sprites",
-                "mbtiles": "/data",
+                "styles": "styles",
             }
         },
         "data": {
-            data_key: {"mbtiles": "source.mbtiles"}
+           "openmaptiles": {
+                "mbtiles": "source.mbtiles"
+            },
         },
         "styles": {
-            #STYLE_NAME: {"style": "style.json"}
-            "basic-preview": {
-                "style": "styles/basic-preview/style.json"
-            }
+            STYLE_NAME: {
+                "style": f"{STYLE_NAME}/style.json",
+                "tilejson": {
+                    "type": "overlay",
+                    "bounds": bounds
+                }
+            },
         },
     }
     (TMP_DIR / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+    print(f"[config] Using tileserver-gl built-in style: {STYLE_NAME}")
 
     cmd = [
         "docker", "run", "-d", "--rm",
@@ -328,7 +313,7 @@ def main() -> int:
     print(f"[info]  Tiles:   {len(tiles):,}")
 
     # tileserver-gl starten
-    start_tileserver(args.input)
+    start_tileserver(args.input, bbox_str)
     if not wait_for_tileserver(60):
         print("[error] tileserver-gl ist nicht erreichbar – abbruch")
         return 1
