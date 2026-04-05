@@ -51,6 +51,7 @@ flutter run -d linux
 - Download-Service: [lib/services/map_downloader.dart](lib/services/map_downloader.dart)
 - Tilemaker-Skript: [scripts/tilemaker.sh](scripts/tilemaker.sh)
 - Tilemaker z17 Config: [scripts/tilemaker/config-openmaptiles-z17.json](scripts/tilemaker/config-openmaptiles-z17.json)
+- Raster-Renderer (Vektor -> PNG-MBTiles): [scripts/render_raster.py](scripts/render_raster.py)
 
 ## MBTiles-Handling in der App
 
@@ -106,7 +107,7 @@ Damit sind die benoetigten Anpassungen fuer den aktuellen Stack im Projekt fixie
 
 ## Lokale Tile-Erzeugung mit Tilemaker (z17)
 
-Das Skript [scripts/tilemaker.sh](scripts/tilemaker.sh) erzeugt `germany.mbtiles` auf Basis einer z17-Konfiguration.
+Das Skript [scripts/tilemaker.sh](scripts/tilemaker.sh) erzeugt Vektor-MBTiles auf Basis einer z17-Konfiguration und kann optional in einem zweiten Schritt Raster-MBTiles rendern.
 
 Eigenschaften des Skripts:
 
@@ -116,6 +117,7 @@ Eigenschaften des Skripts:
 - bricht standardmaessig ab, wenn Ausgabedatei bereits existiert
 - erzwingt Neuaufbau mit `FORCE_REBUILD=1`
 - unterstuetzt einen optionalen `vogelsberg`-Parameter fuer schnelle Test-Builds
+- unterstuetzt optional `raster`/`--raster` fuer einen zweiten Schritt (PNG-MBTiles aus Vektor-MBTiles)
 
 Ausfuehrung:
 
@@ -128,6 +130,12 @@ cd scripts
 # Nur Vogelsberg (kleines Testgebiet in Hessen, BBox 8.9,50.35,9.9,50.85)
 # Erzeugt vogelsberg.mbtiles statt germany.mbtiles
 ./tilemaker.sh vogelsberg
+
+# Vektor + Raster (zweite Datei mit PNG-Tiles)
+./tilemaker.sh raster
+
+# Vogelsberg Vektor + Raster
+./tilemaker.sh vogelsberg raster
 ```
 
 Neuaufbau erzwingen:
@@ -136,7 +144,21 @@ Neuaufbau erzwingen:
 cd scripts
 FORCE_REBUILD=1 ./tilemaker.sh
 FORCE_REBUILD=1 ./tilemaker.sh vogelsberg
+FORCE_REBUILD=1 ./tilemaker.sh raster
+FORCE_REBUILD=1 ./tilemaker.sh vogelsberg raster
 ```
+
+Ausgabedateien:
+
+- nur Vektor: `germany.mbtiles` oder `vogelsberg.mbtiles`
+- mit Raster-Schritt: zusaetzlich `germany_raster.mbtiles` oder `vogelsberg_raster.mbtiles`
+
+Raster-Schritt (optional) nutzt [scripts/render_raster.py](scripts/render_raster.py) und einen lokalen `tileserver-gl` Docker-Container mit dem Navigation-Style aus [assets/maps/style_navigation.json](assets/maps/style_navigation.json).
+
+Optionale Umgebungsvariablen fuer den Raster-Schritt:
+
+- `RASTER_MAXZOOM` (Standard: `14`)
+- `RASTER_WORKERS` (Standard: `4`)
 
 Hinweis: Die z17-Config erhoeht Detail-Layer bis Zoom 17 inklusive Hausnummern (`housenumber`-Layer ab z14). Das verbessert Details, vergroessert aber Datenmenge und Build-Zeit.
 

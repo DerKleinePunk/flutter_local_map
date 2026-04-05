@@ -12,11 +12,46 @@ PBF_FILE="germany-latest.osm.pbf"
 WATER_ZIP="water-polygons-split-4326.zip"
 COASTLINE_DIR="coastline"
 
+show_usage() {
+  echo "Nutzung: ./tilemaker.sh [vogelsberg] [raster|--raster]"
+  echo ""
+  echo "  ohne Parameter:    Germany Vector-MBTiles"
+  echo "  vogelsberg:        kleines Testgebiet (BBox)"
+  echo "  raster|--raster:   zusaetzlich Raster-MBTiles aus Vektor-MBTiles erzeugen"
+  echo ""
+  echo "Optionale Umgebungsvariablen fuer Raster-Schritt:"
+  echo "  RASTER_MAXZOOM (default: 17)"
+  echo "  RASTER_WORKERS (default: 4)"
+}
+
 # Vogelsberg: kleines Testgebiet in Hessen für schnelle Iterationen
 VOGELSBERG_BBOX="8.9,50.35,9.9,50.85"
 
 BBOX_ARG=()
-if [ "${1:-}" = "vogelsberg" ]; then
+GENERATE_RASTER=0
+REGION="germany"
+
+for arg in "$@"; do
+  case "$arg" in
+    vogelsberg)
+      REGION="vogelsberg"
+      ;;
+    raster|--raster)
+      GENERATE_RASTER=1
+      ;;
+    -h|--help)
+      show_usage
+      exit 0
+      ;;
+    *)
+      echo "[error] Unbekannter Parameter: $arg"
+      show_usage
+      exit 1
+      ;;
+  esac
+done
+
+if [ "$REGION" = "vogelsberg" ]; then
   echo "[bbox] Vogelsberg-Testgebiet: $VOGELSBERG_BBOX"
   BBOX_ARG+=(--bbox "$VOGELSBERG_BBOX")
   OUTPUT_MBTILES="vogelsberg.mbtiles"
@@ -82,10 +117,11 @@ else
   unzip -o ne_10m_glaciated_areas.zip -d landcover/ne_10m_glaciated_areas
 fi
 
+NEEDS_VECTOR_BUILD=1
 if [ -f "$OUTPUT_MBTILES" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
   echo "[skip] $OUTPUT_MBTILES existiert bereits."
   echo "       Setze FORCE_REBUILD=1, um die Datei neu zu erzeugen."
-  exit 0
+  NEEDS_VECTOR_BUILD=0
 fi
 
 if [ ! -f "$COASTLINE_DIR/water_polygons.shp" ] || [ ! -f "$COASTLINE_DIR/water_polygons.shx" ] || [ ! -f "$COASTLINE_DIR/water_polygons.dbf" ]; then
@@ -94,20 +130,40 @@ if [ ! -f "$COASTLINE_DIR/water_polygons.shp" ] || [ ! -f "$COASTLINE_DIR/water_
   exit 1
 fi
 
-TILEMAKER_REBUILD_ARG=()
-if [ "${FORCE_REBUILD:-0}" = "1" ]; then
-  TILEMAKER_REBUILD_ARG+=(--merge)
+if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
+  TILEMAKER_REBUILD_ARG=()
+  if [ "${FORCE_REBUILD:-0}" = "1" ]; then
+    TILEMAKER_REBUILD_ARG+=(--merge)
+  fi
+
+  docker run -it --rm --pull always \
+    -w /data \
+    -v "$WORK_DIR:/data" \
+    -v "$PROJECT_ROOT:/workspace" \
+    ghcr.io/systemed/tilemaker:master \
+      --input /data/$PBF_FILE \
+      --output /data/$OUTPUT_MBTILES \
+      --config /workspace/scripts/tilemaker/config-openmaptiles-z17.json \
+      --process /usr/src/app/resources/process-openmaptiles.lua \
+      "${TILEMAKER_REBUILD_ARG[@]}" \
+      "${BBOX_ARG[@]}" \
+      --store /data/temp
 fi
 
-docker run -it --rm --pull always \
-  -w /data \
-  -v "$WORK_DIR:/data" \
-  -v "$PROJECT_ROOT:/workspace" \
-  ghcr.io/systemed/tilemaker:master \
-    --input /data/$PBF_FILE \
-    --output /data/$OUTPUT_MBTILES \
-    --config /workspace/scripts/tilemaker/config-openmaptiles-z17.json \
-    --process /usr/src/app/resources/process-openmaptiles.lua \
-    "${TILEMAKER_REBUILD_ARG[@]}" \
-    "${BBOX_ARG[@]:-}" \
-    --store /data/temp
+if [ "$GENERATE_RASTER" = "1" ]; then
+  RASTER_OUTPUT="${OUTPUT_MBTILES%.mbtiles}_raster.mbtiles"
+  RASTER_MAXZOOM="${RASTER_MAXZOOM:-17}"
+  RASTER_WORKERS="${RASTER_WORKERS:-4}"
+
+  PYTHON_BIN="python3"
+  if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  fi
+
+  echo "[raster] Erzeuge $RASTER_OUTPUT aus $OUTPUT_MBTILES"
+  "$PYTHON_BIN" "$SCRIPT_DIR/render_raster.py" \
+    "$OUTPUT_MBTILES" \
+    "$RASTER_OUTPUT" \
+    --maxzoom "$RASTER_MAXZOOM" \
+    --workers "$RASTER_WORKERS"
+fi

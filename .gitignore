@@ -14,7 +14,8 @@ migrate_working_dir/
 .vscode/
 
 # Python virtual environment
-venv/
+**/venv/
+**/.venv/
 *.mbtiles
 
 # IntelliJ related
