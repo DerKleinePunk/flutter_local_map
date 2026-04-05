@@ -38,11 +38,16 @@ class _MapViewState extends State<MapView> {
   double _activeMinZoom = MapConfig.minZoom.toDouble();
   double _activeMaxZoom = MapConfig.maxZoom.toDouble();
   double _currentZoom = MapConfig.initialZoom.toDouble();
+  int _selectedVectorStyleAssetIndex = 0;
+  String? _activeVectorStyleAssetPath;
   bool _isLoading = true;
   String? _errorMessage;
 
   static const Set<String> _rasterFormats = {'png', 'jpg', 'jpeg', 'webp'};
-  static const String _localVectorStyleAsset = 'assets/maps/style.json';
+  static const List<String> _localVectorStyleAssets = [
+    'assets/maps/style.json',
+    'assets/maps/style_second.json',
+  ];
 
   bool get _isVectorMode =>
       _vectorTileProviders != null && _vectorTheme != null;
@@ -83,38 +88,21 @@ class _MapViewState extends State<MapView> {
         TileProviders vectorTileProviders;
 
         try {
-          debugPrint('Lade lokalen Asset-Style: $_localVectorStyleAsset');
-          final styleText = await rootBundle.loadString(_localVectorStyleAsset);
-          final decoded = jsonDecode(styleText);
-
-          if (decoded is! Map<String, dynamic>) {
-            throw StateError('Lokaler Style ist kein JSON-Objekt.');
-          }
-
-          _validateStyleCompatibility(
-            styleJson: decoded,
-            mbtilesMetadata: metadata,
-          );
-
-          vectorTheme = vtr.ThemeReader(
-            logger: const vtr.Logger.console(),
-          ).read(decoded);
-          vectorSprites = null;
-
-          vectorTileProviders = _buildVectorTileProviders(
-            styleJson: decoded,
+          final styleResult = await _loadLocalVectorStyle(
             provider: provider,
+            metadata: metadata,
           );
-
-          debugPrint(
-            'Lokaler Asset-Style geladen: ${vectorTheme.layers.length} Layer, Sources: ${vectorTileProviders.tileProviderBySource.keys.join(', ')}',
-          );
+          vectorTheme = styleResult.theme;
+          vectorSprites = styleResult.sprites;
+          vectorTileProviders = styleResult.tileProviders;
+          _activeVectorStyleAssetPath = styleResult.assetPath;
         } catch (assetError) {
-          debugPrint('Lokaler Asset-Style fehlgeschlagen: $assetError');
+          debugPrint('Lokale Styles fehlgeschlagen: $assetError');
           debugPrint('Verwende Fallback-Theme ohne Labels');
           vectorTheme = vtr.ProvidedThemes.lightTheme();
           vectorSprites = null;
           vectorTileProviders = _buildFallbackVectorTileProviders(provider);
+          _activeVectorStyleAssetPath = null;
         }
 
         if (!mounted) {
@@ -209,6 +197,99 @@ class _MapViewState extends State<MapView> {
     return TileProviders({
       for (final sourceId in _knownVectorSourceAliases) sourceId: provider,
     });
+  }
+
+  Future<_LocalVectorStyleLoadResult> _loadLocalVectorStyle({
+    required VectorTileProvider provider,
+    required _MbtilesMetadataInfo metadata,
+  }) async {
+    Object? lastError;
+
+    for (final styleAssetPath in _orderedLocalStyleAssets()) {
+      try {
+        debugPrint('Lade lokalen Asset-Style: $styleAssetPath');
+
+        final styleText = await rootBundle.loadString(styleAssetPath);
+        final decoded = jsonDecode(styleText);
+
+        if (decoded is! Map<String, dynamic>) {
+          throw StateError('Lokaler Style ist kein JSON-Objekt.');
+        }
+
+        _validateStyleCompatibility(
+          styleJson: decoded,
+          mbtilesMetadata: metadata,
+        );
+
+        final theme = vtr.ThemeReader(
+          logger: const vtr.Logger.console(),
+        ).read(decoded);
+
+        final tileProviders = _buildVectorTileProviders(
+          styleJson: decoded,
+          provider: provider,
+        );
+
+        debugPrint(
+          'Lokaler Asset-Style geladen ($styleAssetPath): ${theme.layers.length} Layer, Sources: ${tileProviders.tileProviderBySource.keys.join(', ')}',
+        );
+
+        return _LocalVectorStyleLoadResult(
+          theme: theme,
+          sprites: null,
+          tileProviders: tileProviders,
+          assetPath: styleAssetPath,
+        );
+      } catch (error) {
+        lastError = error;
+        debugPrint(
+          'Lokaler Asset-Style fehlgeschlagen ($styleAssetPath): $error',
+        );
+      }
+    }
+
+    throw StateError(
+      'Kein lokaler Vektor-Style konnte geladen werden. Letzter Fehler: $lastError',
+    );
+  }
+
+  List<String> _orderedLocalStyleAssets() {
+    if (_localVectorStyleAssets.isEmpty) {
+      return const <String>[];
+    }
+
+    final normalizedIndex =
+        _selectedVectorStyleAssetIndex % _localVectorStyleAssets.length;
+
+    return [
+      ..._localVectorStyleAssets.sublist(normalizedIndex),
+      ..._localVectorStyleAssets.sublist(0, normalizedIndex),
+    ];
+  }
+
+  Future<void> _cycleVectorStyle() async {
+    if (_localVectorStyleAssets.length < 2) {
+      return;
+    }
+
+    setState(() {
+      _selectedVectorStyleAssetIndex =
+          (_selectedVectorStyleAssetIndex + 1) % _localVectorStyleAssets.length;
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    await _initializeTileProvider();
+  }
+
+  String _activeVectorStyleLabel() {
+    final path = _activeVectorStyleAssetPath;
+    if (path == null || path.isEmpty) {
+      return 'Fallback';
+    }
+
+    final fileName = path.split('/').last;
+    return fileName.replaceAll('.json', '');
   }
 
   Set<String> _extractSourceIdsFromStyleSources(
@@ -474,7 +555,48 @@ class _MapViewState extends State<MapView> {
           right: 12,
           child: IgnorePointer(child: _buildModeBadge(context)),
         ),
+        if (_isVectorMode)
+          Positioned(top: 48, right: 12, child: _buildStyleSwitchChip(context)),
       ],
+    );
+  }
+
+  Widget _buildStyleSwitchChip(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: _cycleVectorStyle,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colorScheme.secondaryContainer,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.palette_outlined,
+                  size: 14,
+                  color: colorScheme.onSecondaryContainer,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _activeVectorStyleLabel(),
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSecondaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -557,5 +679,19 @@ class _MbtilesMetadataInfo {
     this.minZoom,
     this.maxZoom,
     this.vectorLayerIds = const <String>{},
+  });
+}
+
+class _LocalVectorStyleLoadResult {
+  final vtr.Theme theme;
+  final SpriteStyle? sprites;
+  final TileProviders tileProviders;
+  final String assetPath;
+
+  const _LocalVectorStyleLoadResult({
+    required this.theme,
+    required this.sprites,
+    required this.tileProviders,
+    required this.assetPath,
   });
 }

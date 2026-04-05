@@ -1,0 +1,108 @@
+{
+  "version": 8,
+  "name": "openmaptiles-offline-contrast",
+  "metadata": {
+    "generator": "tilemaker-openmaptiles",
+    "offline": true,
+    "variant": "alt"
+  },
+  "sources": {
+    "openmaptiles": {
+      "type": "vector",
+      "tiles": [
+        "mbtiles://{z}/{x}/{y}.pbf"
+      ],
+      "minzoom": 0,
+      "maxzoom": 16
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": {
+        "background-color": "#e8ecef"
+      }
+    },
+    {
+      "id": "landcover",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "landcover",
+      "paint": {
+        "fill-color": "#d3e4c8",
+        "fill-opacity": 0.75
+      }
+    },
+    {
+      "id": "landuse",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "landuse",
+      "paint": {
+        "fill-color": "#ece4cf",
+        "fill-opacity": 0.55
+      }
+    },
+    {
+      "id": "park",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "park",
+      "paint": {
+        "fill-color": "#bddaa7",
+        "fill-opacity": 0.85
+      }
+    },
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "water",
+      "paint": {
+        "fill-color": "#93c3ea"
+      }
+    },
+    {
+      "id": "waterway",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "waterway",
+      "paint": {
+        "line-color": "#4e9dd6",
+        "line-width": 1.4
+      }
+    },
+    {
+      "id": "transportation",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "transportation",
+      "paint": {
+        "line-color": "#b25f3a",
+        "line-width": 1.5
+      }
+    },
+    {
+      "id": "boundary",
+      "type": "line",
+      "source": "openmaptiles",
+      "source-layer": "boundary",
+      "paint": {
+        "line-color": "#5f6670",
+        "line-width": 0.9
+      }
+    },
+    {
+      "id": "building",
+      "type": "fill",
+      "source": "openmaptiles",
+      "source-layer": "building",
+      "minzoom": 13,
+      "paint": {
+        "fill-color": "#cbb39f",
+        "fill-opacity": 0.78
+      }
+    }
+  ]
+}
