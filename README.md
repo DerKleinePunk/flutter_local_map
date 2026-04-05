@@ -50,7 +50,7 @@ flutter run -d linux
 - Karten-Widget: [lib/widgets/map_view.dart](lib/widgets/map_view.dart)
 - Download-Service: [lib/services/map_downloader.dart](lib/services/map_downloader.dart)
 - Tilemaker-Skript: [scripts/tilemaker.sh](scripts/tilemaker.sh)
-- Tilemaker z16 Config: [scripts/tilemaker/config-openmaptiles-z16.json](scripts/tilemaker/config-openmaptiles-z16.json)
+- Tilemaker z17 Config: [scripts/tilemaker/config-openmaptiles-z17.json](scripts/tilemaker/config-openmaptiles-z17.json)
 
 ## MBTiles-Handling in der App
 
@@ -104,22 +104,30 @@ Das Projekt nutzt fuer Flutter Map 8.x Fork-Overrides in [pubspec.yaml](pubspec.
 
 Damit sind die benoetigten Anpassungen fuer den aktuellen Stack im Projekt fixiert.
 
-## Lokale Tile-Erzeugung mit Tilemaker (z16)
+## Lokale Tile-Erzeugung mit Tilemaker (z17)
 
-Das Skript [scripts/tilemaker.sh](scripts/tilemaker.sh) erzeugt `germany.mbtiles` auf Basis einer z16-Konfiguration.
+Das Skript [scripts/tilemaker.sh](scripts/tilemaker.sh) erzeugt `germany.mbtiles` auf Basis einer z17-Konfiguration.
 
 Eigenschaften des Skripts:
 
 - prueft, ob Eingabedateien bereits vorhanden sind
 - laedt nur fehlende Daten nach
+- entpackt Natural-Earth-Daten nur, wenn Zielverzeichnis noch nicht vorhanden ist
 - bricht standardmaessig ab, wenn Ausgabedatei bereits existiert
 - erzwingt Neuaufbau mit `FORCE_REBUILD=1`
+- unterstuetzt einen optionalen `vogelsberg`-Parameter fuer schnelle Test-Builds
 
 Ausfuehrung:
 
 ```bash
 cd scripts
+
+# Vollstaendiges Deutschland-Build
 ./tilemaker.sh
+
+# Nur Vogelsberg (kleines Testgebiet in Hessen, BBox 8.9,50.35,9.9,50.85)
+# Erzeugt vogelsberg.mbtiles statt germany.mbtiles
+./tilemaker.sh vogelsberg
 ```
 
 Neuaufbau erzwingen:
@@ -127,9 +135,10 @@ Neuaufbau erzwingen:
 ```bash
 cd scripts
 FORCE_REBUILD=1 ./tilemaker.sh
+FORCE_REBUILD=1 ./tilemaker.sh vogelsberg
 ```
 
-Hinweis: Die z16-Config erhoeht gezielt Detail-Layer bis Zoom 16. Das verbessert Details, vergroessert aber Datenmenge und Build-Zeit.
+Hinweis: Die z17-Config erhoeht Detail-Layer bis Zoom 17 inklusive Hausnummern (`housenumber`-Layer ab z14). Das verbessert Details, vergroessert aber Datenmenge und Build-Zeit.
 
 ## Konfiguration
 

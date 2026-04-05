@@ -11,7 +11,18 @@ cd "$WORK_DIR"
 PBF_FILE="germany-latest.osm.pbf"
 WATER_ZIP="water-polygons-split-4326.zip"
 COASTLINE_DIR="coastline"
-OUTPUT_MBTILES="germany.mbtiles"
+
+# Vogelsberg: kleines Testgebiet in Hessen für schnelle Iterationen
+VOGELSBERG_BBOX="8.9,50.35,9.9,50.85"
+
+BBOX_ARG=()
+if [ "${1:-}" = "vogelsberg" ]; then
+  echo "[bbox] Vogelsberg-Testgebiet: $VOGELSBERG_BBOX"
+  BBOX_ARG+=(--bbox "$VOGELSBERG_BBOX")
+  OUTPUT_MBTILES="vogelsberg.mbtiles"
+else
+  OUTPUT_MBTILES="germany.mbtiles"
+fi
 
 # Deutschland PBF (~4 GB)
 if [ -f "$PBF_FILE" ]; then
@@ -98,4 +109,5 @@ docker run -it --rm --pull always \
     --config /workspace/scripts/tilemaker/config-openmaptiles-z17.json \
     --process /usr/src/app/resources/process-openmaptiles.lua \
     "${TILEMAKER_REBUILD_ARG[@]}" \
+    "${BBOX_ARG[@]:-}" \
     --store /data/temp
