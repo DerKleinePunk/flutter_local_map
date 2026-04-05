@@ -41,23 +41,35 @@ if ! [ -f "ne_10m_antarctic_ice_shelves_polys.zip" ]; then
 fi
 
 mkdir -p landcover
-mkdir -p landcover/ne_10m_antarctic_ice_shelves_polys
-unzip -o ne_10m_antarctic_ice_shelves_polys.zip -d landcover/ne_10m_antarctic_ice_shelves_polys
+if [ -d "landcover/ne_10m_antarctic_ice_shelves_polys" ]; then
+  echo "[skip] landcover/ne_10m_antarctic_ice_shelves_polys ist bereits entpackt"
+else
+  mkdir -p landcover/ne_10m_antarctic_ice_shelves_polys
+  unzip -o ne_10m_antarctic_ice_shelves_polys.zip -d landcover/ne_10m_antarctic_ice_shelves_polys
+fi
 
 if ! [ -f "ne_10m_urban_areas.zip" ]; then
   curl --proto '=https' --tlsv1.3 -sSfO https://naciscdn.org/naturalearth/10m/cultural/ne_10m_urban_areas.zip
 fi
 
-mkdir -p landcover/ne_10m_urban_areas
-unzip -o ne_10m_urban_areas.zip -d landcover/ne_10m_urban_areas
+if [ -d "landcover/ne_10m_urban_areas" ]; then
+  echo "[skip] landcover/ne_10m_urban_areas ist bereits entpackt"
+else
+  mkdir -p landcover/ne_10m_urban_areas
+  unzip -o ne_10m_urban_areas.zip -d landcover/ne_10m_urban_areas
+fi
 
 
 if ! [ -f "ne_10m_glaciated_areas.zip" ]; then
   curl --proto '=https' --tlsv1.3 -sSfO https://naciscdn.org/naturalearth/10m/physical/ne_10m_glaciated_areas.zip
 fi
 
-mkdir -p landcover/ne_10m_glaciated_areas
-unzip -o ne_10m_glaciated_areas.zip -d landcover/ne_10m_glaciated_areas
+if [ -d "landcover/ne_10m_glaciated_areas" ]; then
+  echo "[skip] landcover/ne_10m_glaciated_areas ist bereits entpackt"
+else
+  mkdir -p landcover/ne_10m_glaciated_areas
+  unzip -o ne_10m_glaciated_areas.zip -d landcover/ne_10m_glaciated_areas
+fi
 
 if [ -f "$OUTPUT_MBTILES" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
   echo "[skip] $OUTPUT_MBTILES existiert bereits."
