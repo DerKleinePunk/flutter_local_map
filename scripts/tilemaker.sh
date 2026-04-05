@@ -150,15 +150,20 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
       --store /data/temp
 fi
 
+# Prefer the project virtualenv for Python tooling if present.
+PYTHON_BIN="$PROJECT_ROOT/.venv/Scripts/python.exe"
+if [ ! -x "$PYTHON_BIN" ]; then
+  PYTHON_BIN="python3"
+  if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    PYTHON_BIN="python"
+  fi
+fi
+
 # Extract searchable names database
 NAMES_DB_OUTPUT="${OUTPUT_MBTILES%.mbtiles}_names.db"
 if [ -f "$NAMES_DB_OUTPUT" ]; then
   echo "[skip] $NAMES_DB_OUTPUT existiert bereits"
 else
-  PYTHON_BIN="python3"
-  if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-    PYTHON_BIN="python"
-  fi
 
   echo "[names] Extrahiere suchbare Namen aus $OUTPUT_MBTILES"
   if "$PYTHON_BIN" "$SCRIPT_DIR/extract_names_to_sqlite.py" \
@@ -174,11 +179,6 @@ if [ "$GENERATE_RASTER" = "1" ]; then
   RASTER_OUTPUT="${OUTPUT_MBTILES%.mbtiles}_raster.mbtiles"
   RASTER_MAXZOOM="${RASTER_MAXZOOM:-17}"
   RASTER_WORKERS="${RASTER_WORKERS:-4}"
-
-  PYTHON_BIN="python3"
-  if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-    PYTHON_BIN="python"
-  fi
 
   echo "[raster] Erzeuge $RASTER_OUTPUT aus $OUTPUT_MBTILES"
   "$PYTHON_BIN" "$SCRIPT_DIR/render_raster.py" \

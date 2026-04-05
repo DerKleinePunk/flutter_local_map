@@ -65,8 +65,9 @@ class _MapViewState extends State<MapView> {
 
   Future<void> _initializeGeocoder() async {
     // Try to initialize with vogelsberg names database first
-    final namesDbPath = '${widget.mbtilesPath?.replaceAll('.mbtiles', '_names.db')}';
-    
+    final namesDbPath =
+        '${widget.mbtilesPath?.replaceAll('.mbtiles', '_names.db')}';
+
     if (namesDbPath.isNotEmpty && File(namesDbPath).existsSync()) {
       final success = await _geocoder.initialize(namesDbPath);
       if (success && mounted) {

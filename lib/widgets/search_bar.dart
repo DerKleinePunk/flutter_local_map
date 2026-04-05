@@ -2,6 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import '../services/offline_geocoder.dart';
 
+/// Extensions for GeocoderResult to provide type labels and sorting priority
+extension GeocoderResultExtension on GeocoderResult {
+  /// Get a human-readable type label in German
+  String get typeLabel => switch (type) {
+    'place' => 'Ort',
+    'poi' => 'POI',
+    'mountain_peak' => 'Berg',
+    'water_name' => 'Gewässer',
+    'transportation_name' => 'Straße',
+    _ => type,
+  };
+
+  /// Get type priority for sorting (lower = higher priority)
+  int get typePriority => switch (type) {
+    'place' => 0,
+    'poi' => 1,
+    'mountain_peak' => 2,
+    'water_name' => 3,
+    'transportation_name' => 4,
+    _ => 99,
+  };
+}
+
 class PlaceSearchBar extends StatefulWidget {
   final MapController mapController;
   final OfflineGeocoder geocoder;
@@ -60,9 +83,13 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
     });
 
     try {
-      final results = await widget.geocoder.search(
-        query,
-        limit: 10,
+      final results = await widget.geocoder.searchPrioritized(query, limit: 15);
+
+      // Results are already sorted by searchPrioritized, but ensure consistency
+      results.sort(
+        (a, b) => a.typePriority.compareTo(b.typePriority) == 0
+            ? a.name.compareTo(b.name)
+            : a.typePriority.compareTo(b.typePriority),
       );
 
       if (mounted) {
@@ -86,10 +113,7 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
 
   void _selectPlace(GeocoderResult result) {
     // Move map to selected location
-    widget.mapController.move(
-      result.location,
-      result.zoom.toDouble(),
-    );
+    widget.mapController.move(result.location, result.zoom.toDouble());
 
     // Close suggestions
     _focusNode.unfocus();
@@ -136,7 +160,10 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
                     )
                   : null,
               border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 12,
+              ),
             ),
           ),
         ),
@@ -159,20 +186,23 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
             child: _isLoading
                 ? const SizedBox(
                     height: 60,
-                    child: Center(
-                      child: CircularProgressIndicator(),
-                    ),
+                    child: Center(child: CircularProgressIndicator()),
                   )
                 : ListView.builder(
                     shrinkWrap: true,
                     itemCount: _suggestions.length,
                     itemBuilder: (context, index) {
                       final result = _suggestions[index];
+                      final subtitle = StringBuffer(result.typeLabel);
+                      if (result.detail != null) {
+                        subtitle.write(' • ${result.detail}');
+                      }
+                      subtitle.write(' • z${result.zoom}');
                       return ListTile(
                         leading: _getTypeIcon(result.type),
                         title: Text(result.name),
                         subtitle: Text(
-                          '${result.type}${result.detail != null ? ' • ${result.detail}' : ''}',
+                          subtitle.toString(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

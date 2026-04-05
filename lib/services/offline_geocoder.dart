@@ -155,6 +155,43 @@ class OfflineGeocoder {
     }
   }
 
+  /// Search with type prioritization: place > poi > mountain_peak > water_name > transportation_name
+  /// Returns results ordered by type priority, then by name
+  Future<List<GeocoderResult>> searchPrioritized(
+    String query, {
+    int limit = 20,
+  }) async {
+    if (_database == null) {
+      return [];
+    }
+
+    try {
+      const typePriority = [
+        'place',
+        'poi',
+        'mountain_peak',
+        'water_name',
+        'transportation_name',
+      ];
+      final allResults = <GeocoderResult>[];
+
+      for (final type in typePriority) {
+        if (allResults.length >= limit) break;
+        final typeResults = await searchByType(
+          query,
+          type: type,
+          limit: limit - allResults.length,
+        );
+        allResults.addAll(typeResults);
+      }
+
+      return allResults;
+    } catch (e) {
+      debugPrint('[geocoder] Prioritized search error: $e');
+      return [];
+    }
+  }
+
   /// Copy names database from assets to app documents
   /// Useful for development/testing
   Future<String?> copyDatabaseFromAssets(String sourceAssetPath) async {

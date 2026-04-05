@@ -148,6 +148,37 @@ FORCE_REBUILD=1 ./tilemaker.sh raster
 FORCE_REBUILD=1 ./tilemaker.sh vogelsberg raster
 ```
 
+## Offline-Indizierung und Ortssuche
+
+Nach der Erzeugung von Vektor-MBTiles mit Tilemaker wird automatisch eine SQLite-Datenbank mit searchable place names erzeugt.
+
+**Workflow:**
+
+1. **MVT-Protobuf-Dekompression**: Das Skript [scripts/extract_names_to_sqlite.py](scripts/extract_names_to_sqlite.py) liest die gzip-komprimierten Mapbox-Vector-Tile-Blobs aus den MBTiles.
+2. **Protobuf-Dekodierung**: Dekodiert das MVT-Protobuf-Format und extrahiert bekannte Name-Felder (`name`, `name:de`, `name:en`, `name:latin`) aus relevanten Layern.
+3. **Koordinaten-Transformation**: Berechnet aus der Feature-Geometrie eine repräsentative WGS84-Position mittels Web-Mercator-Projektion.
+4. **FTS5-Indizierung**: Erstellt einen Full-Text-Search-Index für schnelle Substring-Suches.
+
+**Suchpriorisierung** in der App:
+
+- `place` (Orte, Städte, Regionen) — höchste Priorität
+- `poi` (Points of Interest, Sehenswürdigkeiten)
+- `mountain_peak` (Berge, Gipfel)
+- `water_name` (Seen, Flüsse, Gewässer)
+- `transportation_name` (Straßen, Routen) — niedrigste Priorität
+
+Das [OfflineGeocoder](lib/services/offline_geocoder.dart)-Service nutzt `searchPrioritized()` für typsortierte Suchergebnisse. Die [PlaceSearchBar](lib/widgets/search_bar.dart)-Widget zeigt eine Autocomplete-Dropdown mit Typ-Icons und sortiert nach Priorität.
+
+**Wichtig:** Die Namen-DB wird automatisch als `{basename}_names.db` neben der MBTiles-Datei erzeugt (z.B. `vogelsberg_names.db` für `vogelsberg.mbtiles`). Die App lädt sie beim Starten automatisch über `OfflineGeocoder.initialize()`.
+
+**Technische Details:**
+
+- **Format**: MBTiles Blobs enthalten GZip-komprimierte MVT-Protobuf-Daten
+- **Dekompression**: Automatische GZip-Dekompression vor MVT-Dekodierung
+- **Geometrie-Transformation**: MVT-Pixelkoordinaten (0-4096) → Web Mercator → WGS84 (EPSG:4326)
+- **Koordinaten-System**: MBTiles nutzt TMS-Konvention (inverte Y-Achse), wird zu XYZ konvertiert
+- **Gesamtertrag vogelsberg.mbtiles**: 27.062 unique place names aus 140.535 tiles (z0-z17)
+
 Ausgabedateien:
 
 - nur Vektor: `germany.mbtiles` oder `vogelsberg.mbtiles`
