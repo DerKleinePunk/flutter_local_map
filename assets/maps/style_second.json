@@ -4,7 +4,7 @@
   "metadata": {
     "generator": "tilemaker-openmaptiles",
     "offline": true,
-    "variant": "alt"
+    "variant": "second"
   },
   "sources": {
     "openmaptiles": {
@@ -102,6 +102,56 @@
       "paint": {
         "fill-color": "#cbb39f",
         "fill-opacity": 0.78
+      }
+    },
+    {
+      "id": "water-name-label",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "water_name",
+      "minzoom": 8,
+      "layout": {
+        "symbol-placement": "line",
+        "text-field": "{name}",
+        "text-size": 11
+      },
+      "paint": {
+        "text-color": "#2f6d9a",
+        "text-halo-color": "#e8ecef",
+        "text-halo-width": 1.1
+      }
+    },
+    {
+      "id": "transportation-name-label",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "transportation_name",
+      "minzoom": 12,
+      "layout": {
+        "symbol-placement": "line",
+        "text-field": "{name}",
+        "text-size": 10
+      },
+      "paint": {
+        "text-color": "#6f3f25",
+        "text-halo-color": "#e8ecef",
+        "text-halo-width": 1.2
+      }
+    },
+    {
+      "id": "place-label",
+      "type": "symbol",
+      "source": "openmaptiles",
+      "source-layer": "place",
+      "minzoom": 6,
+      "layout": {
+        "text-field": "{name}",
+        "text-size": 12
+      },
+      "paint": {
+        "text-color": "#2f3338",
+        "text-halo-color": "#e8ecef",
+        "text-halo-width": 1.3
       }
     }
   ]

@@ -149,8 +149,9 @@ Relevante Einstellungen in [lib/config/map_config.dart](lib/config/map_config.da
 
 ### Vektorlabels fehlen
 
-- Dieser Offline-Style rendert bewusst ohne externe Glyph/Sprite-Abhaengigkeiten.
-- Wenn Labels benoetigt werden, muessen Glyphs/Sprites lokal bereitgestellt und im Style lokal referenziert werden.
+- Die lokalen Styles enthalten Label-Layer fuer `place`, `transportation_name` und `water_name`.
+- Wenn trotzdem keine Labels erscheinen, ist meist das zugrunde liegende Rendering (z. B. fehlende Glyph-Unterstuetzung) die Ursache.
+- In diesem Fall auf den zweiten Style umschalten und Logs in [lib/widgets/map_view.dart](lib/widgets/map_view.dart) pruefen.
 
 ### Zoom scheint begrenzt
 
