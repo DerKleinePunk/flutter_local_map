@@ -83,7 +83,7 @@ docker run -it --rm --pull always \
   ghcr.io/systemed/tilemaker:master \
     --input /data/$PBF_FILE \
     --output /data/$OUTPUT_MBTILES \
-    --config /workspace/scripts/tilemaker/config-openmaptiles-z16.json \
+    --config /workspace/scripts/tilemaker/config-openmaptiles-z17.json \
     --process /usr/src/app/resources/process-openmaptiles.lua \
     "${TILEMAKER_REBUILD_ARG[@]}" \
     --store /data/temp

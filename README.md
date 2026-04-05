@@ -84,7 +84,8 @@ Offline-first Verhalten:
 - Lade-Reihenfolge:
 	1. [assets/maps/style.json](assets/maps/style.json) (Primary)
 	2. [assets/maps/style_second.json](assets/maps/style_second.json) (Secondary)
-	3. internes Fallback-Theme
+	3. [assets/maps/style_navigation.json](assets/maps/style_navigation.json) (Navigation)
+	4. internes Fallback-Theme
 - Remote-Styles, Remote-Glyphs und Remote-Sprites sind nicht Teil des Standardpfads.
 - Bei Inkompatibilitaet zwischen Style und MBTiles-Schema faellt die App auf ein internes Fallback-Theme zurueck.
 - In der Kartenansicht kann der aktive lokale Vektor-Style ueber den Style-Chip oben rechts umgeschaltet werden.

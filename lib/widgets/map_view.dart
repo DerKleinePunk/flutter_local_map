@@ -47,6 +47,7 @@ class _MapViewState extends State<MapView> {
   static const List<String> _localVectorStyleAssets = [
     'assets/maps/style.json',
     'assets/maps/style_second.json',
+    'assets/maps/style_navigation.json',
   ];
 
   bool get _isVectorMode =>
