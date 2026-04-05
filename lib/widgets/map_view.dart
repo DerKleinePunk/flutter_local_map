@@ -38,7 +38,7 @@ class _MapViewState extends State<MapView> {
   double _activeMinZoom = MapConfig.minZoom.toDouble();
   double _activeMaxZoom = MapConfig.maxZoom.toDouble();
   double _currentZoom = MapConfig.initialZoom.toDouble();
-  int _selectedVectorStyleAssetIndex = 0;
+  int _selectedVectorStyleAssetIndex = 2;
   String? _activeVectorStyleAssetPath;
   bool _isLoading = true;
   String? _errorMessage;
