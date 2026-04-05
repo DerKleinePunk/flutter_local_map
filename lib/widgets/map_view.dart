@@ -11,6 +11,8 @@ import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 import '../config/map_config.dart';
+import '../services/offline_geocoder.dart';
+import 'search_bar.dart';
 
 /// Widget zur Darstellung der Karte mit MBTiles
 class MapView extends StatefulWidget {
@@ -30,6 +32,7 @@ class _MapViewState extends State<MapView> {
   };
 
   final MapController _mapController = MapController();
+  final OfflineGeocoder _geocoder = OfflineGeocoder();
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
   TileProviders? _vectorTileProviders;
@@ -57,6 +60,23 @@ class _MapViewState extends State<MapView> {
   void initState() {
     super.initState();
     _initializeTileProvider();
+    _initializeGeocoder();
+  }
+
+  Future<void> _initializeGeocoder() async {
+    // Try to initialize with vogelsberg names database first
+    final namesDbPath = '${widget.mbtilesPath?.replaceAll('.mbtiles', '_names.db')}';
+    
+    if (namesDbPath.isNotEmpty && File(namesDbPath).existsSync()) {
+      final success = await _geocoder.initialize(namesDbPath);
+      if (success && mounted) {
+        debugPrint('[map] Geocoder initialized with $namesDbPath');
+      } else if (mounted) {
+        debugPrint('[map] Failed to initialize geocoder with $namesDbPath');
+      }
+    } else {
+      debugPrint('[map] Names database not found at $namesDbPath');
+    }
   }
 
   Future<void> _initializeTileProvider() async {
@@ -469,6 +489,7 @@ class _MapViewState extends State<MapView> {
   void dispose() {
     _disposeTileResources();
     _mapController.dispose();
+    _geocoder.close();
     super.dispose();
   }
 
@@ -546,6 +567,18 @@ class _MapViewState extends State<MapView> {
             ),
           ],
         ),
+        // Search Bar
+        if (_geocoder.isInitialized)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: PlaceSearchBar(
+              mapController: _mapController,
+              geocoder: _geocoder,
+              initialZoom: _currentZoom,
+            ),
+          ),
         Positioned(
           top: 12,
           left: 12,

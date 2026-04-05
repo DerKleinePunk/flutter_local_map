@@ -50,6 +50,7 @@ dependencies:
   dio: ^5.7.0
   http: ^1.2.2
   sqlite3: ^3.3.0
+  sqflite: ^2.4.1
 
   # Settings persistence
   shared_preferences: ^2.3.3

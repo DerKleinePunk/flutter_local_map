@@ -1,0 +1,4 @@
+# Dependencies für Tile Generation und Name Extraction Scripts
+requests>=2.31.0
+tqdm>=4.66.0
+mapbox-vector-tile>=1.2.0
