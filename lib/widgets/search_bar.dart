@@ -29,6 +29,7 @@ class PlaceSearchBar extends StatefulWidget {
   final MapController mapController;
   final OfflineGeocoder geocoder;
   final double initialZoom;
+  final VoidCallback? onClearSearch;
   final Future<List<GeocoderResult>> Function(String query, int limit)?
   searchDelegate;
   final ValueChanged<GeocoderResult>? onPlaceSelected;
@@ -41,6 +42,7 @@ class PlaceSearchBar extends StatefulWidget {
     required this.mapController,
     required this.geocoder,
     this.initialZoom = 14,
+    this.onClearSearch,
     this.searchDelegate,
     this.onPlaceSelected,
     this.onSuggestionPointerDown,
@@ -194,6 +196,7 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
                           _suggestions = [];
                           _showSuggestions = false;
                         });
+                        widget.onClearSearch?.call();
                       },
                     )
                   : null,

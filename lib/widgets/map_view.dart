@@ -43,6 +43,7 @@ class _MapViewState extends State<MapView> {
   double _currentZoom = MapConfig.initialZoom.toDouble();
   int _selectedVectorStyleAssetIndex = 2;
   String? _activeVectorStyleAssetPath;
+  GeocoderResult? _selectedSearchResult;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -527,6 +528,14 @@ class _MapViewState extends State<MapView> {
         initialZoom: _currentZoom,
         minZoom: _activeMinZoom,
         maxZoom: _activeMaxZoom,
+        onTap: (tapPosition, latLng) {
+          if (_selectedSearchResult == null || !mounted) {
+            return;
+          }
+          setState(() {
+            _selectedSearchResult = null;
+          });
+        },
         onPositionChanged: (camera, hasGesture) {
           if (!mounted) return;
           if ((camera.zoom - _currentZoom).abs() < 0.01) return;
@@ -557,6 +566,23 @@ class _MapViewState extends State<MapView> {
               debugPrint('Fehler beim Laden von Tile $tile: $error');
             },
           ),
+        if (_selectedSearchResult != null)
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: _selectedSearchResult!.location,
+                width: 48,
+                height: 56,
+                alignment: Alignment.topCenter,
+                child: Tooltip(
+                  message: _selectedSearchResult!.name,
+                  child: _PulsingTargetMarker(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                ),
+              ),
+            ],
+          ),
         // Attribution Layer
         RichAttributionWidget(
           attributions: [
@@ -578,6 +604,22 @@ class _MapViewState extends State<MapView> {
               mapController: _mapController,
               geocoder: _geocoder,
               initialZoom: _currentZoom,
+              onClearSearch: () {
+                if (_selectedSearchResult == null || !mounted) {
+                  return;
+                }
+                setState(() {
+                  _selectedSearchResult = null;
+                });
+              },
+              onPlaceSelected: (result) {
+                if (!mounted) {
+                  return;
+                }
+                setState(() {
+                  _selectedSearchResult = result;
+                });
+              },
             ),
           ),
         Positioned(
@@ -729,4 +771,41 @@ class _LocalVectorStyleLoadResult {
     required this.tileProviders,
     required this.assetPath,
   });
+}
+
+class _PulsingTargetMarker extends StatefulWidget {
+  final Color color;
+
+  const _PulsingTargetMarker({required this.color});
+
+  @override
+  State<_PulsingTargetMarker> createState() => _PulsingTargetMarkerState();
+}
+
+class _PulsingTargetMarkerState extends State<_PulsingTargetMarker> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(
+        begin: _expanded ? 0.92 : 1.0,
+        end: _expanded ? 1.0 : 0.92,
+      ),
+      duration: const Duration(milliseconds: 850),
+      curve: Curves.easeInOut,
+      onEnd: () {
+        if (!mounted) {
+          return;
+        }
+        setState(() {
+          _expanded = !_expanded;
+        });
+      },
+      child: Icon(Icons.location_on, color: widget.color, size: 44),
+      builder: (context, scale, child) {
+        return Transform.scale(scale: scale, child: child);
+      },
+    );
+  }
 }
