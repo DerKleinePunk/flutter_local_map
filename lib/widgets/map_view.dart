@@ -571,9 +571,9 @@ class _MapViewState extends State<MapView> {
         // Search Bar
         if (_geocoder.isInitialized)
           Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
+            top: 12,
+            left: 200,
+            right: 200,
             child: PlaceSearchBar(
               mapController: _mapController,
               geocoder: _geocoder,

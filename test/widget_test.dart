@@ -1,30 +1,210 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:latlong2/latlong.dart';
 
-import 'package:map_local/main.dart';
+import 'package:map_local/services/offline_geocoder.dart';
+import 'package:map_local/widgets/search_bar.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  testWidgets('Suggestion tap calls select callback after delayed release', (
+    WidgetTester tester,
+  ) async {
+    final pointerDownNames = <String>[];
+    final selectedNames = <String>[];
+    final mapController = MapController();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    Future<List<GeocoderResult>> fakeSearch(String query, int limit) async {
+      return [
+        GeocoderResult(
+          name: 'Alsfeld',
+          location: const LatLng(50.7519, 9.2692),
+          zoom: 14,
+          type: 'place',
+        ),
+      ];
+    }
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlaceSearchBar(
+            mapController: mapController,
+            geocoder: OfflineGeocoder(),
+            searchDelegate: fakeSearch,
+            moveToResult: (controller, result) {},
+            onSuggestionPointerDown: (result) {
+              pointerDownNames.add(result.name);
+            },
+            onPlaceSelected: (result) {
+              selectedNames.add(result.name);
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'als');
+    await tester.pump();
     await tester.pump();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    final suggestion = find.text('Alsfeld');
+    expect(suggestion, findsOneWidget);
+
+    final center = tester.getCenter(suggestion);
+    final gesture = await tester.startGesture(center);
+    await tester.pump(const Duration(milliseconds: 200));
+    await gesture.up();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    expect(pointerDownNames, contains('Alsfeld'));
+    expect(selectedNames, contains('Alsfeld'));
+
+    // Dispose widget tree after timers have settled.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('Suggestion list hides after unfocus without selection', (
+    WidgetTester tester,
+  ) async {
+    final mapController = MapController();
+
+    Future<List<GeocoderResult>> fakeSearch(String query, int limit) async {
+      return [
+        GeocoderResult(
+          name: 'Fulda',
+          location: const LatLng(50.5558, 9.6808),
+          zoom: 13,
+          type: 'place',
+        ),
+      ];
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlaceSearchBar(
+            mapController: mapController,
+            geocoder: OfflineGeocoder(),
+            searchDelegate: fakeSearch,
+            moveToResult: (controller, result) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'ful');
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Fulda'), findsOneWidget);
+
+    FocusManager.instance.primaryFocus?.unfocus();
+    await tester.pump(const Duration(milliseconds: 180));
+
+    expect(find.text('Fulda'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('Selecting suggestion forwards expected map target data', (
+    WidgetTester tester,
+  ) async {
+    final mapController = MapController();
+    GeocoderResult? movedResult;
+
+    Future<List<GeocoderResult>> fakeSearch(String query, int limit) async {
+      return [
+        GeocoderResult(
+          name: 'Marburg',
+          location: const LatLng(50.8075, 8.7708),
+          zoom: 12,
+          type: 'place',
+        ),
+      ];
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlaceSearchBar(
+            mapController: mapController,
+            geocoder: OfflineGeocoder(),
+            searchDelegate: fakeSearch,
+            moveToResult: (controller, result) {
+              movedResult = result;
+            },
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'mar');
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Marburg'), findsOneWidget);
+    await tester.tap(find.text('Marburg'));
+    await tester.pump();
+
+    expect(movedResult, isNotNull);
+    expect(movedResult!.name, 'Marburg');
+    expect(movedResult!.zoom, 12);
+    expect(movedResult!.location.latitude, closeTo(50.8075, 0.000001));
+    expect(movedResult!.location.longitude, closeTo(8.7708, 0.000001));
+
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+  });
+
+  testWidgets('Empty query shows no suggestions and skips search call', (
+    WidgetTester tester,
+  ) async {
+    final mapController = MapController();
+    var searchCallCount = 0;
+
+    Future<List<GeocoderResult>> fakeSearch(String query, int limit) async {
+      searchCallCount++;
+      return [
+        GeocoderResult(
+          name: 'Giesen',
+          location: const LatLng(52.1979, 9.8986),
+          zoom: 11,
+          type: 'place',
+        ),
+      ];
+    }
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlaceSearchBar(
+            mapController: mapController,
+            geocoder: OfflineGeocoder(),
+            searchDelegate: fakeSearch,
+            moveToResult: (controller, result) {},
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'gie');
+    await tester.pump();
+    await tester.pump();
+    expect(searchCallCount, 1);
+    expect(find.text('Giesen'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField), '');
+    await tester.pump();
+
+    expect(searchCallCount, 1);
+    expect(find.text('Giesen'), findsNothing);
+    expect(find.byType(ListTile), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
   });
 }

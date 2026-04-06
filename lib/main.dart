@@ -20,25 +20,25 @@ void _logError(String source, Object error, StackTrace? stack) {
   }
 }
 
-Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
-
-  FlutterError.onError = (FlutterErrorDetails details) {
-    FlutterError.presentError(details);
-    _logError('FlutterError', details.exception, details.stack);
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    _logError('PlatformDispatcher', error, stack);
-    return true;
-  };
-
+void main() {
   runZonedGuarded(
-    () {
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        sqfliteFfiInit();
+        databaseFactory = databaseFactoryFfi;
+      }
+
+      FlutterError.onError = (FlutterErrorDetails details) {
+        FlutterError.presentError(details);
+        _logError('FlutterError', details.exception, details.stack);
+      };
+      PlatformDispatcher.instance.onError = (error, stack) {
+        _logError('PlatformDispatcher', error, stack);
+        return true;
+      };
+
       runApp(const MyApp());
     },
     (error, stack) {

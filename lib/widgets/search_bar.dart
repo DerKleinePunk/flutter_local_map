@@ -29,12 +29,22 @@ class PlaceSearchBar extends StatefulWidget {
   final MapController mapController;
   final OfflineGeocoder geocoder;
   final double initialZoom;
+  final Future<List<GeocoderResult>> Function(String query, int limit)?
+  searchDelegate;
+  final ValueChanged<GeocoderResult>? onPlaceSelected;
+  final ValueChanged<GeocoderResult>? onSuggestionPointerDown;
+  final void Function(MapController controller, GeocoderResult result)?
+  moveToResult;
 
   const PlaceSearchBar({
     super.key,
     required this.mapController,
     required this.geocoder,
     this.initialZoom = 14,
+    this.searchDelegate,
+    this.onPlaceSelected,
+    this.onSuggestionPointerDown,
+    this.moveToResult,
   });
 
   @override
@@ -46,6 +56,7 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
   List<GeocoderResult> _suggestions = [];
   bool _isLoading = false;
   bool _showSuggestions = false;
+  bool _isSelectingSuggestion = false;
   final FocusNode _focusNode = FocusNode();
 
   @override
@@ -53,10 +64,18 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
     super.initState();
     _searchController = TextEditingController();
     _focusNode.addListener(() {
-      setState(() {
-        if (!_focusNode.hasFocus) {
-          _showSuggestions = false;
+      if (_focusNode.hasFocus) {
+        return;
+      }
+
+      // Delay hiding a bit so a tap on a suggestion can be delivered first.
+      Future<void>.delayed(const Duration(milliseconds: 120), () {
+        if (!mounted || _focusNode.hasFocus || _isSelectingSuggestion) {
+          return;
         }
+        setState(() {
+          _showSuggestions = false;
+        });
       });
     });
   }
@@ -83,7 +102,9 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
     });
 
     try {
-      final results = await widget.geocoder.searchPrioritized(query, limit: 15);
+      final results =
+          await (widget.searchDelegate?.call(query, 15) ??
+              widget.geocoder.searchPrioritized(query, limit: 15));
 
       // Results are already sorted by searchPrioritized, but ensure consistency
       results.sort(
@@ -112,8 +133,23 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
   }
 
   void _selectPlace(GeocoderResult result) {
+    _isSelectingSuggestion = true;
+    debugPrint(
+      '[search] Selected place: ${result.name} at ${result.location}, zoom: ${result.zoom}',
+    );
+
+    widget.onPlaceSelected?.call(result);
+
     // Move map to selected location
-    widget.mapController.move(result.location, result.zoom.toDouble());
+    if (widget.moveToResult != null) {
+      widget.moveToResult!(widget.mapController, result);
+    } else {
+      widget.mapController.moveAndRotate(
+        result.location,
+        result.zoom.toDouble(),
+        0.0,
+      );
+    }
 
     // Close suggestions
     _focusNode.unfocus();
@@ -121,6 +157,8 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
       _showSuggestions = false;
       _searchController.text = result.name;
     });
+
+    _isSelectingSuggestion = false;
   }
 
   @override
@@ -198,15 +236,25 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
                         subtitle.write(' • ${result.detail}');
                       }
                       subtitle.write(' • z${result.zoom}');
-                      return ListTile(
-                        leading: _getTypeIcon(result.type),
-                        title: Text(result.name),
-                        subtitle: Text(
-                          subtitle.toString(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                      return Listener(
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: (_) {
+                          _isSelectingSuggestion = true;
+                          widget.onSuggestionPointerDown?.call(result);
+                          debugPrint(
+                            '[search] Pointer down on suggestion: ${result.name}',
+                          );
+                        },
+                        child: ListTile(
+                          leading: _getTypeIcon(result.type),
+                          title: Text(result.name),
+                          subtitle: Text(
+                            subtitle.toString(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onTap: () => _selectPlace(result),
                         ),
-                        onTap: () => _selectPlace(result),
                       );
                     },
                   ),
