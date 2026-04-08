@@ -49,9 +49,15 @@ flutter run -d linux
 - App-Konfiguration: [lib/config/map_config.dart](lib/config/map_config.dart)
 - Karten-Widget: [lib/widgets/map_view.dart](lib/widgets/map_view.dart)
 - Download-Service: [lib/services/map_downloader.dart](lib/services/map_downloader.dart)
+- Routing-Service (Valhalla HTTP): [lib/services/valhalla_routing_service.dart](lib/services/valhalla_routing_service.dart)
+- Valhalla Build-Skript (optional mit BBox): [scripts/valhalla/build_valhalla_from_pbf.sh](scripts/valhalla/build_valhalla_from_pbf.sh)
+- Valhalla Run-Skript (lokaler Server): [scripts/valhalla/run_valhalla_server.sh](scripts/valhalla/run_valhalla_server.sh)
+- Valhalla Build-Skript fuer Windows/Pwsh: [scripts/valhalla/build_valhalla_from_pbf.ps1](scripts/valhalla/build_valhalla_from_pbf.ps1)
+- Valhalla Run-Skript fuer Windows/Pwsh: [scripts/valhalla/run_valhalla_server.ps1](scripts/valhalla/run_valhalla_server.ps1)
 - Tilemaker-Skript: [scripts/tilemaker.sh](scripts/tilemaker.sh)
 - Tilemaker z17 Config: [scripts/tilemaker/config-openmaptiles-z17.json](scripts/tilemaker/config-openmaptiles-z17.json)
 - Raster-Renderer (Vektor -> PNG-MBTiles): [scripts/render_raster.py](scripts/render_raster.py)
+- Valhalla Build/Runtime Anleitung: [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md)
 
 ## MBTiles-Handling in der App
 
@@ -183,6 +189,23 @@ Ausgabedateien:
 
 - nur Vektor: `germany.mbtiles` oder `vogelsberg.mbtiles`
 - mit Raster-Schritt: zusaetzlich `germany_raster.mbtiles` oder `vogelsberg_raster.mbtiles`
+
+## Offline-Routing mit Valhalla
+
+Die Kartenanzeige und das Routing sind im Projekt bewusst getrennt:
+
+- Kartenanzeige: MBTiles (Raster/Vektor) in Flutter
+- Routing: lokaler Valhalla-HTTP-Service (z. B. auf `127.0.0.1:8002`)
+
+Wichtig:
+
+- Raster-/Vektor-MBTiles enthalten keine Routing-Engine.
+- Valhalla benoetigt eigene, vorberechnete Routing-Daten aus OSM-PBF.
+- Beide Pipelines koennen denselben OSM-Extrakt nutzen, aber die Datenprodukte sind unterschiedlich.
+
+Konkrete Setup-Schritte (Build + Pi Runtime + Testrequest) stehen in:
+
+- [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md)
 
 Raster-Schritt (optional) nutzt [scripts/render_raster.py](scripts/render_raster.py) und einen lokalen `tileserver-gl` Docker-Container mit dem Navigation-Style aus [assets/maps/style_navigation.json](assets/maps/style_navigation.json).
 

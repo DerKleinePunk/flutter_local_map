@@ -12,6 +12,7 @@ import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 import '../config/map_config.dart';
 import '../services/offline_geocoder.dart';
+import '../services/valhalla_routing_service.dart';
 import 'search_bar.dart';
 
 /// Widget zur Darstellung der Karte mit MBTiles
@@ -33,6 +34,7 @@ class _MapViewState extends State<MapView> {
 
   final MapController _mapController = MapController();
   final OfflineGeocoder _geocoder = OfflineGeocoder();
+  final ValhallaRoutingService _routingService = ValhallaRoutingService();
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
   TileProviders? _vectorTileProviders;
@@ -44,6 +46,14 @@ class _MapViewState extends State<MapView> {
   int _selectedVectorStyleAssetIndex = 2;
   String? _activeVectorStyleAssetPath;
   GeocoderResult? _selectedSearchResult;
+  GeocoderResult? _routeStart;
+  GeocoderResult? _routeEnd;
+  List<LatLng> _routePolyline = const <LatLng>[];
+  bool _isRouting = false;
+  bool _isRoutingAvailable = false;
+  String? _routingMessage;
+  double? _routeDistanceMeters;
+  int? _routeDurationSeconds;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -62,14 +72,122 @@ class _MapViewState extends State<MapView> {
     super.initState();
     _initializeTileProvider();
     _initializeGeocoder();
+    _checkRoutingAvailability();
+  }
+
+  Future<void> _checkRoutingAvailability() async {
+    final available = await _routingService.isAvailable();
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _isRoutingAvailable = available;
+      _routingMessage = available
+          ? null
+          : 'Valhalla nicht erreichbar (127.0.0.1:8002).';
+    });
+  }
+
+  Future<void> _tryBuildRoute() async {
+    if (_routeStart == null || _routeEnd == null) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _routePolyline = const <LatLng>[];
+        _routeDistanceMeters = null;
+        _routeDurationSeconds = null;
+      });
+      return;
+    }
+
+    setState(() {
+      _isRouting = true;
+      _routingMessage = null;
+    });
+
+    try {
+      final result = await _routingService.route(
+        start: _routeStart!.location,
+        end: _routeEnd!.location,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isRoutingAvailable = true;
+        _routePolyline = result.geometry
+            .map((point) => point.toLatLng())
+            .toList();
+        _routeDistanceMeters = result.distanceMeters;
+        _routeDurationSeconds = result.durationSeconds;
+      });
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        _fitCameraToRoute(_routePolyline);
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isRoutingAvailable = false;
+        _routePolyline = const <LatLng>[];
+        _routeDistanceMeters = null;
+        _routeDurationSeconds = null;
+        _routingMessage = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRouting = false;
+        });
+      }
+    }
+  }
+
+  void _fitCameraToRoute(List<LatLng> points) {
+    if (points.isEmpty) {
+      return;
+    }
+
+    if (points.length == 1) {
+      _mapController.move(points.first, _activeMaxZoom.clamp(14.0, 16.0));
+      return;
+    }
+
+    final bounds = LatLngBounds.fromPoints(points);
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: const EdgeInsets.all(44),
+        maxZoom: _activeMaxZoom,
+      ),
+    );
+  }
+
+  String _formatRouteSummary() {
+    if (_routeDistanceMeters == null || _routeDurationSeconds == null) {
+      return 'Route bereit';
+    }
+
+    final distanceKm = _routeDistanceMeters! / 1000;
+    final durationMin = (_routeDurationSeconds! / 60).round();
+    return '${distanceKm.toStringAsFixed(1)} km • $durationMin min';
   }
 
   Future<void> _initializeGeocoder() async {
     // Try to initialize with vogelsberg names database first
-    final namesDbPath =
-        '${widget.mbtilesPath?.replaceAll('.mbtiles', '_names.db')}';
+    final namesDbPath = widget.mbtilesPath?.replaceAll('.mbtiles', '_names.db');
 
-    if (namesDbPath.isNotEmpty && File(namesDbPath).existsSync()) {
+    if (namesDbPath != null &&
+        namesDbPath.isNotEmpty &&
+        File(namesDbPath).existsSync()) {
       final success = await _geocoder.initialize(namesDbPath);
       if (success && mounted) {
         debugPrint('[map] Geocoder initialized with $namesDbPath');
@@ -583,6 +701,51 @@ class _MapViewState extends State<MapView> {
               ),
             ],
           ),
+        if (_routePolyline.isNotEmpty)
+          PolylineLayer(
+            polylines: [
+              Polyline(
+                points: _routePolyline,
+                strokeWidth: 5,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ],
+          ),
+        if (_routeStart != null || _routeEnd != null)
+          MarkerLayer(
+            markers: [
+              if (_routeStart != null)
+                Marker(
+                  point: _routeStart!.location,
+                  width: 44,
+                  height: 52,
+                  alignment: Alignment.topCenter,
+                  child: Tooltip(
+                    message: 'Start: ${_routeStart!.name}',
+                    child: Icon(
+                      Icons.trip_origin,
+                      size: 28,
+                      color: Colors.green.shade700,
+                    ),
+                  ),
+                ),
+              if (_routeEnd != null)
+                Marker(
+                  point: _routeEnd!.location,
+                  width: 44,
+                  height: 52,
+                  alignment: Alignment.topCenter,
+                  child: Tooltip(
+                    message: 'Ziel: ${_routeEnd!.name}',
+                    child: Icon(
+                      Icons.flag,
+                      size: 30,
+                      color: Colors.red.shade700,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         // Attribution Layer
         RichAttributionWidget(
           attributions: [
@@ -600,28 +763,68 @@ class _MapViewState extends State<MapView> {
             top: 12,
             left: 200,
             right: 200,
-            child: PlaceSearchBar(
-              mapController: _mapController,
-              geocoder: _geocoder,
-              initialZoom: _currentZoom,
-              onClearSearch: () {
-                if (_selectedSearchResult == null || !mounted) {
-                  return;
-                }
-                setState(() {
-                  _selectedSearchResult = null;
-                });
-              },
-              onPlaceSelected: (result) {
-                if (!mounted) {
-                  return;
-                }
-                setState(() {
-                  _selectedSearchResult = result;
-                });
-              },
+            child: Column(
+              children: [
+                PlaceSearchBar(
+                  mapController: _mapController,
+                  geocoder: _geocoder,
+                  initialZoom: _currentZoom,
+                  hintText: 'Start suchen...',
+                  prefixIcon: Icons.trip_origin,
+                  onClearSearch: () {
+                    if (!mounted) {
+                      return;
+                    }
+                    setState(() {
+                      _routeStart = null;
+                    });
+                    _tryBuildRoute();
+                  },
+                  onPlaceSelected: (result) {
+                    if (!mounted) {
+                      return;
+                    }
+                    setState(() {
+                      _selectedSearchResult = result;
+                      _routeStart = result;
+                    });
+                    _tryBuildRoute();
+                  },
+                ),
+                PlaceSearchBar(
+                  mapController: _mapController,
+                  geocoder: _geocoder,
+                  initialZoom: _currentZoom,
+                  hintText: 'Ziel suchen...',
+                  prefixIcon: Icons.flag,
+                  onClearSearch: () {
+                    if (!mounted) {
+                      return;
+                    }
+                    setState(() {
+                      _routeEnd = null;
+                    });
+                    _tryBuildRoute();
+                  },
+                  onPlaceSelected: (result) {
+                    if (!mounted) {
+                      return;
+                    }
+                    setState(() {
+                      _selectedSearchResult = result;
+                      _routeEnd = result;
+                    });
+                    _tryBuildRoute();
+                  },
+                ),
+              ],
             ),
           ),
+        Positioned(
+          top: 112,
+          left: 12,
+          child: IgnorePointer(child: _buildRoutingBadge(context)),
+        ),
         Positioned(
           top: 12,
           left: 12,
@@ -735,6 +938,67 @@ class _MapViewState extends State<MapView> {
               'Zoom ${_currentZoom.toStringAsFixed(1)}',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRoutingBadge(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final hasRoute = _routePolyline.isNotEmpty;
+
+    final Color bgColor;
+    final Color fgColor;
+    final String label;
+    final IconData icon;
+
+    if (_isRouting) {
+      bgColor = colorScheme.tertiaryContainer;
+      fgColor = colorScheme.onTertiaryContainer;
+      label = 'Route wird berechnet...';
+      icon = Icons.sync;
+    } else if (hasRoute) {
+      bgColor = colorScheme.primaryContainer;
+      fgColor = colorScheme.onPrimaryContainer;
+      label = _formatRouteSummary();
+      icon = Icons.route;
+    } else if (_routingMessage != null) {
+      bgColor = colorScheme.errorContainer;
+      fgColor = colorScheme.onErrorContainer;
+      label = _routingMessage!;
+      icon = Icons.warning_amber_rounded;
+    } else if (_isRoutingAvailable) {
+      bgColor = colorScheme.secondaryContainer;
+      fgColor = colorScheme.onSecondaryContainer;
+      label = 'Routing bereit';
+      icon = Icons.route;
+    } else {
+      bgColor = colorScheme.errorContainer;
+      fgColor = colorScheme.onErrorContainer;
+      label = 'Valhalla offline';
+      icon = Icons.cloud_off;
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 14, color: fgColor),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: fgColor,
                 fontWeight: FontWeight.w600,
               ),
             ),

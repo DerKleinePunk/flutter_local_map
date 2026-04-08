@@ -29,6 +29,8 @@ class PlaceSearchBar extends StatefulWidget {
   final MapController mapController;
   final OfflineGeocoder geocoder;
   final double initialZoom;
+  final String hintText;
+  final IconData prefixIcon;
   final VoidCallback? onClearSearch;
   final Future<List<GeocoderResult>> Function(String query, int limit)?
   searchDelegate;
@@ -42,6 +44,8 @@ class PlaceSearchBar extends StatefulWidget {
     required this.mapController,
     required this.geocoder,
     this.initialZoom = 14,
+    this.hintText = 'Ort suchen...',
+    this.prefixIcon = Icons.location_on,
     this.onClearSearch,
     this.searchDelegate,
     this.onPlaceSelected,
@@ -185,8 +189,8 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
             focusNode: _focusNode,
             onChanged: _search,
             decoration: InputDecoration(
-              hintText: 'Ort suchen...',
-              prefixIcon: const Icon(Icons.location_on),
+              hintText: widget.hintText,
+              prefixIcon: Icon(widget.prefixIcon),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear),
