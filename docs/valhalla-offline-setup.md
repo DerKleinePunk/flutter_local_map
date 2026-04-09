@@ -52,7 +52,7 @@ Im Projekt liegt dafuer ein Skript mit optionaler `--bbox`-Option:
 ./scripts/valhalla/build_valhalla_from_pbf.sh \
   --input ./tiles-germany/germany-latest.osm.pbf \
   --output ./map/valhalla/output \
-  --bbox 8.9,50.35,9.9,50.85 \
+  --bbox 8.9,50.22,9.9,50.85 \
   --region vogelsberg
 ```
 
@@ -62,7 +62,7 @@ Windows/Powershell Variante:
 ./scripts/valhalla/build_valhalla_from_pbf.ps1 `
   -InputPbf ./tiles-germany/germany-latest.osm.pbf `
   -Output ./map/valhalla/output `
-  -Bbox "8.9,50.35,9.9,50.85" `
+  -Bbox "8.9,50.22,9.9,50.85" `
   -Region vogelsberg
 ```
 

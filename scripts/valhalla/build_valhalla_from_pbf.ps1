@@ -5,7 +5,7 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Output,
 
-    # Quotes required: -Bbox "8.9,50.35,9.9,50.85"  (west,south,east,north)
+    # Quotes required: -Bbox "8.9,50.22,9.9,50.85"  (west,south,east,north)
     [string]$Bbox,
     [string]$Region = "region",
     [string]$Image = "ghcr.io/gis-ops/docker-valhalla/valhalla:latest"

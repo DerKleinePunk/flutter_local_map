@@ -8,7 +8,7 @@ set -euo pipefail
 #   ./scripts/valhalla/build_valhalla_from_pbf.sh \
 #     --input ./tiles-germany/germany-latest.osm.pbf \
 #     --output ./map/valhalla/output \
-#     --bbox 8.9,50.35,9.9,50.85 \
+#     --bbox 8.9,50.22,9.9,50.85 \
 #     --region vogelsberg
 
 INPUT_PBF=""
@@ -27,7 +27,7 @@ Required:
   --output  Output directory for valhalla.json + data files
 
 Optional:
-  --bbox    west,south,east,north (WGS84), e.g. 8.9,50.35,9.9,50.85
+  --bbox    west,south,east,north (WGS84), e.g. 8.9,50.22,9.9,50.85
   --region  Region label used for intermediate files (default: region)
   --image   Docker image for Valhalla build
   --help    Show this help

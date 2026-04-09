@@ -133,7 +133,7 @@ cd scripts
 # Vollstaendiges Deutschland-Build
 ./tilemaker.sh
 
-# Nur Vogelsberg (kleines Testgebiet in Hessen, BBox 8.9,50.35,9.9,50.85)
+# Nur Vogelsberg (Testgebiet Fulda/Vogelsberg, BBox 8.9,50.22,9.9,50.85)
 # Erzeugt vogelsberg.mbtiles statt germany.mbtiles
 ./tilemaker.sh vogelsberg
 

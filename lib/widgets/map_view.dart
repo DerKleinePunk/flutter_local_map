@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,7 @@ import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 import '../config/map_config.dart';
+import '../services/gps_nmea_simulator_service.dart';
 import '../services/offline_geocoder.dart';
 import '../services/valhalla_routing_service.dart';
 import 'search_bar.dart';
@@ -35,6 +37,8 @@ class _MapViewState extends State<MapView> {
   final MapController _mapController = MapController();
   final OfflineGeocoder _geocoder = OfflineGeocoder();
   final ValhallaRoutingService _routingService = ValhallaRoutingService();
+  final GpsNmeaSimulatorService _gpsSimulator = GpsNmeaSimulatorService();
+  StreamSubscription<SimulatedGpsFix>? _gpsFixSubscription;
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
   TileProviders? _vectorTileProviders;
@@ -52,6 +56,11 @@ class _MapViewState extends State<MapView> {
   bool _isRouting = false;
   bool _isRoutingAvailable = false;
   String? _routingMessage;
+  LatLng? _gpsSimPosition;
+  bool _isGpsSimRunning = false;
+  bool _followSimulatedGps = true;
+  int _gpsLoadedFixes = 0;
+  String? _gpsSimMessage;
   double? _routeDistanceMeters;
   int? _routeDurationSeconds;
   bool _isLoading = true;
@@ -73,6 +82,82 @@ class _MapViewState extends State<MapView> {
     _initializeTileProvider();
     _initializeGeocoder();
     _checkRoutingAvailability();
+    _gpsFixSubscription = _gpsSimulator.fixes.listen(_onSimulatedGpsFix);
+    _initializeGpsSimulator();
+  }
+
+  Future<void> _initializeGpsSimulator() async {
+    try {
+      final loaded = await _gpsSimulator.loadDefaultTourFile();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _gpsLoadedFixes = loaded;
+        _gpsSimMessage = null;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _gpsLoadedFixes = 0;
+        _gpsSimMessage = e.toString();
+      });
+    }
+  }
+
+  void _onSimulatedGpsFix(SimulatedGpsFix fix) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _gpsSimPosition = fix.position;
+    });
+
+    if (_followSimulatedGps) {
+      _mapController.move(fix.position, _currentZoom);
+    }
+  }
+
+  Future<void> _toggleGpsSimulation() async {
+    if (_isGpsSimRunning) {
+      _gpsSimulator.stop();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isGpsSimRunning = false;
+      });
+      return;
+    }
+
+    if (!_gpsSimulator.hasData) {
+      await _initializeGpsSimulator();
+      if (!_gpsSimulator.hasData) {
+        return;
+      }
+    }
+
+    try {
+      _gpsSimulator.start(interval: const Duration(seconds: 5), loop: true);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isGpsSimRunning = true;
+        _gpsSimMessage = null;
+      });
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _isGpsSimRunning = false;
+        _gpsSimMessage = e.toString();
+      });
+    }
   }
 
   Future<void> _checkRoutingAvailability() async {
@@ -607,6 +692,8 @@ class _MapViewState extends State<MapView> {
 
   @override
   void dispose() {
+    _gpsFixSubscription?.cancel();
+    _gpsSimulator.dispose();
     _disposeTileResources();
     _mapController.dispose();
     _geocoder.close();
@@ -746,6 +833,34 @@ class _MapViewState extends State<MapView> {
                 ),
             ],
           ),
+        if (_gpsSimPosition != null)
+          MarkerLayer(
+            markers: [
+              Marker(
+                point: _gpsSimPosition!,
+                width: 42,
+                height: 42,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    shape: BoxShape.circle,
+                    boxShadow: const [
+                      BoxShadow(
+                        color: Color(0x44000000),
+                        blurRadius: 8,
+                        offset: Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.navigation,
+                    size: 20,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
+              ),
+            ],
+          ),
         // Attribution Layer
         RichAttributionWidget(
           attributions: [
@@ -837,7 +952,74 @@ class _MapViewState extends State<MapView> {
         ),
         if (_isVectorMode)
           Positioned(top: 48, right: 12, child: _buildStyleSwitchChip(context)),
+        Positioned(top: 84, right: 12, child: _buildGpsSimulatorChip(context)),
       ],
+    );
+  }
+
+  Widget _buildGpsSimulatorChip(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final isRunning = _isGpsSimRunning;
+    final statusLabel = _gpsLoadedFixes > 0
+        ? 'GPS Sim ${isRunning ? 'an' : 'aus'} ($_gpsLoadedFixes)'
+        : (_gpsSimMessage ?? 'GPS Sim laden');
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: _toggleGpsSimulation,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: isRunning
+                ? colorScheme.primaryContainer
+                : colorScheme.secondaryContainer,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  isRunning ? Icons.stop_circle_outlined : Icons.play_circle,
+                  size: 14,
+                  color: isRunning
+                      ? colorScheme.onPrimaryContainer
+                      : colorScheme.onSecondaryContainer,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  statusLabel,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: isRunning
+                        ? colorScheme.onPrimaryContainer
+                        : colorScheme.onSecondaryContainer,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _followSimulatedGps = !_followSimulatedGps;
+                    });
+                  },
+                  child: Icon(
+                    _followSimulatedGps
+                        ? Icons.my_location
+                        : Icons.location_disabled,
+                    size: 14,
+                    color: isRunning
+                        ? colorScheme.onPrimaryContainer
+                        : colorScheme.onSecondaryContainer,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
