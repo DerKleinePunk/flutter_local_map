@@ -1,6 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_START_TS="$(date +%s)"
+
+print_runtime() {
+  local end_ts elapsed hours minutes seconds
+  end_ts="$(date +%s)"
+  elapsed=$((end_ts - SCRIPT_START_TS))
+  hours=$((elapsed / 3600))
+  minutes=$(((elapsed % 3600) / 60))
+  seconds=$((elapsed % 60))
+  printf '[time] Laufzeit: %02d:%02d:%02d\n' "$hours" "$minutes" "$seconds"
+}
+
+trap print_runtime EXIT
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORK_DIR="$PROJECT_ROOT/map/tiles-germany"
@@ -18,14 +32,16 @@ show_usage() {
   echo "  ohne Parameter:    Germany Vector-MBTiles"
   echo "  vogelsberg:        kleines Testgebiet (BBox)"
   echo "  raster|--raster:   zusaetzlich Raster-MBTiles aus Vektor-MBTiles erzeugen"
+  echo "                     benoetigt gueltiges styles.zip (z. B. scripts/styles.zip)"
   echo ""
   echo "Optionale Umgebungsvariablen fuer Raster-Schritt:"
   echo "  RASTER_MAXZOOM (default: 17)"
   echo "  RASTER_WORKERS (default: 4)"
 }
 
-# Vogelsberg: kleines Testgebiet in Hessen für schnelle Iterationen
-VOGELSBERG_BBOX="8.9,50.35,9.9,50.85"
+# Vogelsberg: Testgebiet rund um Fulda / Vogelsberg
+# Südgrenze auf 50.22 erweitert damit die GPS-Adnan-Tour vollständig abgedeckt ist
+VOGELSBERG_BBOX="8.9,50.22,9.9,50.85"
 
 BBOX_ARG=()
 GENERATE_RASTER=0
@@ -151,19 +167,28 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
 fi
 
 # Prefer the project virtualenv for Python tooling if present.
-PYTHON_BIN="$PROJECT_ROOT/.venv/Scripts/python.exe"
-if [ ! -x "$PYTHON_BIN" ]; then
-  PYTHON_BIN="python3"
+if [ -f ".venv/bin/activate" ]; then
+  source .venv/bin/activate
+fi
+
+PYTHON_BIN="python3"
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  PYTHON_BIN="python"
   if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-    PYTHON_BIN="python"
+    echo "[error] Python ist nicht installiert oder nicht im PATH"
+    exit 1
   fi
 fi
 
 # Extract searchable names database
 NAMES_DB_OUTPUT="${OUTPUT_MBTILES%.mbtiles}_names.db"
-if [ -f "$NAMES_DB_OUTPUT" ]; then
+if [ -f "$NAMES_DB_OUTPUT" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
   echo "[skip] $NAMES_DB_OUTPUT existiert bereits"
 else
+  if [ -f "$NAMES_DB_OUTPUT" ]; then
+    echo "[names] FORCE_REBUILD=1 gesetzt, entferne vorhandene Datei: $NAMES_DB_OUTPUT"
+    rm -f "$NAMES_DB_OUTPUT"
+  fi
 
   echo "[names] Extrahiere suchbare Namen aus $OUTPUT_MBTILES"
   if "$PYTHON_BIN" "$SCRIPT_DIR/extract_names_to_sqlite.py" \

@@ -28,6 +28,7 @@ import shutil
 import argparse
 import os
 import shlex
+import zipfile
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -46,6 +47,11 @@ SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 WORK_DIR = PROJECT_ROOT / "map" / "tiles-germany"
 TMP_DIR = WORK_DIR / "_tileserver_tmp"
+STYLES_ZIP_CANDIDATES = [
+    SCRIPT_DIR / "styles.zip",
+    WORK_DIR / "styles.zip",
+    PROJECT_ROOT / "map" / "test" / "styles.zip",
+]
 
 _container_id: str | None = None
 
@@ -143,7 +149,37 @@ def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_m
 # Style-Adaption nicht nötig - verwenden wir tileserver-gl eigene osm-bright
 
 
-def start_tileserver(mbtiles_name: str, bbox_str: str) -> None:
+def unpack_styles_zip_to_tmp() -> None:
+    styles_zip = next((path for path in STYLES_ZIP_CANDIDATES if path.exists()), None)
+    if styles_zip is None:
+        print("[warn] Keine styles.zip gefunden. Erwartete Pfade:")
+        for candidate in STYLES_ZIP_CANDIDATES:
+            print(f"       - {candidate}")
+        return
+
+    try:
+        with zipfile.ZipFile(styles_zip, "r") as archive:
+            archive.extractall(TMP_DIR)
+    except zipfile.BadZipFile:
+        print(f"[error] Ungueltiges ZIP-Archiv: {styles_zip}")
+        sys.exit(1)
+
+    styles_dir = TMP_DIR / "styles"
+    expected_style = styles_dir / STYLE_NAME / "style.json"
+    fonts_dir = TMP_DIR / "fonts"
+
+    if not expected_style.exists():
+        print(f"[error] Erwarteter Style fehlt nach Entpacken: {expected_style}")
+        sys.exit(1)
+
+    if not fonts_dir.exists():
+        print(f"[error] Erwarteter Fonts-Ordner fehlt nach Entpacken: {fonts_dir}")
+        sys.exit(1)
+
+    print(f"[styles] Entpackt nach {TMP_DIR}: {styles_zip.name}")
+
+
+def start_tileserver(mbtiles_name: str, bbox_str: str) -> str:
     global _container_id
 
     TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -152,6 +188,9 @@ def start_tileserver(mbtiles_name: str, bbox_str: str) -> None:
     src = WORK_DIR / mbtiles_name
     dst = TMP_DIR / "source.mbtiles"
     shutil.copy2(src, dst)
+
+    # Lokale styles.zip (inkl. fonts/styles) in den tileserver Temp-Ordner entpacken.
+    unpack_styles_zip_to_tmp()
 
     bounds = list(map(float, bbox_str.split(",")))
 
@@ -210,7 +249,8 @@ def start_tileserver(mbtiles_name: str, bbox_str: str) -> None:
         sys.exit(1)
 
     _container_id = result.stdout.strip()
-    print(f"[docker] Container gestartet: {_container_id[:12]}")
+    print(f"[docker] Container gestartet: {_container_id}")
+    return _container_id
 
 
 def wait_for_tileserver(timeout: int = 60) -> bool:
@@ -313,9 +353,13 @@ def main() -> int:
     print(f"[info]  Tiles:   {len(tiles):,}")
 
     # tileserver-gl starten
-    start_tileserver(args.input, bbox_str)
+    _container_id = start_tileserver(args.input, bbox_str)
     if not wait_for_tileserver(60):
         print("[error] tileserver-gl ist nicht erreichbar – abbruch")
+        cmd = [
+            "docker", "logs", _container_id,
+        ]
+        subprocess.run(cmd, capture_output=True, text=True)
         return 1
 
     # Raster-MBTiles befüllen
