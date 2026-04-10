@@ -179,7 +179,23 @@ def unpack_styles_zip_to_tmp() -> None:
     print(f"[styles] Entpackt nach {TMP_DIR}: {styles_zip.name}")
 
 
-def start_tileserver(mbtiles_name: str, bbox_str: str) -> str:
+def dump_container_logs(container_id: str, tail: int = 200) -> None:
+    cmd = ["docker", "logs", "--tail", str(tail), container_id]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    print(f"[logs] Letzte {tail} Zeilen aus tileserver-gl ({container_id}):")
+    if result.stdout.strip():
+        print(result.stdout.strip())
+    if result.stderr.strip():
+        print(result.stderr.strip())
+
+
+def is_container_running(container_id: str) -> bool:
+    cmd = ["docker", "inspect", "-f", "{{.State.Running}}", container_id]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    return result.returncode == 0 and result.stdout.strip().lower() == "true"
+
+
+def start_tileserver(mbtiles_name: str, bbox_str: str, verbose_level: int = 2) -> str:
     global _container_id
 
     TMP_DIR.mkdir(parents=True, exist_ok=True)
@@ -226,6 +242,7 @@ def start_tileserver(mbtiles_name: str, bbox_str: str) -> str:
         "-v", f"{TMP_DIR}:/data",
         TILESERVER_IMAGE,
         "--config", "/data/config.json",
+        "--verbose", str(verbose_level),
     ]
 
     print(f"[cmd] {' '.join(shlex.quote(part) for part in cmd)}")
@@ -295,6 +312,8 @@ def download_tile(
 # ---------------------------------------------------------------------------
 
 def main() -> int:
+    global _container_id
+
     parser = argparse.ArgumentParser(
         description="Vektor-MBTiles → Raster-MBTiles via tileserver-gl (Docker)"
     )
@@ -320,6 +339,19 @@ def main() -> int:
         type=int,
         default=4,
         help="Parallele Download-Threads (Standard: 4)",
+    )
+    parser.add_argument(
+        "--tileserver-verbose",
+        type=int,
+        default=2,
+        choices=[1, 2, 3],
+        help="tileserver-gl Loglevel (1-3, Standard: 2)",
+    )
+    parser.add_argument(
+        "--tileserver-log-tail",
+        type=int,
+        default=200,
+        help="Anzahl Logzeilen bei Fehlerausgabe (Standard: 200)",
     )
     args = parser.parse_args()
 
@@ -353,13 +385,14 @@ def main() -> int:
     print(f"[info]  Tiles:   {len(tiles):,}")
 
     # tileserver-gl starten
-    _container_id = start_tileserver(args.input, bbox_str)
+    _container_id = start_tileserver(
+        args.input,
+        bbox_str,
+        verbose_level=args.tileserver_verbose,
+    )
     if not wait_for_tileserver(60):
         print("[error] tileserver-gl ist nicht erreichbar – abbruch")
-        cmd = [
-            "docker", "logs", _container_id,
-        ]
-        subprocess.run(cmd, capture_output=True, text=True)
+        dump_container_logs(_container_id, tail=args.tileserver_log_tail)
         return 1
 
     # Raster-MBTiles befüllen
@@ -389,6 +422,13 @@ def main() -> int:
                         conn.commit()
                 else:
                     failed += 1
+                    if failed == 1 or failed % 1000 == 0:
+                        if _container_id and not is_container_running(_container_id):
+                            print("\n[error] tileserver-gl Container ist waehrend des Renderings gestoppt")
+                            dump_container_logs(_container_id, tail=args.tileserver_log_tail)
+                            conn.commit()
+                            conn.close()
+                            return 1
                 pbar.update(1)
 
     conn.commit()
@@ -397,6 +437,9 @@ def main() -> int:
     size_mb = output_path.stat().st_size / 1024 / 1024
     print(f"\n[done]  Erfolgreich: {successful:,}  |  Fehlgeschlagen: {failed:,}")
     print(f"[done]  Ausgabe: {output_path}  ({size_mb:.1f} MB)")
+    if failed > 0 and _container_id:
+        print(f"[warn] {failed:,} Tile-Requests fehlgeschlagen, zeige Container-Logs zur Diagnose")
+        dump_container_logs(_container_id, tail=args.tileserver_log_tail)
     return 0
 
 
