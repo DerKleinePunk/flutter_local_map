@@ -19,6 +19,7 @@ import gzip
 import math
 import sqlite3
 import sys
+import time
 import zlib
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -59,6 +60,20 @@ WORKER_BATCH_SIZE = 200  # tiles per parallel batch
 # All place names, POIs, water names and major roads are already
 # fully indexed at z14; higher zooms only repeat them.
 MAX_EXTRACTION_ZOOM = 14
+
+
+def format_duration(seconds):
+    total_seconds = max(0, int(round(seconds)))
+    hours, remainder = divmod(total_seconds, 3600)
+    minutes, secs = divmod(remainder, 60)
+
+    parts = []
+    if hours:
+        parts.append(f"{hours}h")
+    if hours or minutes:
+        parts.append(f"{minutes}m")
+    parts.append(f"{secs}s")
+    return " ".join(parts)
 
 
 def tile_pixel_to_lonlat(tile_x, tile_y, zoom, extent, pixel_x, pixel_y):
@@ -416,8 +431,13 @@ if __name__ == "__main__":
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"[info] Max zoom: {max_zoom}")
+    started_at = time.perf_counter()
     try:
         _extract(str(input_path), str(output_path), max_zoom=max_zoom)
+        elapsed = time.perf_counter() - started_at
+        print(f"[ok] Total runtime: {format_duration(elapsed)}")
     except Exception as error:
+        elapsed = time.perf_counter() - started_at
+        print(f"[info] Runtime before failure: {format_duration(elapsed)}")
         print(f"[error] Failed to extract names: {error}")
         sys.exit(1)
