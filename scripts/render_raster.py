@@ -384,8 +384,8 @@ def main() -> int:
     parser.add_argument(
         "--workers",
         type=int,
-        default=6,
-        help="Parallele Download-Threads (Standard: 6)",
+        default=4,
+        help="Parallele Download-Threads (Standard: 4)",
     )
     parser.add_argument(
         "--tileserver-verbose",
@@ -408,6 +408,8 @@ def main() -> int:
 
     global TMP_DIR
     TMP_DIR = Path(args.tmp_dir) if args.tmp_dir else default_tmp_dir()
+
+    start_time = time.monotonic()
 
     input_path = WORK_DIR / args.input
     if not input_path.exists():
@@ -497,6 +499,12 @@ def main() -> int:
     if failed > 0 and _container_id:
         print(f"[warn] {failed:,} Tile-Requests fehlgeschlagen, zeige Container-Logs zur Diagnose")
         dump_container_logs(_container_id, tail=args.tileserver_log_tail)
+
+    elapsed = time.monotonic() - start_time
+    h = int(elapsed // 3600)
+    m = int((elapsed % 3600) // 60)
+    s = int(elapsed % 60)
+    print(f"[done]  Dauer: {h:02d}:{m:02d}:{s:02d}")
     return 0
 
 
