@@ -7,7 +7,12 @@ This script decompresses each blob, decodes the MVT protobuf, and extracts
 known name fields from relevant layers into a SQLite FTS5 index.
 
 Usage:
-  python extract_names_to_sqlite.py <input.mbtiles> <output.db>
+  python extract_names_to_sqlite.py <input.mbtiles> <output.db> [--max-zoom N]
+
+Options:
+  --max-zoom N  Maximum zoom level to process (default: 14).
+                Tiles at z15+ repeat the same names and are skipped
+                by default. Use --max-zoom 17 to process all tiles.
 """
 
 import gzip
@@ -15,6 +20,8 @@ import math
 import sqlite3
 import sys
 import zlib
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 try:
@@ -46,6 +53,12 @@ NAME_FIELDS = [
 ]
 
 BATCH_SIZE = 2000
+WORKER_BATCH_SIZE = 200  # tiles per parallel batch
+
+# Tiles above this zoom level are skipped during extraction.
+# All place names, POIs, water names and major roads are already
+# fully indexed at z14; higher zooms only repeat them.
+MAX_EXTRACTION_ZOOM = 14
 
 
 def tile_pixel_to_lonlat(tile_x, tile_y, zoom, extent, pixel_x, pixel_y):
@@ -145,7 +158,51 @@ def choose_detail(properties):
     return None
 
 
-def extract_names_from_mbtiles(mbtiles_path, output_db_path):
+def _decode_tile(args):
+    """Worker: decode one MVT tile blob and return all extracted name records.
+
+    Returns (decode_error: bool, records: list[tuple]).
+    Each record is (name, lat, lng, zoom, layer_name, detail, source_field).
+    """
+    zoom, tile_x, tile_y_tms, blob = args
+    tile_y = ((2 ** zoom) - 1) - tile_y_tms
+    decompressed = maybe_decompress_tile(blob)
+
+    try:
+        decoded_tile = mapbox_vector_tile.decode(
+            decompressed, default_options={"geojson": False, "y_coord_down": True}
+        )
+    except Exception:
+        return True, []
+
+    records = []
+    for layer_name in LAYER_PRIORITY:
+        layer = decoded_tile.get(layer_name)
+        if not layer:
+            continue
+        extent = layer.get("extent", 4096)
+        for feature in layer.get("features", []):
+            props = feature.get("properties", {})
+            name, source_field = choose_name(props)
+            if not name:
+                continue
+            rp = geometry_to_latlng(
+                feature.get("geometry", {}), tile_x, tile_y, zoom, extent
+            )
+            if rp is None:
+                continue
+            lat, lng = rp
+            records.append(
+                (name, lat, lng, zoom, layer_name, choose_detail(props), source_field)
+            )
+    return False, records
+
+
+def extract_names_from_mbtiles(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM):
+    return _extract(mbtiles_path, output_db_path, max_zoom=max_zoom, workers=None)
+
+
+def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers=None):
     input_conn = sqlite3.connect(mbtiles_path)
     input_conn.row_factory = sqlite3.Row
     input_conn.execute("PRAGMA temp_store = MEMORY")
@@ -191,9 +248,14 @@ def extract_names_from_mbtiles(mbtiles_path, output_db_path):
     )
 
     total_tiles = input_cursor.execute(
+        "SELECT COUNT(*) AS count FROM tiles WHERE zoom_level <= ?",
+        (max_zoom,),
+    ).fetchone()["count"]
+    total_tiles_all = input_cursor.execute(
         "SELECT COUNT(*) AS count FROM tiles"
     ).fetchone()["count"]
-    print(f"[info] Found {total_tiles} tiles in {mbtiles_path}")
+    print(f"[info] Found {total_tiles_all} tiles in {mbtiles_path}")
+    print(f"[info] Processing {total_tiles} tiles at zoom <={max_zoom} (skipping {total_tiles_all - total_tiles} high-zoom tiles)")
 
     seen = set()
     decode_failures = 0
@@ -231,91 +293,69 @@ def extract_names_from_mbtiles(mbtiles_path, output_db_path):
         progress = tqdm_cls(total=total_tiles, desc="Decode MVT", unit="tile")
     processed_tiles = 0
 
-    tile_rows = input_cursor.execute(
-        """
-        SELECT zoom_level, tile_column, tile_row, tile_data
-        FROM tiles
-        """
-    )
+    num_workers = workers or max(1, (os.cpu_count() or 4) - 1)
+    print(f"[info] Using {num_workers} worker process(es) for parallel decode")
 
-    for processed_tiles, row in enumerate(tile_rows, start=1):
-        zoom = row["zoom_level"]
-        tile_x = row["tile_column"]
-        tile_y_tms = row["tile_row"]
-        tile_y = ((2 ** zoom) - 1) - tile_y_tms
-        blob = bytes(row["tile_data"])
-
-        decompressed_blob = maybe_decompress_tile(blob)
-
-        try:
-            decoded_tile = mapbox_vector_tile.decode(
-                decompressed_blob,
-                default_options={"geojson": False, "y_coord_down": True},
+    def _iter_tile_args():
+        for row in input_cursor.execute(
+            """
+            SELECT zoom_level, tile_column, tile_row, tile_data
+            FROM tiles
+            WHERE zoom_level <= ?
+            """,
+            (max_zoom,),
+        ):
+            yield (
+                row["zoom_level"],
+                row["tile_column"],
+                row["tile_row"],
+                bytes(row["tile_data"]),
             )
-        except Exception:
-            decode_failures += 1
+
+    tile_iter = _iter_tile_args()
+    exhausted = False
+
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        while not exhausted:
+            # Fill one batch of args without loading all tiles at once.
+            batch_args = []
+            for _ in range(WORKER_BATCH_SIZE * num_workers):
+                item = next(tile_iter, None)
+                if item is None:
+                    exhausted = True
+                    break
+                batch_args.append(item)
+
+            if not batch_args:
+                break
+
+            futures = [executor.submit(_decode_tile, arg) for arg in batch_args]
+            for future in as_completed(futures):
+                decode_error, records = future.result()
+                processed_tiles += 1
+                if decode_error:
+                    decode_failures += 1
+                else:
+                    for name, lat, lng, zoom, layer_name, detail, source_field in records:
+                        key = (name.casefold(), layer_name)
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        pending_rows.append(
+                            (next_id, name, lat, lng, zoom, layer_name, detail, source_field)
+                        )
+                        next_id += 1
+
+            if len(pending_rows) >= BATCH_SIZE:
+                flush_pending_rows()
+
             if progress is not None:
-                progress.update(1)
+                progress.update(len(batch_args))
             elif processed_tiles % 5000 == 0:
                 print(
                     f"[info] Processed {processed_tiles}/{total_tiles} tiles "
                     f"(decode failures: {decode_failures}, written rows: {inserted_rows})"
                 )
-            continue
-
-        for layer_name in LAYER_PRIORITY:
-            layer = decoded_tile.get(layer_name)
-            if not layer:
-                continue
-
-            extent = layer.get("extent", 4096)
-            for feature in layer.get("features", []):
-                properties = feature.get("properties", {})
-                name, source_field = choose_name(properties)
-                if not name:
-                    continue
-
-                key = (name.casefold(), layer_name)
-                if key in seen:
-                    continue
-                seen.add(key)
-
-                representative_point = geometry_to_latlng(
-                    feature.get("geometry", {}),
-                    tile_x,
-                    tile_y,
-                    zoom,
-                    extent,
-                )
-                if representative_point is None:
-                    skipped_geometries += 1
-                    continue
-
-                lat, lng = representative_point
-                pending_rows.append(
-                    (
-                        next_id,
-                        name,
-                        lat,
-                        lng,
-                        zoom,
-                        layer_name,
-                        choose_detail(properties),
-                        source_field,
-                    )
-                )
-                next_id += 1
-
-                if len(pending_rows) >= BATCH_SIZE:
-                    flush_pending_rows()
-
-        if progress is not None:
-            progress.update(1)
-        elif processed_tiles % 5000 == 0:
-            print(
-                f"[info] Processed {processed_tiles}/{total_tiles} tiles "
-                f"(decode failures: {decode_failures}, written rows: {inserted_rows})"
-            )
 
     flush_pending_rows()
 
@@ -346,8 +386,28 @@ if __name__ == "__main__":
         print(__doc__)
         sys.exit(1)
 
-    input_path = Path(sys.argv[1])
-    output_path = Path(sys.argv[2])
+    args = sys.argv[1:]
+    max_zoom = MAX_EXTRACTION_ZOOM
+
+    # Parse optional --max-zoom N
+    if "--max-zoom" in args:
+        idx = args.index("--max-zoom")
+        if idx + 1 >= len(args):
+            print("[error] --max-zoom requires a value")
+            sys.exit(1)
+        try:
+            max_zoom = int(args[idx + 1])
+        except ValueError:
+            print(f"[error] Invalid --max-zoom value: {args[idx + 1]}")
+            sys.exit(1)
+        args = args[:idx] + args[idx + 2:]
+
+    if len(args) < 2:
+        print(__doc__)
+        sys.exit(1)
+
+    input_path = Path(args[0])
+    output_path = Path(args[1])
 
     if not input_path.exists():
         print(f"[error] Input file not found: {input_path}")
@@ -355,8 +415,9 @@ if __name__ == "__main__":
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    print(f"[info] Max zoom: {max_zoom}")
     try:
-        extract_names_from_mbtiles(str(input_path), str(output_path))
+        _extract(str(input_path), str(output_path), max_zoom=max_zoom)
     except Exception as error:
         print(f"[error] Failed to extract names: {error}")
         sys.exit(1)
