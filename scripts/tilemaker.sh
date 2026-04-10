@@ -96,6 +96,19 @@ else
 
   echo "[extract] Entpacke Küstendaten nach $COASTLINE_DIR"
   unzip -o "$WATER_ZIP" -d "$COASTLINE_DIR"
+
+  # Some archives contain an extra top-level folder. Flatten it so
+  # water_polygons.* is always directly in $COASTLINE_DIR.
+  if [ ! -f "$COASTLINE_DIR/water_polygons.shp" ]; then
+    nested_shp="$(find "$COASTLINE_DIR" -type f -name 'water_polygons.shp' | head -n 1 || true)"
+    if [ -n "$nested_shp" ]; then
+      nested_dir="$(dirname "$nested_shp")"
+      if [ "$nested_dir" != "$COASTLINE_DIR" ]; then
+        echo "[extract] Verschiebe Dateien aus Unterordner nach $COASTLINE_DIR"
+        find "$nested_dir" -mindepth 1 -maxdepth 1 -exec mv -f {} "$COASTLINE_DIR"/ \;
+      fi
+    fi
+  fi
 fi
 
 if ! [ -f "ne_10m_antarctic_ice_shelves_polys.zip" ]; then
@@ -166,19 +179,37 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
       --store /data/temp
 fi
 
-# Prefer the project virtualenv for Python tooling if present.
-if [ -f ".venv/bin/activate" ]; then
-  source .venv/bin/activate
-fi
-
-PYTHON_BIN="python3"
-if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
-  PYTHON_BIN="python"
-  if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+# Ensure a local virtualenv exists for Python tooling.
+SYSTEM_PYTHON="python3"
+if ! command -v "$SYSTEM_PYTHON" >/dev/null 2>&1; then
+  SYSTEM_PYTHON="python"
+  if ! command -v "$SYSTEM_PYTHON" >/dev/null 2>&1; then
     echo "[error] Python ist nicht installiert oder nicht im PATH"
     exit 1
   fi
 fi
+
+VENV_ACTIVATE=".venv/bin/activate"
+if [ ! -f "$VENV_ACTIVATE" ]; then
+  echo "[python] Erstelle virtuelle Umgebung in .venv"
+  "$SYSTEM_PYTHON" -m venv .venv
+
+  # shellcheck disable=SC1091
+  source "$VENV_ACTIVATE"
+
+  if [ -f "$SCRIPT_DIR/requirements.txt" ]; then
+    echo "[python] Installiere Abhaengigkeiten aus $SCRIPT_DIR/requirements.txt"
+    python -m pip install --upgrade pip
+    python -m pip install -r "$SCRIPT_DIR/requirements.txt"
+  else
+    echo "[warning] requirements.txt nicht gefunden: $SCRIPT_DIR/requirements.txt"
+  fi
+else
+  # shellcheck disable=SC1091
+  source "$VENV_ACTIVATE"
+fi
+
+PYTHON_BIN="python"
 
 # Extract searchable names database
 NAMES_DB_OUTPUT="${OUTPUT_MBTILES%.mbtiles}_names.db"

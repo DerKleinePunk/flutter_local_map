@@ -25,10 +25,9 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from tqdm import tqdm
+    from tqdm import tqdm as tqdm_cls
 except ImportError:
-    def tqdm(iterable, *args, **kwargs):
-        return iterable
+    tqdm_cls = None
 
 
 LAYER_PRIORITY = [
@@ -45,6 +44,8 @@ NAME_FIELDS = [
     "name:en",
     "name:latin",
 ]
+
+BATCH_SIZE = 2000
 
 
 def tile_pixel_to_lonlat(tile_x, tile_y, zoom, extent, pixel_x, pixel_y):
@@ -78,7 +79,7 @@ def flatten_points(coordinates):
     return flattened
 
 
-def geometry_to_latlng(geometry):
+def representative_tile_point(geometry):
     geometry_type = geometry.get("type")
     coordinates = geometry.get("coordinates")
     points = flatten_points(coordinates)
@@ -86,20 +87,30 @@ def geometry_to_latlng(geometry):
         return None
 
     if geometry_type == "Point":
-        lon, lat = coordinates
-        return lat, lon
+        x, y = coordinates
+        return x, y
 
     if geometry_type == "MultiPoint":
-        lon = sum(point[0] for point in points) / len(points)
-        lat = sum(point[1] for point in points) / len(points)
-        return lat, lon
+        x = sum(point[0] for point in points) / len(points)
+        y = sum(point[1] for point in points) / len(points)
+        return x, y
 
     if geometry_type in {"LineString", "MultiLineString", "Polygon", "MultiPolygon"}:
-        lon = sum(point[0] for point in points) / len(points)
-        lat = sum(point[1] for point in points) / len(points)
-        return lat, lon
+        x = sum(point[0] for point in points) / len(points)
+        y = sum(point[1] for point in points) / len(points)
+        return x, y
 
     return None
+
+
+def geometry_to_latlng(geometry, tile_x, tile_y, zoom, extent):
+    point = representative_tile_point(geometry)
+    if point is None:
+        return None
+
+    point_x, point_y = point
+    lon, lat = tile_pixel_to_lonlat(tile_x, tile_y, zoom, extent, point_x, point_y)
+    return lat, lon
 
 
 def maybe_decompress_tile(blob):
@@ -137,9 +148,13 @@ def choose_detail(properties):
 def extract_names_from_mbtiles(mbtiles_path, output_db_path):
     input_conn = sqlite3.connect(mbtiles_path)
     input_conn.row_factory = sqlite3.Row
+    input_conn.execute("PRAGMA temp_store = MEMORY")
     input_cursor = input_conn.cursor()
 
     output_conn = sqlite3.connect(output_db_path)
+    output_conn.execute("PRAGMA journal_mode = WAL")
+    output_conn.execute("PRAGMA synchronous = NORMAL")
+    output_conn.execute("PRAGMA temp_store = MEMORY")
     output_cursor = output_conn.cursor()
 
     output_cursor.execute("DROP TABLE IF EXISTS names")
@@ -180,19 +195,50 @@ def extract_names_from_mbtiles(mbtiles_path, output_db_path):
     ).fetchone()["count"]
     print(f"[info] Found {total_tiles} tiles in {mbtiles_path}")
 
-    rows = input_cursor.execute(
+    seen = set()
+    decode_failures = 0
+    skipped_geometries = 0
+    inserted_rows = 0
+    next_id = 1
+
+    pending_rows = []
+
+    def flush_pending_rows():
+        nonlocal inserted_rows, pending_rows
+        if not pending_rows:
+            return
+
+        output_cursor.executemany(
+            """
+            INSERT INTO names_meta (id, name, lat, lng, zoom, type, detail, source_field)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            pending_rows,
+        )
+        output_cursor.executemany(
+            """
+            INSERT INTO names (id, name, lat, lng, zoom, type, detail, source_field)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            pending_rows,
+        )
+        inserted_rows += len(pending_rows)
+        output_conn.commit()
+        pending_rows = []
+
+    progress = None
+    if tqdm_cls is not None:
+        progress = tqdm_cls(total=total_tiles, desc="Decode MVT", unit="tile")
+    processed_tiles = 0
+
+    tile_rows = input_cursor.execute(
         """
         SELECT zoom_level, tile_column, tile_row, tile_data
         FROM tiles
-        ORDER BY zoom_level DESC, tile_column, tile_row
         """
-    ).fetchall()
+    )
 
-    entries = []
-    seen = set()
-    decode_failures = 0
-
-    for row in tqdm(rows, total=total_tiles, desc="Decode MVT"):
+    for processed_tiles, row in enumerate(tile_rows, start=1):
         zoom = row["zoom_level"]
         tile_x = row["tile_column"]
         tile_y_tms = row["tile_row"]
@@ -202,34 +248,28 @@ def extract_names_from_mbtiles(mbtiles_path, output_db_path):
         decompressed_blob = maybe_decompress_tile(blob)
 
         try:
-            probe_tile = mapbox_vector_tile.decode(
+            decoded_tile = mapbox_vector_tile.decode(
                 decompressed_blob,
                 default_options={"geojson": False, "y_coord_down": True},
             )
         except Exception:
             decode_failures += 1
+            if progress is not None:
+                progress.update(1)
+            elif processed_tiles % 5000 == 0:
+                print(
+                    f"[info] Processed {processed_tiles}/{total_tiles} tiles "
+                    f"(decode failures: {decode_failures}, written rows: {inserted_rows})"
+                )
             continue
 
         for layer_name in LAYER_PRIORITY:
-            layer = probe_tile.get(layer_name)
+            layer = decoded_tile.get(layer_name)
             if not layer:
                 continue
 
             extent = layer.get("extent", 4096)
-            decoded_tile = mapbox_vector_tile.decode(
-                decompressed_blob,
-                per_layer_options={
-                    layer_name: {
-                        "transformer": build_transformer(tile_x, tile_y, zoom, extent),
-                        "y_coord_down": True,
-                    }
-                },
-            )
-            transformed_layer = decoded_tile.get(layer_name)
-            if not transformed_layer:
-                continue
-
-            for feature in transformed_layer.get("features", []):
+            for feature in layer.get("features", []):
                 properties = feature.get("properties", {})
                 name, source_field = choose_name(properties)
                 if not name:
@@ -240,51 +280,56 @@ def extract_names_from_mbtiles(mbtiles_path, output_db_path):
                     continue
                 seen.add(key)
 
-                representative_point = geometry_to_latlng(feature.get("geometry", {}))
+                representative_point = geometry_to_latlng(
+                    feature.get("geometry", {}),
+                    tile_x,
+                    tile_y,
+                    zoom,
+                    extent,
+                )
                 if representative_point is None:
+                    skipped_geometries += 1
                     continue
 
                 lat, lng = representative_point
-                entries.append(
-                    {
-                        "name": name,
-                        "lat": lat,
-                        "lng": lng,
-                        "zoom": zoom,
-                        "type": layer_name,
-                        "detail": choose_detail(properties),
-                        "source_field": source_field,
-                    }
+                pending_rows.append(
+                    (
+                        next_id,
+                        name,
+                        lat,
+                        lng,
+                        zoom,
+                        layer_name,
+                        choose_detail(properties),
+                        source_field,
+                    )
                 )
+                next_id += 1
+
+                if len(pending_rows) >= BATCH_SIZE:
+                    flush_pending_rows()
+
+        if progress is not None:
+            progress.update(1)
+        elif processed_tiles % 5000 == 0:
+            print(
+                f"[info] Processed {processed_tiles}/{total_tiles} tiles "
+                f"(decode failures: {decode_failures}, written rows: {inserted_rows})"
+            )
+
+    flush_pending_rows()
+
+    if progress is not None:
+        progress.close()
+    else:
+        print(
+            f"[info] Processed {processed_tiles}/{total_tiles} tiles "
+            f"(decode failures: {decode_failures}, written rows: {inserted_rows})"
+        )
 
     print(f"[info] Decode failures: {decode_failures}")
-    print(f"[info] Extracted {len(entries)} unique names")
-
-    for index, entry in enumerate(tqdm(entries, desc="Write DB"), start=1):
-        row = (
-            index,
-            entry["name"],
-            entry["lat"],
-            entry["lng"],
-            entry["zoom"],
-            entry["type"],
-            entry["detail"],
-            entry["source_field"],
-        )
-        output_cursor.execute(
-            """
-            INSERT INTO names_meta (id, name, lat, lng, zoom, type, detail, source_field)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            row,
-        )
-        output_cursor.execute(
-            """
-            INSERT INTO names (id, name, lat, lng, zoom, type, detail, source_field)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            row,
-        )
+    print(f"[info] Skipped geometries: {skipped_geometries}")
+    print(f"[info] Extracted {inserted_rows} unique names")
 
     output_conn.commit()
     final_count = output_cursor.execute(
