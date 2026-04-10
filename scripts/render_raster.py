@@ -28,6 +28,7 @@ import shutil
 import argparse
 import os
 import shlex
+import tempfile
 import zipfile
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -46,7 +47,6 @@ STYLE_NAME = "osm-bright"
 SCRIPT_DIR = Path(__file__).parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 WORK_DIR = PROJECT_ROOT / "map" / "tiles-germany"
-TMP_DIR = WORK_DIR / "_tileserver_tmp"
 STYLES_ZIP_CANDIDATES = [
     SCRIPT_DIR / "styles.zip",
     WORK_DIR / "styles.zip",
@@ -54,6 +54,31 @@ STYLES_ZIP_CANDIDATES = [
 ]
 
 _container_id: str | None = None
+TMP_DIR = WORK_DIR / "_tileserver_tmp"
+
+
+def running_in_wsl() -> bool:
+    if os.name == "nt":
+        return False
+
+    if os.environ.get("WSL_DISTRO_NAME"):
+        return True
+
+    try:
+        return "microsoft" in Path("/proc/version").read_text(encoding="utf-8").lower()
+    except OSError:
+        return False
+
+
+def default_tmp_dir() -> Path:
+    env_tmp_dir = os.environ.get("RASTER_TMP_DIR")
+    if env_tmp_dir:
+        return Path(env_tmp_dir)
+
+    if running_in_wsl():
+        return Path(tempfile.gettempdir()) / "flutter_local_map_tileserver"
+
+    return WORK_DIR / "_tileserver_tmp"
 
 
 def _cleanup_container() -> None:
@@ -142,6 +167,28 @@ def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_m
     return conn
 
 
+def copy_file_with_progress(src: Path, dst: Path, chunk_size: int = 8 * 1024 * 1024) -> None:
+    total_size = src.stat().st_size
+    print(f"[copy]   {src.name} -> {dst}")
+
+    with src.open("rb") as source_file, dst.open("wb") as target_file:
+        with tqdm(
+            total=total_size,
+            unit="B",
+            unit_scale=True,
+            unit_divisor=1024,
+            desc="Copy MBTiles",
+        ) as progress:
+            while True:
+                chunk = source_file.read(chunk_size)
+                if not chunk:
+                    break
+                target_file.write(chunk)
+                progress.update(len(chunk))
+
+    shutil.copystat(src, dst)
+
+
 # ---------------------------------------------------------------------------
 # tileserver-gl vorbereiten und starten
 # ---------------------------------------------------------------------------
@@ -203,7 +250,7 @@ def start_tileserver(mbtiles_name: str, bbox_str: str, verbose_level: int = 2) -
     # MBTiles in Temp-Verzeichnis kopieren (Docker-Mount braucht lokale Dateien)
     src = WORK_DIR / mbtiles_name
     dst = TMP_DIR / "source.mbtiles"
-    shutil.copy2(src, dst)
+    copy_file_with_progress(src, dst)
 
     # Lokale styles.zip (inkl. fonts/styles) in den tileserver Temp-Ordner entpacken.
     unpack_styles_zip_to_tmp()
@@ -337,8 +384,8 @@ def main() -> int:
     parser.add_argument(
         "--workers",
         type=int,
-        default=4,
-        help="Parallele Download-Threads (Standard: 4)",
+        default=6,
+        help="Parallele Download-Threads (Standard: 6)",
     )
     parser.add_argument(
         "--tileserver-verbose",
@@ -353,7 +400,14 @@ def main() -> int:
         default=200,
         help="Anzahl Logzeilen bei Fehlerausgabe (Standard: 200)",
     )
+    parser.add_argument(
+        "--tmp-dir",
+        help="Arbeitsverzeichnis fuer tileserver-Dateien. Unter WSL ist standardmaessig /tmp/... aktiv.",
+    )
     args = parser.parse_args()
+
+    global TMP_DIR
+    TMP_DIR = Path(args.tmp_dir) if args.tmp_dir else default_tmp_dir()
 
     input_path = WORK_DIR / args.input
     if not input_path.exists():
@@ -383,6 +437,9 @@ def main() -> int:
     print(f"[info]  BBox:    {bbox_str}")
     print(f"[info]  Zoom:    z{zoom_min}–z{zoom_max}")
     print(f"[info]  Tiles:   {len(tiles):,}")
+    print(f"[info]  Temp:    {TMP_DIR}")
+    if running_in_wsl() and str(input_path).startswith("/mnt/"):
+        print("[info]  WSL erkannt: kopiere MBTiles einmalig nach schnellem Linux-Temp statt direkt von /mnt/... zu serven")
 
     # tileserver-gl starten
     _container_id = start_tileserver(

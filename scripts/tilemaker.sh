@@ -241,5 +241,6 @@ if [ "$GENERATE_RASTER" = "1" ]; then
     "$OUTPUT_MBTILES" \
     "$RASTER_OUTPUT" \
     --maxzoom "$RASTER_MAXZOOM" \
-    --workers "$RASTER_WORKERS"
+    --workers "$RASTER_WORKERS" \
+     --tileserver-verbose 3 --tileserver-log-tail 400
 fi
