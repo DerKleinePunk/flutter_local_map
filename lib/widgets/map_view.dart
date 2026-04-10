@@ -296,6 +296,7 @@ class _MapViewState extends State<MapView> {
     }
 
     try {
+      debugPrint('[map] Attempting to load MBTiles database: ${widget.mbtilesPath!}');
       final metadata = await _readMbtilesMetadata(widget.mbtilesPath!);
       final format = metadata.format;
       final minZoom = metadata.minZoom ?? MapConfig.minZoom.toDouble();
@@ -636,6 +637,7 @@ class _MapViewState extends State<MapView> {
 
     sqlite.Database? db;
     try {
+      debugPrint('[map] Attempting to open metadata database: $path');
       db = sqlite.sqlite3.open(path, mode: sqlite.OpenMode.readOnly);
       final rows = db.select(
         "SELECT name, value FROM metadata WHERE name IN ('format', 'minzoom', 'maxzoom', 'json')",

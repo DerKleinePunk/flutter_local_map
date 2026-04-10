@@ -54,6 +54,7 @@ class OfflineGeocoder {
       // Close previous database if open
       await _database?.close();
 
+      debugPrint('[geocoder] Attempting to open database: $namesDatabasePath');
       _database = await openDatabase(namesDatabasePath, readOnly: true);
       _currentNamesDb = namesDatabasePath;
 
