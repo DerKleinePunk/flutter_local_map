@@ -46,14 +46,22 @@ Wichtig fuer das verwendete GIS-OPS-Image:
 - Ein `.osm.pbf` im Zielordner reicht, damit der Container `valhalla.json`, Admins, Timezones und Routing-Tiles selbst erzeugt.
 - Ja, du kannst Bounds indirekt mitgeben: erst aus `germany-latest.osm.pbf` einen bounded Extract erstellen, dann nur diesen Extract dem Container bereitstellen.
 
-Im Projekt liegt dafuer ein Skript mit optionaler `--bbox`-Option:
+Im Projekt liegt dafuer ein Skript mit optionaler `--bbox`-Option und Regions-Presets fuer `vogelsberg` und `braunschweig`:
 
 ```bash
 ./scripts/valhalla/build_valhalla_from_pbf.sh \
   --input ./tiles-germany/germany-latest.osm.pbf \
   --output ./map/valhalla/output \
-  --bbox 8.9,50.22,9.9,50.85 \
   --region vogelsberg
+```
+
+Braunschweig mit Umland:
+
+```bash
+./scripts/valhalla/build_valhalla_from_pbf.sh \
+  --input ./tiles-germany/germany-latest.osm.pbf \
+  --output ./map/valhalla/output \
+  --region braunschweig
 ```
 
 Windows/Powershell Variante:
@@ -62,13 +70,24 @@ Windows/Powershell Variante:
 ./scripts/valhalla/build_valhalla_from_pbf.ps1 `
   -InputPbf ./tiles-germany/germany-latest.osm.pbf `
   -Output ./map/valhalla/output `
-  -Bbox "8.9,50.22,9.9,50.85" `
   -Region vogelsberg
+```
+
+Braunschweig mit Umland:
+
+```powershell
+./scripts/valhalla/build_valhalla_from_pbf.ps1 `
+  -InputPbf ./tiles-germany/germany-latest.osm.pbf `
+  -Output ./map/valhalla/output `
+  -Region braunschweig
 ```
 
 Hinweise:
 
 - `--bbox` erwartet `west,south,east,north` in WGS84.
+- Fuer `--region vogelsberg` wird automatisch `8.9,50.22,9.9,50.85` verwendet.
+- Fuer `--region braunschweig` wird automatisch `10.28,52.12,10.78,52.42` verwendet.
+- Eine explizite `--bbox` bzw. `-Bbox` ueberschreibt das Regions-Preset.
 - Fuer `--bbox` wird `osmium` auf dem Build-Host benoetigt.
 - Ohne `--bbox` wird das Input-PBF direkt kopiert.
 - Das Skript legt den resultierenden Extract direkt im Output-Ordner ab, damit der Container ihn spaeter unter `/custom_files` findet.

@@ -122,7 +122,7 @@ Eigenschaften des Skripts:
 - entpackt Natural-Earth-Daten nur, wenn Zielverzeichnis noch nicht vorhanden ist
 - bricht standardmaessig ab, wenn Ausgabedatei bereits existiert
 - erzwingt Neuaufbau mit `FORCE_REBUILD=1`
-- unterstuetzt einen optionalen `vogelsberg`-Parameter fuer schnelle Test-Builds
+- unterstuetzt optionale Regionen `vogelsberg` und `braunschweig` fuer schnelle Test-Builds
 - unterstuetzt optional `raster`/`--raster` fuer einen zweiten Schritt (PNG-MBTiles aus Vektor-MBTiles)
 
 Ausfuehrung:
@@ -137,11 +137,18 @@ cd scripts
 # Erzeugt vogelsberg.mbtiles statt germany.mbtiles
 ./tilemaker.sh vogelsberg
 
+# Braunschweig mit Umland (BBox 10.28,52.12,10.78,52.42)
+# Erzeugt braunschweig.mbtiles statt germany.mbtiles
+./tilemaker.sh braunschweig
+
 # Vektor + Raster (zweite Datei mit PNG-Tiles)
 ./tilemaker.sh raster
 
 # Vogelsberg Vektor + Raster
 ./tilemaker.sh vogelsberg raster
+
+# Braunschweig Vektor + Raster
+./tilemaker.sh braunschweig raster
 ```
 
 Neuaufbau erzwingen:
@@ -150,8 +157,10 @@ Neuaufbau erzwingen:
 cd scripts
 FORCE_REBUILD=1 ./tilemaker.sh
 FORCE_REBUILD=1 ./tilemaker.sh vogelsberg
+FORCE_REBUILD=1 ./tilemaker.sh braunschweig
 FORCE_REBUILD=1 ./tilemaker.sh raster
 FORCE_REBUILD=1 ./tilemaker.sh vogelsberg raster
+FORCE_REBUILD=1 ./tilemaker.sh braunschweig raster
 ```
 
 ## Offline-Indizierung und Ortssuche
@@ -175,7 +184,7 @@ Nach der Erzeugung von Vektor-MBTiles mit Tilemaker wird automatisch eine SQLite
 
 Das [OfflineGeocoder](lib/services/offline_geocoder.dart)-Service nutzt `searchPrioritized()` für typsortierte Suchergebnisse. Die [PlaceSearchBar](lib/widgets/search_bar.dart)-Widget zeigt eine Autocomplete-Dropdown mit Typ-Icons und sortiert nach Priorität.
 
-**Wichtig:** Die Namen-DB wird automatisch als `{basename}_names.db` neben der MBTiles-Datei erzeugt (z.B. `vogelsberg_names.db` für `vogelsberg.mbtiles`). Die App lädt sie beim Starten automatisch über `OfflineGeocoder.initialize()`.
+**Wichtig:** Die Namen-DB wird automatisch als `{basename}_names.db` neben der MBTiles-Datei erzeugt (z.B. `vogelsberg_names.db` fuer `vogelsberg.mbtiles` oder `braunschweig_names.db` fuer `braunschweig.mbtiles`). Die App lädt sie beim Starten automatisch über `OfflineGeocoder.initialize()`.
 
 **Technische Details:**
 
@@ -187,8 +196,8 @@ Das [OfflineGeocoder](lib/services/offline_geocoder.dart)-Service nutzt `searchP
 
 Ausgabedateien:
 
-- nur Vektor: `germany.mbtiles` oder `vogelsberg.mbtiles`
-- mit Raster-Schritt: zusaetzlich `germany_raster.mbtiles` oder `vogelsberg_raster.mbtiles`
+- nur Vektor: `germany.mbtiles`, `vogelsberg.mbtiles` oder `braunschweig.mbtiles`
+- mit Raster-Schritt: zusaetzlich `germany_raster.mbtiles`, `vogelsberg_raster.mbtiles` oder `braunschweig_raster.mbtiles`
 
 ## Offline-Routing mit Valhalla
 
