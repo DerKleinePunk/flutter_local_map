@@ -37,7 +37,7 @@ show_usage() {
   echo ""
   echo "Optionale Umgebungsvariablen fuer Raster-Schritt:"
   echo "  RASTER_MAXZOOM (default: 17)"
-  echo "  RASTER_WORKERS (default: 4)"
+  echo "  RASTER_WORKERS (default: 8)"
   echo "  RASTER_TILESERVER_INSTANCES (default: auto in render_raster.py)"
   echo "  RASTER_MAX_RENDERER_POOL_SIZES (z. B. 24 oder 24,12,6)"
   echo "  RASTER_MIN_RENDERER_POOL_SIZES (z. B. 24 oder 24,12,6)"
@@ -283,7 +283,10 @@ fi
 # Build Valhalla routing tiles
 echo "[valhalla] Starte Valhalla-Tile-Generierung"
 if [ -f "$SCRIPT_DIR/valhalla/build_valhalla_from_pbf.sh" ]; then
-  bash "$SCRIPT_DIR/valhalla/build_valhalla_from_pbf.sh" "$REGION"
+  bash "$SCRIPT_DIR/valhalla/build_valhalla_from_pbf.sh" \
+    --input "$WORK_DIR/$PBF_FILE" \
+    --output "$WORK_DIR" \
+    --region "$REGION"
 else
   echo "[warning] $SCRIPT_DIR/valhalla/build_valhalla_from_pbf.sh nicht gefunden"
 fi

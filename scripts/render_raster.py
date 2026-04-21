@@ -115,8 +115,8 @@ def _cleanup_container() -> None:
     for container_id, _ in _tileserver_instances:
         subprocess.run(["docker", "stop", container_id], capture_output=True)
     _tileserver_instances.clear()
-    #if TMP_DIR.exists():
-    #    shutil.rmtree(TMP_DIR, ignore_errors=True)
+    if TMP_DIR.exists():
+        shutil.rmtree(TMP_DIR, ignore_errors=True)
 
 
 atexit.register(_cleanup_container)

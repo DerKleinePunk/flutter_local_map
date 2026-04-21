@@ -25,6 +25,7 @@ Die Entscheidung erfolgt zur Laufzeit anhand der MBTiles-Metadaten (`format`, `m
 - Flutter SDK (Dart SDK gemaess [pubspec.yaml](pubspec.yaml))
 - Aktivierter Desktop-Support in Flutter
 - Fuer lokale Tile-Erzeugung: Docker (optional zusaetzlich Python-Skripte)
+- Fuer den Raster-Schritt: `git-lfs` (wird fuer `scripts/styles.zip` benoetigt – `sudo apt install git-lfs && git lfs install`)
 
 ## Quick Start
 
@@ -124,6 +125,7 @@ Eigenschaften des Skripts:
 - erzwingt Neuaufbau mit `FORCE_REBUILD=1`
 - unterstuetzt optionale Regionen `vogelsberg` und `braunschweig` fuer schnelle Test-Builds
 - unterstuetzt optional `raster`/`--raster` fuer einen zweiten Schritt (PNG-MBTiles aus Vektor-MBTiles)
+- startet am Ende automatisch die Valhalla-Tile-Generierung via [scripts/valhalla/build_valhalla_from_pbf.sh](scripts/valhalla/build_valhalla_from_pbf.sh)
 
 Ausfuehrung:
 
@@ -220,8 +222,8 @@ Raster-Schritt (optional) nutzt [scripts/render_raster.py](scripts/render_raster
 
 Optionale Umgebungsvariablen fuer den Raster-Schritt:
 
-- `RASTER_MAXZOOM` (Standard: `14`)
-- `RASTER_WORKERS` (Standard: `4`)
+- `RASTER_MAXZOOM` (Standard: `17`)
+- `RASTER_WORKERS` (Standard: `8`)
 
 Hinweis: Die z17-Config erhoeht Detail-Layer bis Zoom 17 inklusive Hausnummern (`housenumber`-Layer ab z14). Das verbessert Details, vergroessert aber Datenmenge und Build-Zeit.
 
