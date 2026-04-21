@@ -92,6 +92,9 @@ else
   fi
 fi
 
+echo "Pulling Docker image: $IMAGE"
+docker pull "$IMAGE"
+
 echo "Starting Valhalla on http://127.0.0.1:$PORT"
 docker run -d \
   --name "$CONTAINER_NAME" \

@@ -26,7 +26,7 @@ if ((Test-Path -LiteralPath $ConfigPath -PathType Leaf) -and ((Get-Item -Literal
 }
 
 Write-Host "Stopping existing container (if any): $Name"
-& docker rm -f $Name | Out-Null
+try { & docker rm -f $Name 2>&1 | Out-Null } catch { <# container did not exist, ignore #> }
 
 ${useTilesIgnorePbf} = "False"
 ${forceRebuild} = "False"
@@ -45,6 +45,12 @@ elseif ($hasPbf) {
 }
 else {
     throw "Weder prebuilt tiles noch .osm.pbf in $DataFull gefunden."
+}
+
+Write-Host "Pulling Docker image: $Image"
+& docker pull $Image
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to pull Docker image: $Image"
 }
 
 Write-Host "Starting Valhalla on http://127.0.0.1:$Port"
