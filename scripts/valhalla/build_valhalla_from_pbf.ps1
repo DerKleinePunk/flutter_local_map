@@ -14,13 +14,35 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$VogelsbergBbox = "8.9,50.22,9.9,50.85"
+$BraunschweigBbox = "10.28,52.12,10.78,52.42"
+
 function Resolve-FullPath {
     param([Parameter(Mandatory = $true)][string]$Path)
     return (Resolve-Path -Path $Path).Path
 }
 
+function Resolve-RegionBbox {
+    param([Parameter(Mandatory = $true)][string]$RegionName)
+
+    switch ($RegionName.ToLowerInvariant()) {
+        "vogelsberg" { return $VogelsbergBbox }
+        "braunschweig" { return $BraunschweigBbox }
+        default { return $null }
+    }
+}
+
 if (-not (Test-Path -LiteralPath $InputPbf -PathType Leaf)) {
     throw "Input file not found: $InputPbf"
+}
+
+$PresetBbox = Resolve-RegionBbox -RegionName $Region
+if (-not $Bbox -and $PresetBbox) {
+    $Bbox = $PresetBbox
+    Write-Host "[preset] Using bbox for region '$Region': $Bbox"
+}
+elseif ($Bbox -and $PresetBbox) {
+    Write-Host "[preset] Ignoring preset bbox for region '$Region' because -Bbox was provided"
 }
 
 if (-not (Test-Path -LiteralPath $Output)) {

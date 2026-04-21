@@ -8,7 +8,6 @@ set -euo pipefail
 #   ./scripts/valhalla/build_valhalla_from_pbf.sh \
 #     --input ./tiles-germany/germany-latest.osm.pbf \
 #     --output ./map/valhalla/output \
-#     --bbox 8.9,50.22,9.9,50.85 \
 #     --region vogelsberg
 
 INPUT_PBF=""
@@ -16,6 +15,9 @@ OUTPUT_DIR=""
 BBOX=""
 REGION="region"
 VALHALLA_IMAGE="ghcr.io/gis-ops/docker-valhalla/valhalla:latest"
+
+VOGELSBERG_BBOX="8.9,50.22,9.9,50.85"
+BRAUNSCHWEIG_BBOX="10.28,52.12,10.78,52.42"
 
 usage() {
   cat <<'EOF'
@@ -27,8 +29,10 @@ Required:
   --output  Output directory for valhalla.json + data files
 
 Optional:
-  --bbox    west,south,east,north (WGS84), e.g. 8.9,50.22,9.9,50.85
+  --bbox    west,south,east,north (WGS84), overrides region preset if provided
   --region  Region label used for intermediate files (default: region)
+            Presets: vogelsberg -> 8.9,50.22,9.9,50.85
+                     braunschweig -> 10.28,52.12,10.78,52.42
   --image   Docker image for Valhalla build
   --help    Show this help
 
@@ -36,6 +40,20 @@ Notes:
 - If --bbox is provided, 'osmium' must be installed on the host.
 - Build should run on a stronger machine; deploy output folder to Pi runtime.
 EOF
+}
+
+resolve_region_bbox() {
+  case "$1" in
+    vogelsberg)
+      printf '%s' "$VOGELSBERG_BBOX"
+      ;;
+    braunschweig)
+      printf '%s' "$BRAUNSCHWEIG_BBOX"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 while [[ $# -gt 0 ]]; do
@@ -81,6 +99,15 @@ fi
 if [[ ! -f "$INPUT_PBF" ]]; then
   echo "Error: input file not found: $INPUT_PBF" >&2
   exit 1
+fi
+
+if [[ -z "$BBOX" ]]; then
+  if PRESET_BBOX="$(resolve_region_bbox "$REGION" 2>/dev/null)"; then
+    BBOX="$PRESET_BBOX"
+    echo "[preset] Using bbox for region '$REGION': $BBOX"
+  fi
+elif resolve_region_bbox "$REGION" >/dev/null 2>&1; then
+  echo "[preset] Ignoring preset bbox for region '$REGION' because --bbox was provided"
 fi
 
 mkdir -p "$OUTPUT_DIR"

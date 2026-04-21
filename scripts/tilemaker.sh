@@ -27,10 +27,11 @@ WATER_ZIP="water-polygons-split-4326.zip"
 COASTLINE_DIR="coastline"
 
 show_usage() {
-  echo "Nutzung: ./tilemaker.sh [vogelsberg] [raster|--raster]"
+  echo "Nutzung: ./tilemaker.sh [vogelsberg|braunschweig] [raster|--raster]"
   echo ""
   echo "  ohne Parameter:    Germany Vector-MBTiles"
-  echo "  vogelsberg:        kleines Testgebiet (BBox)"
+  echo "  vogelsberg:        Testgebiet Fulda/Vogelsberg (BBox)"
+  echo "  braunschweig:      Braunschweig mit Umland (BBox)"
   echo "  raster|--raster:   zusaetzlich Raster-MBTiles aus Vektor-MBTiles erzeugen"
   echo "                     benoetigt gueltiges styles.zip (z. B. scripts/styles.zip)"
   echo ""
@@ -43,6 +44,9 @@ show_usage() {
 # Südgrenze auf 50.22 erweitert damit die GPS-Adnan-Tour vollständig abgedeckt ist
 VOGELSBERG_BBOX="8.9,50.22,9.9,50.85"
 
+# Braunschweig mit Umland: Wolfsburg, Wolfenbuettel, Salzgitter und Peine sind mit enthalten
+BRAUNSCHWEIG_BBOX="10.28,52.12,10.78,52.42"
+
 BBOX_ARG=()
 GENERATE_RASTER=0
 REGION="germany"
@@ -51,6 +55,9 @@ for arg in "$@"; do
   case "$arg" in
     vogelsberg)
       REGION="vogelsberg"
+      ;;
+    braunschweig)
+      REGION="braunschweig"
       ;;
     raster|--raster)
       GENERATE_RASTER=1
@@ -67,13 +74,21 @@ for arg in "$@"; do
   esac
 done
 
-if [ "$REGION" = "vogelsberg" ]; then
-  echo "[bbox] Vogelsberg-Testgebiet: $VOGELSBERG_BBOX"
-  BBOX_ARG+=(--bbox "$VOGELSBERG_BBOX")
-  OUTPUT_MBTILES="vogelsberg.mbtiles"
-else
-  OUTPUT_MBTILES="germany.mbtiles"
-fi
+case "$REGION" in
+  vogelsberg)
+    echo "[bbox] Vogelsberg-Testgebiet: $VOGELSBERG_BBOX"
+    BBOX_ARG+=(--bbox "$VOGELSBERG_BBOX")
+    OUTPUT_MBTILES="vogelsberg.mbtiles"
+    ;;
+  braunschweig)
+    echo "[bbox] Braunschweig mit Umland: $BRAUNSCHWEIG_BBOX"
+    BBOX_ARG+=(--bbox "$BRAUNSCHWEIG_BBOX")
+    OUTPUT_MBTILES="braunschweig.mbtiles"
+    ;;
+  *)
+    OUTPUT_MBTILES="germany.mbtiles"
+    ;;
+esac
 
 # Deutschland PBF (~4 GB)
 if [ -f "$PBF_FILE" ]; then
@@ -241,5 +256,5 @@ if [ "$GENERATE_RASTER" = "1" ]; then
     "$OUTPUT_MBTILES" \
     "$RASTER_OUTPUT" \
     --maxzoom "$RASTER_MAXZOOM" \
-    --workers "$RASTER_WORKERS" 
+    --workers "$RASTER_WORKERS"
 fi
