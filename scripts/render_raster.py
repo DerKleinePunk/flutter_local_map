@@ -6,13 +6,23 @@ und speichert das Ergebnis als neue Raster-MBTiles-Datei.
 Voraussetzung: Docker muss installiert und laufend sein.
 
 Nutzung:
-  python render_raster.py <input.mbtiles> [<output.mbtiles>] [--maxzoom N] [--workers N]
+    python render_raster.py <input.mbtiles> [<output.mbtiles>] [--maxzoom N] [--workers N]
+                                                    [--tileserver-instances N]
+                                                    [--max-renderer-pool-sizes 24[,12,6]]
+                                                    [--min-renderer-pool-sizes 24[,12,6]]
 
 Beispiel (Testgebiet Vogelsberg):
   python render_raster.py vogelsberg.mbtiles vogelsberg_raster.mbtiles --maxzoom 14
 
 Beispiel (Hessen komplett):
   python render_raster.py germany.mbtiles germany_raster.mbtiles --maxzoom 14
+
+Beispiel (mehr Parallelitaet im TileServer):
+    python render_raster.py braunschweig.mbtiles braunschweig_raster.mbtiles \
+        --workers 32 \
+        --tileserver-instances 4 \
+        --max-renderer-pool-sizes 24 \
+        --min-renderer-pool-sizes 24
 
 Rendert mit tileserver-gl eimbautem Style 'osm-bright'
 """
@@ -29,12 +39,14 @@ import argparse
 import os
 import shlex
 import tempfile
+import threading
 import zipfile
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 try:
     import requests
+    from requests.adapters import HTTPAdapter
     from tqdm import tqdm
 except ImportError:
     print("Fehler: pip install requests tqdm")
@@ -53,8 +65,26 @@ STYLES_ZIP_CANDIDATES = [
     PROJECT_ROOT / "map" / "test" / "styles.zip",
 ]
 
-_container_id: str | None = None
+_tileserver_instances: list[tuple[str, int]] = []
 TMP_DIR = WORK_DIR / "_tileserver_tmp"
+DEFAULT_WORKERS = max(8, (os.cpu_count() or 4) * 2)
+DEFAULT_TILESERVER_INSTANCES = max(1, min(4, max(1, (os.cpu_count() or 4) // 2)))
+_thread_local = threading.local()
+
+
+def parse_int_list(raw_value: str) -> list[int]:
+    return [
+        int(value.strip())
+        for value in raw_value.split(",")
+        if value.strip()
+    ]
+
+
+def env_int_list(name: str) -> list[int] | None:
+    raw_value = os.environ.get(name)
+    if not raw_value:
+        return None
+    return parse_int_list(raw_value)
 
 
 def running_in_wsl() -> bool:
@@ -82,9 +112,11 @@ def default_tmp_dir() -> Path:
 
 
 def _cleanup_container() -> None:
-    if _container_id:
-        subprocess.run(["docker", "stop", _container_id], capture_output=True)
-        shutil.rmtree(TMP_DIR, ignore_errors=True)
+    for container_id, _ in _tileserver_instances:
+        subprocess.run(["docker", "stop", container_id], capture_output=True)
+    _tileserver_instances.clear()
+    #if TMP_DIR.exists():
+    #    shutil.rmtree(TMP_DIR, ignore_errors=True)
 
 
 atexit.register(_cleanup_container)
@@ -140,6 +172,10 @@ def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_m
         output_path.unlink()
     conn = sqlite3.connect(str(output_path))
     cur = conn.cursor()
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.execute("PRAGMA synchronous=NORMAL")
+    cur.execute("PRAGMA temp_store=MEMORY")
+    cur.execute("PRAGMA cache_size=-200000")
     cur.execute("CREATE TABLE metadata (name TEXT PRIMARY KEY, value TEXT)")
     cur.execute("""
         CREATE TABLE tiles (
@@ -242,50 +278,12 @@ def is_container_running(container_id: str) -> bool:
     return result.returncode == 0 and result.stdout.strip().lower() == "true"
 
 
-def start_tileserver(mbtiles_name: str, bbox_str: str, verbose_level: int = 2) -> str:
-    global _container_id
-
+def start_tileserver(port: int, verbose_level: int = 2) -> tuple[str, int]:
     TMP_DIR.mkdir(parents=True, exist_ok=True)
-
-    # MBTiles in Temp-Verzeichnis kopieren (Docker-Mount braucht lokale Dateien)
-    src = WORK_DIR / mbtiles_name
-    dst = TMP_DIR / "source.mbtiles"
-    copy_file_with_progress(src, dst)
-
-    # Lokale styles.zip (inkl. fonts/styles) in den tileserver Temp-Ordner entpacken.
-    unpack_styles_zip_to_tmp()
-
-    bounds = list(map(float, bbox_str.split(",")))
-
-    # tileserver-gl config.json mit eingebautem osm-bright Style
-    config = {
-        "options": {
-            "paths": {
-                "fonts": "fonts",
-                "styles": "styles",
-            }
-        },
-        "data": {
-           "openmaptiles": {
-                "mbtiles": "source.mbtiles"
-            },
-        },
-        "styles": {
-            STYLE_NAME: {
-                "style": f"{STYLE_NAME}/style.json",
-                "tilejson": {
-                    "type": "overlay",
-                    "bounds": bounds
-                }
-            },
-        },
-    }
-    (TMP_DIR / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
-    print(f"[config] Using tileserver-gl built-in style: {STYLE_NAME}")
 
     cmd = [
         "docker", "run", "-d", "--rm",
-        "-p", f"{TILESERVER_PORT}:8080",
+        "-p", f"{port}:8080",
         "-v", f"{TMP_DIR}:/data",
         TILESERVER_IMAGE,
         "--config", "/data/config.json",
@@ -312,14 +310,64 @@ def start_tileserver(mbtiles_name: str, bbox_str: str, verbose_level: int = 2) -
         print(f"[error] Docker konnte nicht gestartet werden:\n{result.stderr.strip()}")
         sys.exit(1)
 
-    _container_id = result.stdout.strip()
-    print(f"[docker] Container gestartet: {_container_id}")
-    return _container_id
+    container_id = result.stdout.strip()
+    print(f"[docker] Container gestartet: {container_id} (Port {port})")
+    return (container_id, port)
 
 
-def wait_for_tileserver(timeout: int = 60) -> bool:
-    url = f"http://localhost:{TILESERVER_PORT}/"
-    print("[wait]  tileserver-gl startet", end="", flush=True)
+def prepare_tileserver_data(
+    mbtiles_name: str,
+    bbox_str: str,
+    max_renderer_pool_sizes: list[int] | None,
+    min_renderer_pool_sizes: list[int] | None,
+) -> None:
+    TMP_DIR.mkdir(parents=True, exist_ok=True)
+
+    src = WORK_DIR / mbtiles_name
+    dst = TMP_DIR / "source.mbtiles"
+    copy_file_with_progress(src, dst)
+
+    unpack_styles_zip_to_tmp()
+
+    bounds = list(map(float, bbox_str.split(",")))
+    config = {
+        "options": {
+            "paths": {
+                "fonts": "fonts",
+                "styles": "styles",
+            }
+        },
+        "data": {
+           "openmaptiles": {
+                "mbtiles": "source.mbtiles"
+            },
+        },
+        "styles": {
+            STYLE_NAME: {
+                "style": f"{STYLE_NAME}/style.json",
+                "tilejson": {
+                    "type": "overlay",
+                    "bounds": bounds
+                }
+            },
+        },
+    }
+
+    if max_renderer_pool_sizes:
+        print(f"[config] Setze maxRendererPoolSizes: {max_renderer_pool_sizes}")
+        config["options"]["maxRendererPoolSizes"] = max_renderer_pool_sizes
+
+    if min_renderer_pool_sizes:
+        print(f"[config] Setze minRendererPoolSizes: {min_renderer_pool_sizes}")
+        config["options"]["minRendererPoolSizes"] = min_renderer_pool_sizes
+
+    (TMP_DIR / "config.json").write_text(json.dumps(config, indent=2), encoding="utf-8")
+    print(f"[config] Using tileserver-gl built-in style: {STYLE_NAME}")
+
+
+def wait_for_tileserver(port: int, timeout: int = 60) -> bool:
+    url = f"http://localhost:{port}/"
+    print(f"[wait]  tileserver-gl auf Port {port} startet", end="", flush=True)
     for _ in range(timeout):
         try:
             resp = requests.get(url, timeout=2)
@@ -339,12 +387,20 @@ def wait_for_tileserver(timeout: int = 60) -> bool:
 # ---------------------------------------------------------------------------
 
 def download_tile(
-    session: requests.Session,
     z: int,
     x: int,
     y: int,
+    port: int,
 ) -> tuple[int, int, int, bytes | None]:
-    url = f"http://localhost:{TILESERVER_PORT}/styles/{STYLE_NAME}/{z}/{x}/{y}.png"
+    session = getattr(_thread_local, "session", None)
+    if session is None:
+        session = requests.Session()
+        adapter = HTTPAdapter(pool_connections=1, pool_maxsize=1)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+        _thread_local.session = session
+
+    url = f"http://localhost:{port}/styles/{STYLE_NAME}/{z}/{x}/{y}.png"
     try:
         resp = session.get(url, timeout=15)
         if resp.status_code == 200:
@@ -359,7 +415,7 @@ def download_tile(
 # ---------------------------------------------------------------------------
 
 def main() -> int:
-    global _container_id
+    global _tileserver_instances
 
     parser = argparse.ArgumentParser(
         description="Vektor-MBTiles → Raster-MBTiles via tileserver-gl (Docker)"
@@ -384,8 +440,8 @@ def main() -> int:
     parser.add_argument(
         "--workers",
         type=int,
-        default=4,
-        help="Parallele Download-Threads (Standard: 4)",
+        default=DEFAULT_WORKERS,
+        help=f"Parallele Download-Threads (Standard: {DEFAULT_WORKERS})",
     )
     parser.add_argument(
         "--tileserver-verbose",
@@ -399,6 +455,24 @@ def main() -> int:
         type=int,
         default=200,
         help="Anzahl Logzeilen bei Fehlerausgabe (Standard: 200)",
+    )
+    parser.add_argument(
+        "--tileserver-instances",
+        type=int,
+        default=DEFAULT_TILESERVER_INSTANCES,
+        help=f"Anzahl paralleler tileserver-gl Container (Standard: {DEFAULT_TILESERVER_INSTANCES})",
+    )
+    parser.add_argument(
+        "--max-renderer-pool-sizes",
+        type=parse_int_list,
+        default=env_int_list("TILESERVER_MAX_RENDERER_POOL_SIZES"),
+        help="Kommagetrennte Liste fuer TileServer maxRendererPoolSizes; Default aus TILESERVER_MAX_RENDERER_POOL_SIZES",
+    )
+    parser.add_argument(
+        "--min-renderer-pool-sizes",
+        type=parse_int_list,
+        default=env_int_list("TILESERVER_MIN_RENDERER_POOL_SIZES"),
+        help="Kommagetrennte Liste fuer TileServer minRendererPoolSizes; Default aus TILESERVER_MIN_RENDERER_POOL_SIZES",
     )
     parser.add_argument(
         "--tmp-dir",
@@ -440,31 +514,61 @@ def main() -> int:
     print(f"[info]  Zoom:    z{zoom_min}–z{zoom_max}")
     print(f"[info]  Tiles:   {len(tiles):,}")
     print(f"[info]  Temp:    {TMP_DIR}")
+    print(f"[info]  Server:  {args.tileserver_instances}")
+    if args.max_renderer_pool_sizes:
+        print(f"[info]  maxRendererPoolSizes: {args.max_renderer_pool_sizes}")
+    if args.min_renderer_pool_sizes:
+        print(f"[info]  minRendererPoolSizes: {args.min_renderer_pool_sizes}")
     if running_in_wsl() and str(input_path).startswith("/mnt/"):
         print("[info]  WSL erkannt: kopiere MBTiles einmalig nach schnellem Linux-Temp statt direkt von /mnt/... zu serven")
 
-    # tileserver-gl starten
-    _container_id = start_tileserver(
+    prepare_tileserver_data(
         args.input,
         bbox_str,
-        verbose_level=args.tileserver_verbose,
+        args.max_renderer_pool_sizes,
+        args.min_renderer_pool_sizes,
     )
-    if not wait_for_tileserver(60):
-        print("[error] tileserver-gl ist nicht erreichbar – abbruch")
-        dump_container_logs(_container_id, tail=args.tileserver_log_tail)
-        return 1
+
+    # tileserver-gl starten
+    _tileserver_instances = [
+        start_tileserver(
+            TILESERVER_PORT + index,
+            verbose_level=args.tileserver_verbose,
+        )
+        for index in range(max(1, args.tileserver_instances))
+    ]
+    for container_id, port in _tileserver_instances:
+        if not wait_for_tileserver(port, 60):
+            print("[error] tileserver-gl ist nicht erreichbar – abbruch")
+            dump_container_logs(container_id, tail=args.tileserver_log_tail)
+            return 1
+
+    ports = [port for _, port in _tileserver_instances]
 
     # Raster-MBTiles befüllen
     conn = create_raster_mbtiles(output_path, meta, zoom_max)
     cur = conn.cursor()
-    session = requests.Session()
     successful = 0
     failed = 0
+    pending_rows: list[tuple[int, int, int, bytes]] = []
+
+    batch_size = max(200, args.workers * 4)
+
+    def flush_pending_rows() -> None:
+        nonlocal pending_rows
+        if not pending_rows:
+            return
+        cur.executemany(
+            "INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)",
+            pending_rows,
+        )
+        conn.commit()
+        pending_rows = []
 
     print(f"[render] Starte Rendering mit {args.workers} Threads ...")
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         futures = {
-            executor.submit(download_tile, session, z, x, y): (z, x, y)
+            executor.submit(download_tile, z, x, y, ports[(z + x + y) % len(ports)]): (z, x, y)
             for z, x, y in tiles
         }
         with tqdm(total=len(tiles), unit="tiles") as pbar:
@@ -472,33 +576,42 @@ def main() -> int:
                 z, x, y, data = future.result()
                 if data:
                     tms_y = flip_y(y, z)
-                    cur.execute(
-                        "INSERT OR REPLACE INTO tiles VALUES (?, ?, ?, ?)",
-                        (z, x, tms_y, data),
-                    )
+                    pending_rows.append((z, x, tms_y, data))
                     successful += 1
-                    if successful % 200 == 0:
-                        conn.commit()
+                    if len(pending_rows) >= batch_size:
+                        flush_pending_rows()
                 else:
                     failed += 1
                     if failed == 1 or failed % 1000 == 0:
-                        if _container_id and not is_container_running(_container_id):
-                            print("\n[error] tileserver-gl Container ist waehrend des Renderings gestoppt")
-                            dump_container_logs(_container_id, tail=args.tileserver_log_tail)
+                        stopped_instance = next(
+                            (
+                                (container_id, port)
+                                for container_id, port in _tileserver_instances
+                                if not is_container_running(container_id)
+                            ),
+                            None,
+                        )
+                        if stopped_instance is not None:
+                            container_id, port = stopped_instance
+                            print(f"\n[error] tileserver-gl Container auf Port {port} ist waehrend des Renderings gestoppt")
+                            dump_container_logs(container_id, tail=args.tileserver_log_tail)
+                            flush_pending_rows()
                             conn.commit()
                             conn.close()
                             return 1
                 pbar.update(1)
 
+    flush_pending_rows()
     conn.commit()
     conn.close()
 
     size_mb = output_path.stat().st_size / 1024 / 1024
     print(f"\n[done]  Erfolgreich: {successful:,}  |  Fehlgeschlagen: {failed:,}")
     print(f"[done]  Ausgabe: {output_path}  ({size_mb:.1f} MB)")
-    if failed > 0 and _container_id:
+    if failed > 0 and _tileserver_instances:
         print(f"[warn] {failed:,} Tile-Requests fehlgeschlagen, zeige Container-Logs zur Diagnose")
-        dump_container_logs(_container_id, tail=args.tileserver_log_tail)
+        for container_id, _ in _tileserver_instances:
+            dump_container_logs(container_id, tail=args.tileserver_log_tail)
 
     elapsed = time.monotonic() - start_time
     h = int(elapsed // 3600)
