@@ -1,0 +1,13 @@
+{
+  "name": "map-local-scripts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node helper scripts for raster rendering experiments",
+  "scripts": {
+    "render-maplibre": "node render_maplibre_native.js"
+  },
+  "dependencies": {
+    "@maplibre/maplibre-gl-native": "^6.0.0",
+    "sql.js": "^1.13.0"
+  }
+}

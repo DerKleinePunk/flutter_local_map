@@ -26,6 +26,7 @@ Die Entscheidung erfolgt zur Laufzeit anhand der MBTiles-Metadaten (`format`, `m
 - Aktivierter Desktop-Support in Flutter
 - Fuer lokale Tile-Erzeugung: Docker (optional zusaetzlich Python-Skripte)
 - Fuer den Raster-Schritt: `git-lfs` (wird fuer `scripts/styles.zip` benoetigt – `sudo apt install git-lfs && git lfs install`)
+- Fuer den experimentellen MapLibre-Renderer: Node.js + npm (getestet mit Node 24.x)
 
 ## Quick Start
 
@@ -58,6 +59,8 @@ flutter run -d linux
 - Tilemaker-Skript: [scripts/tilemaker.sh](scripts/tilemaker.sh)
 - Tilemaker z17 Config: [scripts/tilemaker/config-openmaptiles-z17.json](scripts/tilemaker/config-openmaptiles-z17.json)
 - Raster-Renderer (Vektor -> PNG-MBTiles): [scripts/render_raster.py](scripts/render_raster.py)
+- Experimenteller Renderer mit Benchmark-Fokus: [scripts/render_raster_test.py](scripts/render_raster_test.py)
+- MapLibre Native Helper (persistent worker): [scripts/render_maplibre_native.js](scripts/render_maplibre_native.js)
 - Valhalla Build/Runtime Anleitung: [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md)
 
 ## MBTiles-Handling in der App
@@ -226,6 +229,50 @@ Optionale Umgebungsvariablen fuer den Raster-Schritt:
 - `RASTER_WORKERS` (Standard: `8`)
 
 Hinweis: Die z17-Config erhoeht Detail-Layer bis Zoom 17 inklusive Hausnummern (`housenumber`-Layer ab z14). Das verbessert Details, vergroessert aber Datenmenge und Build-Zeit.
+
+## Experimenteller Renderer-Test (MapLibre Worker)
+
+Fuer schnelle Vergleiche zwischen `tileserver_gl` und `maplibre_native` gibt es den separaten Testpfad in [scripts/render_raster_test.py](scripts/render_raster_test.py). Dieser aendert [scripts/render_raster.py](scripts/render_raster.py) nicht.
+
+Wichtig:
+
+- Input muss ein **Vektor-MBTiles** mit `format=pbf` sein.
+- Raster-MBTiles (`png`, `jpg`, `webp`) sind fuer den `maplibre_native`-Pfad nicht gueltig.
+- Der Node-Helper [scripts/render_maplibre_native.js](scripts/render_maplibre_native.js) nutzt einen persistenten Worker (kein Node-Neustart pro Tile).
+
+Einmaliges Setup:
+
+```bash
+cd scripts
+npm install
+```
+
+Smoke-Test (Dry-Run):
+
+```bash
+cd ..
+python scripts/render_raster_test.py map/test/vogelsberg.mbtiles --maxzoom 12 --renderer auto --dry-run
+```
+
+Beispiel-Benchmark (fairer Vergleich, gleiche Stichprobe):
+
+```bash
+# MapLibre Native (persistent worker)
+python scripts/render_raster_test.py map/test/vogelsberg.mbtiles --maxzoom 14 --renderer maplibre_native --sample-tiles 500 --maplibre-workers 4
+
+# TileServer GL
+python scripts/render_raster_test.py map/test/vogelsberg.mbtiles --maxzoom 14 --renderer tileserver_gl --sample-tiles 500
+```
+
+Empfehlungen aus den bisherigen Messungen (Vogelsberg, Sample 500):
+
+- Bestes Setting: `--maplibre-workers 4`
+- `maplibre_native` war in diesem Setup schneller als `tileserver_gl`
+- Zu viele Worker (z. B. 6 oder 8) reduzierten den Durchsatz
+
+Hinweis zu Hessen-Dateien:
+
+- [map/tiles-germany/hessen.mbtiles](map/tiles-germany/hessen.mbtiles) ist Raster (`format=png`) und daher kein gueltiger Input fuer `maplibre_native`.
 
 ## Konfiguration
 
