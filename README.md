@@ -348,6 +348,12 @@ flutter build windows --release
 flutter build linux --release
 ```
 
+## Changelog (Kurz)
+
+- 2026-04: `maplibre_native` in [scripts/render_raster_test.py](scripts/render_raster_test.py) auf robusten Large-MBTiles-Betrieb aktualisiert.
+- 2026-04: Node-Helper [scripts/render_maplibre_native.js](scripts/render_maplibre_native.js) nutzt jetzt `better-sqlite3` (file-basiert) statt `sql.js` In-Memory-Load.
+- 2026-04: Ubuntu-Hinweise fuer `libopengl0` und `libuv1` sowie Python-Pakete (`python3-requests`, `python3-tqdm`) dokumentiert.
+
 ## Lizenz und Daten
 
 - Code: siehe Projektlizenz
