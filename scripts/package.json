@@ -8,6 +8,6 @@
   },
   "dependencies": {
     "@maplibre/maplibre-gl-native": "^6.0.0",
-    "sql.js": "^1.13.0"
+    "better-sqlite3": "^11.10.0"
   }
 }

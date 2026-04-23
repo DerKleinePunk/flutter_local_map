@@ -12,6 +12,7 @@ Beispiele:
   python scripts/render_raster_test.py map/test/vogelsberg.mbtiles --maxzoom 12 --dry-run
   python scripts/render_raster_test.py map/test/vogelsberg.mbtiles --maxzoom 12 --sample-tiles 5000
   python scripts/render_raster_test.py map/tiles-germany/hessen.mbtiles --maxzoom 17 --workers 24
+  python3 render_raster_test.py map/tiles-germany/germany.mbtiles --maxzoom 17 --sample-tiles 5000 --renderer maplibre_native --maplibre-workers 4
 """
 
 import argparse
@@ -75,7 +76,7 @@ class MapLibreWorker:
         self._lock = threading.Lock()
         self._request_id = 0
         self._stderr_lines: list[str] = []
-        cmd = [
+        self._cmd = [
             node_path,
             str(helper_path),
             "--worker",
@@ -89,8 +90,12 @@ class MapLibreWorker:
             "--gpu",
             gpu_mode,
         ]
+        self._start_process()
+
+    def _start_process(self) -> None:
+        self._stderr_lines = []
         self._process = subprocess.Popen(
-            cmd,
+            self._cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -117,6 +122,14 @@ class MapLibreWorker:
             self.close()
             raise RuntimeError(f"Worker meldet nicht ready: {ready_payload}")
 
+    def _restart_locked(self) -> bool:
+        try:
+            self.close()
+            self._start_process()
+            return True
+        except RuntimeError:
+            return False
+
     def _collect_stderr(self) -> None:
         stderr = self._process.stderr
         if stderr is None:
@@ -138,45 +151,60 @@ class MapLibreWorker:
 
     def render(self, z: int, x: int, y: int) -> bytes | None:
         with self._lock:
-            if self._process.poll() is not None:
-                return None
+            for _ in range(2):
+                if self._process.poll() is not None:
+                    if not self._restart_locked():
+                        return None
 
-            self._request_id += 1
-            payload = {
-                "id": self._request_id,
-                "z": z,
-                "x": x,
-                "y": y,
-            }
+                self._request_id += 1
+                payload = {
+                    "id": self._request_id,
+                    "z": z,
+                    "x": x,
+                    "y": y,
+                }
 
-            if self._process.stdin is None:
-                return None
-            self._process.stdin.write(json.dumps(payload) + "\n")
-            self._process.stdin.flush()
+                if self._process.stdin is None:
+                    if not self._restart_locked():
+                        return None
+                    continue
 
-            line = self._read_line()
-            if line is None:
-                return None
+                try:
+                    self._process.stdin.write(json.dumps(payload) + "\n")
+                    self._process.stdin.flush()
+                except (BrokenPipeError, OSError):
+                    if not self._restart_locked():
+                        return None
+                    continue
 
-            try:
-                response = json.loads(line)
-            except json.JSONDecodeError:
-                return None
+                line = self._read_line()
+                if line is None:
+                    if not self._restart_locked():
+                        return None
+                    continue
 
-            if response.get("id") != self._request_id:
-                return None
+                try:
+                    response = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
 
-            if not response.get("ok"):
-                return None
+                if response.get("id") != self._request_id:
+                    continue
 
-            encoded = response.get("png")
-            if not encoded:
-                return None
+                if not response.get("ok"):
+                    self._restart_locked()
+                    continue
 
-            try:
-                return base64.b64decode(encoded)
-            except Exception:
-                return None
+                encoded = response.get("png")
+                if not encoded:
+                    continue
+
+                try:
+                    return base64.b64decode(encoded)
+                except Exception:
+                    continue
+
+            return None
 
     def diagnostics(self) -> str:
         if not self._stderr_lines:
@@ -606,15 +634,20 @@ def download_tile_maplibre_native(
     if not workers:
         return None
 
-    worker = workers[(z + x + y) % len(workers)]
-    data = worker.render(z, x, y)
-    if data is not None:
-        return data
+    first_index = (z + x + y) % len(workers)
+    last_diag = ""
+    for offset in range(len(workers)):
+        worker = workers[(first_index + offset) % len(workers)]
+        data = worker.render(z, x, y)
+        if data is not None:
+            return data
+        diag = worker.diagnostics()
+        if diag:
+            last_diag = diag
 
     with _maplibre_error_lock:
         if not _maplibre_error_logged:
-            diag = worker.diagnostics()
-            message = diag or "keine zusaetzlichen stderr-details"
+            message = last_diag or "keine zusaetzlichen stderr-details"
             print(f"[error] maplibre worker fehlgeschlagen: {message}")
             _maplibre_error_logged = True
     return None
@@ -794,14 +827,22 @@ def main() -> int:
         print("[done]  Dry-Run abgeschlossen, kein Rendering gestartet.")
         return 0
 
-    _tmp_dir = Path(args.tmp_dir) if args.tmp_dir else default_tmp_dir()
+    if args.tmp_dir:
+        _tmp_dir = Path(args.tmp_dir)
+    elif selected_renderer == "maplibre_native":
+        _tmp_dir = DEFAULT_WORK_DIR / "_maplibre_tmp_test"
+    else:
+        _tmp_dir = default_tmp_dir()
 
     port = TILESERVER_PORT
     tileserver_ready = False
     maplibre_workers: list[MapLibreWorker] = []
 
-    if selected_renderer in {"tileserver_gl", "maplibre_native"}:
+    if selected_renderer == "tileserver_gl":
         prepare_tileserver_data(_tmp_dir, input_path, bbox_str)
+    elif selected_renderer == "maplibre_native":
+        _tmp_dir.mkdir(parents=True, exist_ok=True)
+        unpack_styles_zip_to_tmp(_tmp_dir)
 
     if selected_renderer == "tileserver_gl":
         _container_id = start_tileserver(_tmp_dir, port, verbose_level=args.tileserver_verbose)

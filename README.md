@@ -27,6 +27,8 @@ Die Entscheidung erfolgt zur Laufzeit anhand der MBTiles-Metadaten (`format`, `m
 - Fuer lokale Tile-Erzeugung: Docker (optional zusaetzlich Python-Skripte)
 - Fuer den Raster-Schritt: `git-lfs` (wird fuer `scripts/styles.zip` benoetigt – `sudo apt install git-lfs && git lfs install`)
 - Fuer den experimentellen MapLibre-Renderer: Node.js + npm (getestet mit Node 24.x)
+- Fuer `scripts/render_raster_test.py`: Python-Pakete `requests` und `tqdm` (Ubuntu: `sudo apt install python3-requests python3-tqdm`)
+- Fuer `maplibre_native` unter Ubuntu: OpenGL/UV-Runtime (`sudo apt install libopengl0 libuv1`)
 
 ## Quick Start
 
@@ -239,6 +241,8 @@ Wichtig:
 - Input muss ein **Vektor-MBTiles** mit `format=pbf` sein.
 - Raster-MBTiles (`png`, `jpg`, `webp`) sind fuer den `maplibre_native`-Pfad nicht gueltig.
 - Der Node-Helper [scripts/render_maplibre_native.js](scripts/render_maplibre_native.js) nutzt einen persistenten Worker (kein Node-Neustart pro Tile).
+- Der Node-Helper nutzt file-basiertes SQLite ueber `better-sqlite3` (kein komplettes In-Memory-Laden grosser MBTiles).
+- Fehlende Vektor-Tiles werden als leere Tile behandelt (kein harter Render-Abbruch).
 
 Einmaliges Setup:
 
@@ -246,6 +250,18 @@ Einmaliges Setup:
 cd scripts
 npm install
 ```
+
+Abhaengigkeiten pruefen:
+
+```bash
+cd scripts
+npm ls --depth=0
+```
+
+Erwartet fuer den MapLibre-Pfad:
+
+- `@maplibre/maplibre-gl-native`
+- `better-sqlite3`
 
 Smoke-Test (Dry-Run):
 
@@ -274,6 +290,12 @@ Hinweis zu Hessen-Dateien:
 
 - [map/tiles-germany/hessen.mbtiles](map/tiles-germany/hessen.mbtiles) ist Raster (`format=png`) und daher kein gueltiger Input fuer `maplibre_native`.
 
+Beispiel mit grosser Datei (Germany, Sample):
+
+```bash
+python scripts/render_raster_test.py map/tiles-germany/germany.mbtiles --maxzoom 17 --sample-tiles 5000 --renderer maplibre_native --maplibre-workers 4
+```
+
 ## Konfiguration
 
 Relevante Einstellungen in [lib/config/map_config.dart](lib/config/map_config.dart):
@@ -301,6 +323,22 @@ Relevante Einstellungen in [lib/config/map_config.dart](lib/config/map_config.da
 
 - Effektive Zoom-Grenzen kommen aus MBTiles-Metadaten
 - Bei Tilemaker bestimmt die verwendete Config den `maxzoom`
+
+### maplibre_native startet nicht (libOpenGL/libuv Fehler)
+
+- Typische Meldungen: `libOpenGL.so.0` oder `libuv.so.1` fehlen.
+- Ubuntu-Fix:
+
+```bash
+sudo apt update
+sudo apt install -y libopengl0 libuv1
+```
+
+- Optional pruefen:
+
+```bash
+ldconfig -p | grep -E 'libOpenGL.so.0|libuv.so.1'
+```
 
 ## Build
 

@@ -7,7 +7,7 @@ const readline = require("node:readline");
 const zlib = require("node:zlib");
 
 const mbgl = require("@maplibre/maplibre-gl-native");
-const initSqlJs = require("sql.js");
+const Database = require("better-sqlite3");
 
 function parseArgs(argv) {
   const args = {};
@@ -43,9 +43,9 @@ async function main() {
   if (args.healthcheck === "1") {
     try {
       require("@maplibre/maplibre-gl-native");
-      require("sql.js");
+      require("better-sqlite3");
     } catch (_err) {
-      console.error("[error] Paket @maplibre/maplibre-gl-native oder sql.js ist nicht installiert.");
+      console.error("[error] Paket @maplibre/maplibre-gl-native oder better-sqlite3 ist nicht installiert.");
       process.exit(2);
     }
     process.stdout.write("ok\n");
@@ -108,13 +108,9 @@ async function main() {
   }
 }
 
-async function createRuntime(options) {
+function createRuntime(options) {
   const normalizedStyle = normalizeStyle(options.style, options.styleName);
-  const SQL = await initSqlJs({
-    locateFile: (file) => path.join(path.dirname(require.resolve("sql.js")), file),
-  });
-  const dbBuffer = fs.readFileSync(options.inputPath);
-  const db = new SQL.Database(new Uint8Array(dbBuffer));
+  const db = new Database(options.inputPath, { readonly: true, fileMustExist: true });
   const metadata = readMetadata(db);
 
   const request = (req, callback) => {
@@ -133,7 +129,7 @@ async function createRuntime(options) {
         }
         const data = readVectorTile(db, req.url);
         if (!data) {
-          callback(new Error(`Tile nicht gefunden: ${req.url}`));
+          callback(null, { data: Buffer.alloc(0) });
           return;
         }
         callback(null, { data });
@@ -208,8 +204,17 @@ function startWorker(runtime) {
   });
 }
 
-function renderTile(map, z, x, y) {
+function renderTile(map, z, x, y, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(new Error(`render timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
     const center = xyzTileCenter(z, x, y);
     map.render(
       {
@@ -221,6 +226,12 @@ function renderTile(map, z, x, y) {
         pitch: 0,
       },
       (err, buffer) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(timeout);
+
         if (err) {
           reject(err);
           return;
@@ -278,18 +289,16 @@ function readVectorTile(db, url) {
   const x = Number.parseInt(match[2], 10);
   const y = Number.parseInt(match[3], 10);
   const tmsY = (1 << z) - 1 - y;
-  const sql = `SELECT tile_data FROM tiles WHERE zoom_level = ${z} AND tile_column = ${x} AND tile_row = ${tmsY}`;
-  const rows = db.exec(sql);
-  if (!rows || rows.length === 0 || !rows[0].values || rows[0].values.length === 0) {
+  const row = db
+    .prepare(
+      "SELECT tile_data FROM tiles WHERE zoom_level = ? AND tile_column = ? AND tile_row = ?"
+    )
+    .get(z, x, tmsY);
+  if (!row || !row.tile_data) {
     return null;
   }
 
-  const raw = rows[0].values[0][0];
-  if (!raw) {
-    return null;
-  }
-
-  const data = Buffer.from(raw);
+  const data = Buffer.from(row.tile_data);
   if (data.length >= 2 && data[0] === 0x1f && data[1] === 0x8b) {
     return zlib.gunzipSync(data);
   }
@@ -310,14 +319,12 @@ function isSourceRequest(url) {
 
 function readMetadata(db) {
   const result = {};
-  const stmt = db.prepare("SELECT name, value FROM metadata");
-  while (stmt.step()) {
-    const row = stmt.getAsObject();
+  const rows = db.prepare("SELECT name, value FROM metadata").all();
+  for (const row of rows) {
     if (row && row.name) {
       result[String(row.name)] = String(row.value ?? "");
     }
   }
-  stmt.free();
   return result;
 }
 
