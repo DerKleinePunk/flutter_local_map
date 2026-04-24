@@ -42,7 +42,7 @@ import tempfile
 import threading
 import zipfile
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 try:
     import requests
@@ -70,6 +70,7 @@ TMP_DIR = WORK_DIR / "_tileserver_tmp"
 DEFAULT_WORKERS = max(8, (os.cpu_count() or 4) * 2)
 DEFAULT_TILESERVER_INSTANCES = max(1, min(4, max(1, (os.cpu_count() or 4) // 2)))
 _thread_local = threading.local()
+MAX_INFLIGHT_FACTOR = 4
 
 
 def parse_int_list(raw_value: str) -> list[int]:
@@ -106,14 +107,19 @@ def default_tmp_dir() -> Path:
         return Path(env_tmp_dir)
 
     if running_in_wsl():
-        return Path(tempfile.gettempdir()) / "flutter_local_map_tileserver"
+        tmp_dir = Path(tempfile.mkdtemp(prefix="flutter_local_map_tileserver_"))
+    else:
+        tmp_dir = Path(tempfile.mkdtemp(prefix="flutter_local_map_tileserver_", dir=str(WORK_DIR)))
 
-    return WORK_DIR / "_tileserver_tmp"
+    # tileserver-gl laeuft als non-root (uid 999) und muss /data traversieren koennen.
+    tmp_dir.chmod(0o755)
+    return tmp_dir
 
 
 def _cleanup_container() -> None:
     for container_id, _ in _tileserver_instances:
         subprocess.run(["docker", "stop", container_id], capture_output=True)
+        subprocess.run(["docker", "rm", "-f", container_id], capture_output=True)
     _tileserver_instances.clear()
     if TMP_DIR.exists():
         shutil.rmtree(TMP_DIR, ignore_errors=True)
@@ -174,8 +180,8 @@ def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_m
     cur = conn.cursor()
     cur.execute("PRAGMA journal_mode=WAL")
     cur.execute("PRAGMA synchronous=NORMAL")
-    cur.execute("PRAGMA temp_store=MEMORY")
-    cur.execute("PRAGMA cache_size=-200000")
+    cur.execute("PRAGMA temp_store=FILE")
+    cur.execute("PRAGMA cache_size=-65536")
     cur.execute("CREATE TABLE metadata (name TEXT PRIMARY KEY, value TEXT)")
     cur.execute("""
         CREATE TABLE tiles (
@@ -223,6 +229,97 @@ def copy_file_with_progress(src: Path, dst: Path, chunk_size: int = 8 * 1024 * 1
                 progress.update(len(chunk))
 
     shutil.copystat(src, dst)
+
+
+def tile_x_to_lon(tile_x: int, zoom: int) -> float:
+    return tile_x / (1 << zoom) * 360.0 - 180.0
+
+
+def tile_y_to_lat(tile_y: int, zoom: int) -> float:
+    n = math.pi - (2.0 * math.pi * tile_y) / (1 << zoom)
+    return math.degrees(math.atan(math.sinh(n)))
+
+
+def derive_bounds_from_tiles(db_path: Path, zoom_level: int) -> str | None:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                MIN(tile_column),
+                MAX(tile_column),
+                MIN(tile_row),
+                MAX(tile_row)
+            FROM tiles
+            WHERE zoom_level = ?
+            """,
+            (zoom_level,),
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if row is None or any(value is None for value in row):
+        return None
+
+    min_x, max_x, min_tms_y, max_tms_y = row
+    min_xyz_y = flip_y(max_tms_y, zoom_level)
+    max_xyz_y = flip_y(min_tms_y, zoom_level)
+
+    west = tile_x_to_lon(min_x, zoom_level)
+    east = tile_x_to_lon(max_x + 1, zoom_level)
+    north = tile_y_to_lat(min_xyz_y, zoom_level)
+    south = tile_y_to_lat(max_xyz_y + 1, zoom_level)
+    return f"{west:.6f},{south:.6f},{east:.6f},{north:.6f}"
+
+
+def resolve_bounds(db_path: Path, metadata: dict[str, str], zoom_level: int) -> tuple[str, str]:
+    metadata_bounds = metadata.get("bounds", "").strip()
+    derived_bounds = derive_bounds_from_tiles(db_path, zoom_level)
+
+    if not metadata_bounds and not derived_bounds:
+        return "", "missing"
+    if not metadata_bounds:
+        return derived_bounds or "", "derived-missing-metadata"
+    if not derived_bounds:
+        return metadata_bounds, "metadata-no-tiles"
+    if metadata_bounds != derived_bounds:
+        return derived_bounds, "derived-metadata-mismatch"
+    return metadata_bounds, "metadata"
+
+
+def count_tiles_in_db(db_path: Path, zoom_min: int, zoom_max: int) -> int:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM tiles WHERE zoom_level BETWEEN ? AND ?",
+            (zoom_min, zoom_max),
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+    return int(row[0] if row and row[0] is not None else 0)
+
+
+def iter_tiles_from_mbtiles(db_path: Path, zoom_min: int, zoom_max: int):
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT zoom_level, tile_column, tile_row
+            FROM tiles
+            WHERE zoom_level BETWEEN ? AND ?
+            ORDER BY zoom_level, tile_column, tile_row
+            """,
+            (zoom_min, zoom_max),
+        )
+        for z, x, tms_y in cur:
+            yield (z, x, flip_y(tms_y, z))
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +379,7 @@ def start_tileserver(port: int, verbose_level: int = 2) -> tuple[str, int]:
     TMP_DIR.mkdir(parents=True, exist_ok=True)
 
     cmd = [
-        "docker", "run", "-d", "--rm",
+        "docker", "run", "-d",
         "-p", f"{port}:8080",
         "-v", f"{TMP_DIR}:/data",
         TILESERVER_IMAGE,
@@ -322,6 +419,7 @@ def prepare_tileserver_data(
     min_renderer_pool_sizes: list[int] | None,
 ) -> None:
     TMP_DIR.mkdir(parents=True, exist_ok=True)
+    TMP_DIR.chmod(0o755)
 
     src = WORK_DIR / mbtiles_name
     dst = TMP_DIR / "source.mbtiles"
@@ -501,18 +599,19 @@ def main() -> int:
 
     zoom_min = int(meta.get("minzoom", 0))
     zoom_max = min(args.maxzoom, int(meta.get("maxzoom", 16)))
-    bbox_str = meta.get("bounds", "")
+    bbox_str, bounds_source = resolve_bounds(input_path, meta, zoom_min)
     if not bbox_str:
         print("[error] Keine BBox in den MBTiles-Metadaten gefunden")
         return 1
 
-    tiles = generate_tiles(bbox_str, zoom_min, zoom_max)
+    total_tiles = count_tiles_in_db(input_path, zoom_min, zoom_max)
 
     print(f"[info]  Quelle:  {input_path.name}")
     print(f"[info]  Ausgabe: {output_path.name}")
     print(f"[info]  BBox:    {bbox_str}")
+    print(f"[info]  Bounds:  {bounds_source}")
     print(f"[info]  Zoom:    z{zoom_min}–z{zoom_max}")
-    print(f"[info]  Tiles:   {len(tiles):,}")
+    print(f"[info]  Tiles:   {total_tiles:,}")
     print(f"[info]  Temp:    {TMP_DIR}")
     print(f"[info]  Server:  {args.tileserver_instances}")
     if args.max_renderer_pool_sizes:
@@ -563,43 +662,61 @@ def main() -> int:
             pending_rows,
         )
         conn.commit()
+        cur.execute("PRAGMA wal_checkpoint(PASSIVE)")
         pending_rows = []
 
     print(f"[render] Starte Rendering mit {args.workers} Threads ...")
+    max_inflight = max(args.workers, args.workers * MAX_INFLIGHT_FACTOR)
+
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = {
-            executor.submit(download_tile, z, x, y, ports[(z + x + y) % len(ports)]): (z, x, y)
-            for z, x, y in tiles
-        }
-        with tqdm(total=len(tiles), unit="tiles") as pbar:
-            for future in as_completed(futures):
-                z, x, y, data = future.result()
-                if data:
-                    tms_y = flip_y(y, z)
-                    pending_rows.append((z, x, tms_y, data))
-                    successful += 1
-                    if len(pending_rows) >= batch_size:
-                        flush_pending_rows()
-                else:
-                    failed += 1
-                    if failed == 1 or failed % 1000 == 0:
-                        stopped_instance = next(
-                            (
-                                (container_id, port)
-                                for container_id, port in _tileserver_instances
-                                if not is_container_running(container_id)
-                            ),
-                            None,
-                        )
-                        if stopped_instance is not None:
-                            container_id, port = stopped_instance
-                            print(f"\n[error] tileserver-gl Container auf Port {port} ist waehrend des Renderings gestoppt")
-                            dump_container_logs(container_id, tail=args.tileserver_log_tail)
+        tile_iter = iter_tiles_from_mbtiles(input_path, zoom_min, zoom_max)
+        inflight = set()
+
+        def submit_until_full() -> None:
+            while len(inflight) < max_inflight:
+                try:
+                    z, x, y = next(tile_iter)
+                except StopIteration:
+                    break
+                inflight.add(
+                    executor.submit(download_tile, z, x, y, ports[(z + x + y) % len(ports)])
+                )
+
+        submit_until_full()
+
+        with tqdm(total=total_tiles, unit="tiles") as pbar:
+            while inflight:
+                done, inflight = wait(inflight, return_when=FIRST_COMPLETED)
+                for future in done:
+                    z, x, y, data = future.result()
+                    if data:
+                        tms_y = flip_y(y, z)
+                        pending_rows.append((z, x, tms_y, data))
+                        successful += 1
+                        if len(pending_rows) >= batch_size:
                             flush_pending_rows()
-                            conn.commit()
-                            conn.close()
-                            return 1
-                pbar.update(1)
+                    else:
+                        failed += 1
+                        if failed == 1 or failed % 1000 == 0:
+                            stopped_instance = next(
+                                (
+                                    (container_id, port)
+                                    for container_id, port in _tileserver_instances
+                                    if not is_container_running(container_id)
+                                ),
+                                None,
+                            )
+                            if stopped_instance is not None:
+                                container_id, port = stopped_instance
+                                print(f"\n[error] tileserver-gl Container auf Port {port} ist waehrend des Renderings gestoppt")
+                                dump_container_logs(container_id, tail=args.tileserver_log_tail)
+                                flush_pending_rows()
+                                conn.commit()
+                                conn.close()
+                                return 1
+                    pbar.update(1)
+
+                submit_until_full()
 
     flush_pending_rows()
     conn.commit()

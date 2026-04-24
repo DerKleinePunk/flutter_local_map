@@ -30,9 +30,10 @@ import sys
 import tempfile
 import threading
 import time
+import select
 import zipfile
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 
 try:
     import requests
@@ -62,6 +63,8 @@ _container_id: str | None = None
 _tmp_dir: Path | None = None
 _maplibre_error_logged = False
 _maplibre_error_lock = threading.Lock()
+MAPLIBRE_READ_TIMEOUT_SECONDS = 30
+MAX_INFLIGHT_FACTOR = 4
 
 
 class MapLibreWorker:
@@ -141,9 +144,13 @@ class MapLibreWorker:
                 if len(self._stderr_lines) > 30:
                     self._stderr_lines = self._stderr_lines[-30:]
 
-    def _read_line(self) -> str | None:
+    def _read_line(self, timeout: float | None = None) -> str | None:
         if self._process.stdout is None:
             return None
+        if timeout is not None:
+            ready, _, _ = select.select([self._process.stdout], [], [], timeout)
+            if not ready:
+                return None
         line = self._process.stdout.readline()
         if line == "":
             return None
@@ -177,7 +184,7 @@ class MapLibreWorker:
                         return None
                     continue
 
-                line = self._read_line()
+                line = self._read_line(timeout=MAPLIBRE_READ_TIMEOUT_SECONDS)
                 if line is None:
                     if not self._restart_locked():
                         return None
@@ -249,8 +256,8 @@ def default_tmp_dir() -> Path:
     if env_tmp_dir:
         return Path(env_tmp_dir)
     if running_in_wsl():
-        return Path(tempfile.gettempdir()) / "flutter_local_map_tileserver_test"
-    return DEFAULT_WORK_DIR / "_tileserver_tmp_test"
+        return Path(tempfile.mkdtemp(prefix="flutter_local_map_tileserver_test_"))
+    return Path(tempfile.mkdtemp(prefix="flutter_local_map_tileserver_test_", dir=str(DEFAULT_WORK_DIR)))
 
 
 def cleanup() -> None:
@@ -278,18 +285,27 @@ def flip_y(y: int, zoom: int) -> int:
     return (1 << zoom) - 1 - y
 
 
-def generate_tiles(bbox_str: str, zoom_min: int, zoom_max: int) -> list[tuple[int, int, int]]:
-    west, south, east, north = map(float, bbox_str.split(","))
-    tiles: list[tuple[int, int, int]] = []
-    for z in range(zoom_min, zoom_max + 1):
-        x0 = lon_to_tile_x(west, z)
-        x1 = lon_to_tile_x(east, z)
-        y0 = lat_to_tile_y(north, z)
-        y1 = lat_to_tile_y(south, z)
-        for x in range(x0, x1 + 1):
-            for y in range(y0, y1 + 1):
-                tiles.append((z, x, y))
-    return tiles
+def tile_x_to_lon(tile_x: int, zoom: int) -> float:
+    return tile_x / (1 << zoom) * 360.0 - 180.0
+
+
+def tile_y_to_lat(tile_y: int, zoom: int) -> float:
+    n = math.pi - (2.0 * math.pi * tile_y) / (1 << zoom)
+    return math.degrees(math.atan(math.sinh(n)))
+
+
+def count_tiles_in_db(db_path: Path, zoom_min: int, zoom_max: int) -> int:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT COUNT(*) FROM tiles WHERE zoom_level BETWEEN ? AND ?",
+            (zoom_min, zoom_max),
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+    return int(row[0] if row and row[0] is not None else 0)
 
 
 def read_metadata(db_path: Path) -> dict[str, str]:
@@ -301,6 +317,55 @@ def read_metadata(db_path: Path) -> dict[str, str]:
     return meta
 
 
+def derive_bounds_from_tiles(db_path: Path, zoom_level: int) -> str | None:
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                MIN(tile_column),
+                MAX(tile_column),
+                MIN(tile_row),
+                MAX(tile_row)
+            FROM tiles
+            WHERE zoom_level = ?
+            """,
+            (zoom_level,),
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if row is None or any(value is None for value in row):
+        return None
+
+    min_x, max_x, min_tms_y, max_tms_y = row
+    min_xyz_y = flip_y(max_tms_y, zoom_level)
+    max_xyz_y = flip_y(min_tms_y, zoom_level)
+
+    west = tile_x_to_lon(min_x, zoom_level)
+    east = tile_x_to_lon(max_x + 1, zoom_level)
+    north = tile_y_to_lat(min_xyz_y, zoom_level)
+    south = tile_y_to_lat(max_xyz_y + 1, zoom_level)
+    return f"{west:.6f},{south:.6f},{east:.6f},{north:.6f}"
+
+
+def resolve_bounds(db_path: Path, metadata: dict[str, str], zoom_level: int) -> tuple[str, str]:
+    metadata_bounds = metadata.get("bounds", "").strip()
+    derived_bounds = derive_bounds_from_tiles(db_path, zoom_level)
+
+    if not metadata_bounds and not derived_bounds:
+        return "", "missing"
+    if not metadata_bounds:
+        return derived_bounds or "", "derived-missing-metadata"
+    if not derived_bounds:
+        return metadata_bounds, "metadata-no-tiles"
+    if metadata_bounds != derived_bounds:
+        return derived_bounds, "derived-metadata-mismatch"
+    return metadata_bounds, "metadata"
+
+
 def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_max: int) -> sqlite3.Connection:
     if output_path.exists():
         output_path.unlink()
@@ -308,8 +373,8 @@ def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_m
     cur = conn.cursor()
     cur.execute("PRAGMA journal_mode=WAL")
     cur.execute("PRAGMA synchronous=NORMAL")
-    cur.execute("PRAGMA temp_store=MEMORY")
-    cur.execute("PRAGMA cache_size=-200000")
+    cur.execute("PRAGMA temp_store=FILE")
+    cur.execute("PRAGMA cache_size=-65536")
     cur.execute("CREATE TABLE metadata (name TEXT PRIMARY KEY, value TEXT)")
     cur.execute(
         """
@@ -653,15 +718,54 @@ def download_tile_maplibre_native(
     return None
 
 
-def maybe_sample_tiles(tiles: list[tuple[int, int, int]], sample_tiles: int | None) -> list[tuple[int, int, int]]:
-    if sample_tiles is None or sample_tiles <= 0:
-        return tiles
-    if sample_tiles >= len(tiles):
-        return tiles
+def sample_tiles_from_iterator(
+    tile_iterator,
+    sample_tiles: int,
+) -> list[tuple[int, int, int]]:
     random.seed(42)
-    sampled = random.sample(tiles, sample_tiles)
-    sampled.sort()
-    return sampled
+    reservoir: list[tuple[int, int, int]] = []
+    for index, tile in enumerate(tile_iterator):
+        if index < sample_tiles:
+            reservoir.append(tile)
+            continue
+
+        replacement_index = random.randint(0, index)
+        if replacement_index < sample_tiles:
+            reservoir[replacement_index] = tile
+
+    reservoir.sort()
+    return reservoir
+
+
+def iter_tiles_from_mbtiles(db_path: Path, zoom_min: int, zoom_max: int):
+    conn = sqlite3.connect(str(db_path))
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT zoom_level, tile_column, tile_row
+            FROM tiles
+            WHERE zoom_level BETWEEN ? AND ?
+            ORDER BY zoom_level, tile_column, tile_row
+            """,
+            (zoom_min, zoom_max),
+        )
+        for z, x, tms_y in cur:
+            yield (z, x, flip_y(tms_y, z))
+    finally:
+        conn.close()
+
+
+def iter_tiles(bbox_str: str, zoom_min: int, zoom_max: int):
+    west, south, east, north = map(float, bbox_str.split(","))
+    for z in range(zoom_min, zoom_max + 1):
+        x0 = lon_to_tile_x(west, z)
+        x1 = lon_to_tile_x(east, z)
+        y0 = lat_to_tile_y(north, z)
+        y1 = lat_to_tile_y(south, z)
+        for x in range(x0, x1 + 1):
+            for y in range(y0, y1 + 1):
+                yield (z, x, y)
 
 
 def main() -> int:
@@ -752,13 +856,19 @@ def main() -> int:
 
     zoom_min = int(meta.get("minzoom", 0))
     zoom_max = min(args.maxzoom, int(meta.get("maxzoom", 16)))
-    bbox_str = meta.get("bounds", "")
+    bbox_str, bounds_source = resolve_bounds(input_path, meta, zoom_min)
     if not bbox_str:
         print("[error] Keine bounds in den MBTiles-Metadaten gefunden")
         return 1
 
-    all_tiles = generate_tiles(bbox_str, zoom_min, zoom_max)
-    tiles = maybe_sample_tiles(all_tiles, args.sample_tiles)
+    total_tiles = count_tiles_in_db(input_path, zoom_min, zoom_max)
+    if args.sample_tiles and args.sample_tiles > 0:
+        tiles = sample_tiles_from_iterator(
+            iter_tiles_from_mbtiles(input_path, zoom_min, zoom_max),
+            min(args.sample_tiles, total_tiles),
+        )
+    else:
+        tiles = None
 
     selected_renderer = args.renderer
     if selected_renderer == "auto":
@@ -815,9 +925,10 @@ def main() -> int:
     print(f"[info]  Ausgabe:   {output_path}")
     print(f"[info]  Zoom:      z{zoom_min}-z{zoom_max}")
     print(f"[info]  BBox:      {bbox_str}")
-    print(f"[info]  Alle Tiles:{len(all_tiles):,}")
+    print(f"[info]  Bounds:    {bounds_source}")
+    print(f"[info]  Alle Tiles:{total_tiles:,}")
     if args.sample_tiles:
-        print(f"[info]  Sample:    {len(tiles):,}")
+        print(f"[info]  Sample:    {len(tiles or []):,}")
     print(f"[info]  Renderer:  {selected_renderer} (requested: {args.renderer})")
     print(f"[info]  GPU-Mode:  {args.gpu}")
     if selected_renderer == "maplibre_native":
@@ -869,6 +980,7 @@ def main() -> int:
     failed = 0
     pending_rows: list[tuple[int, int, int, bytes]] = []
     batch_size = max(200, args.workers * 4)
+    total_to_process = len(tiles) if tiles is not None else total_tiles
 
     def flush_pending_rows() -> None:
         nonlocal pending_rows
@@ -879,6 +991,7 @@ def main() -> int:
             pending_rows,
         )
         conn.commit()
+        cur.execute("PRAGMA wal_checkpoint(PASSIVE)")
         pending_rows = []
 
     print(f"[render] Starte Rendering mit {args.workers} Workern ...")
@@ -898,20 +1011,38 @@ def main() -> int:
     if selected_renderer == "maplibre_native":
         executor_workers = max(1, args.maplibre_workers)
 
+    max_inflight = max(executor_workers, executor_workers * MAX_INFLIGHT_FACTOR)
+
     with ThreadPoolExecutor(max_workers=executor_workers) as executor:
-        futures = {executor.submit(render_one, tile): tile for tile in tiles}
-        with tqdm(total=len(tiles), unit="tiles") as pbar:
-            for future in as_completed(futures):
-                z, x, y, data = future.result()
-                if data:
-                    tms_y = flip_y(y, z)
-                    pending_rows.append((z, x, tms_y, data))
-                    successful += 1
-                    if len(pending_rows) >= batch_size:
-                        flush_pending_rows()
-                else:
-                    failed += 1
-                pbar.update(1)
+        tile_iter = iter(tiles) if tiles is not None else iter_tiles_from_mbtiles(input_path, zoom_min, zoom_max)
+        inflight = set()
+
+        def submit_until_full() -> None:
+            while len(inflight) < max_inflight:
+                try:
+                    tile = next(tile_iter)
+                except StopIteration:
+                    break
+                inflight.add(executor.submit(render_one, tile))
+
+        submit_until_full()
+
+        with tqdm(total=total_to_process, unit="tiles") as pbar:
+            while inflight:
+                done, inflight = wait(inflight, return_when=FIRST_COMPLETED)
+                for future in done:
+                    z, x, y, data = future.result()
+                    if data:
+                        tms_y = flip_y(y, z)
+                        pending_rows.append((z, x, tms_y, data))
+                        successful += 1
+                        if len(pending_rows) >= batch_size:
+                            flush_pending_rows()
+                    else:
+                        failed += 1
+                    pbar.update(1)
+
+                submit_until_full()
 
     flush_pending_rows()
     conn.commit()
