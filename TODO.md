@@ -22,9 +22,12 @@
   - Leeres Source-Mapping verhindern.
 
 ## P1 - Hoch
-- [ ] Fehlerbehandlung für Offline-Betrieb verbessern
-  - Fehlerklassen: Asset fehlt, JSON ungültig, keine Sources, MBTiles-Format unbekannt.
-  - Nutzerfreundliche Meldungen + technische Debug-Logs.
+- [x] Fehlerbehandlung für Offline-Betrieb verbessern
+  - ✅ Fehlerklassifizierung implementiert (MapErrorHandler.classify)
+  - ✅ Nutzerfreundliche Meldungen + technische Debug-Logs
+  - ✅ Fehlerklassen: AssetMissing, JsonInvalid, SqliteError, StyleMissingSource, etc.
+  - ✅ MbTilesException für strukturierte Fehlerbehandlung
+  - ✅ Tests validieren Fehlerklassifizierung (test/map_error_handler_test.dart)
 
 - [ ] Async-Race-Schutz beim MBTiles-Wechsel
   - Request-Token/Generation einführen.

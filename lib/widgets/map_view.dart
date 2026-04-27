@@ -13,6 +13,7 @@ import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 import '../config/map_config.dart';
 import '../services/gps_nmea_simulator_service.dart';
+import '../services/map_error_handler.dart';
 import '../services/offline_geocoder.dart';
 import '../services/valhalla_routing_service.dart';
 import 'search_bar.dart';
@@ -323,9 +324,18 @@ class _MapViewState extends State<MapView> {
           vectorSprites = styleResult.sprites;
           vectorTileProviders = styleResult.tileProviders;
           _activeVectorStyleAssetPath = styleResult.assetPath;
-        } catch (assetError) {
-          debugPrint('Lokale Styles fehlgeschlagen: $assetError');
-          debugPrint('Verwende Fallback-Theme ohne Labels');
+        } catch (assetError, stackTrace) {
+          final mapError = MapErrorHandler.classify(
+            assetError,
+            stackTrace,
+            context: 'Loading vector style',
+          );
+          MapErrorHandler.logError(
+            'Fallback: Using light theme without styling',
+            error: assetError,
+            stackTrace: stackTrace,
+            context: 'Vector style loading',
+          );
           vectorTheme = vtr.ProvidedThemes.lightTheme();
           vectorSprites = null;
           vectorTileProviders = _buildFallbackVectorTileProviders(provider);
@@ -352,12 +362,18 @@ class _MapViewState extends State<MapView> {
       }
 
       if (format != null && !_rasterFormats.contains(format)) {
+        final error = MapErrorHandler.classifyUnsupportedFormat(
+          format,
+          mbtilesPath: widget.mbtilesPath,
+        );
         setState(() {
           _isLoading = false;
-          _errorMessage =
-              'Nicht unterstütztes MBTiles-Format: $format. '
-              'Erwartet werden Raster (png/jpg/webp) oder Vektor (pbf).';
+          _errorMessage = error.userMessage;
         });
+        MapErrorHandler.logError(
+          error.technicalMessage,
+          context: 'Format validation',
+        );
         return;
       }
 
@@ -376,11 +392,22 @@ class _MapViewState extends State<MapView> {
         _isLoading = false;
         _errorMessage = null;
       });
-    } catch (e) {
+    } catch (e, stackTrace) {
+      final mapError = MapErrorHandler.classify(
+        e,
+        stackTrace,
+        context: 'TileProvider initialization',
+      );
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Fehler beim Laden der Kartendaten: $e';
+        _errorMessage = mapError.userMessage;
       });
+      MapErrorHandler.logError(
+        mapError.technicalMessage,
+        error: e,
+        stackTrace: stackTrace,
+        context: 'TileProvider init failed',
+      );
     }
   }
 
@@ -408,7 +435,10 @@ class _MapViewState extends State<MapView> {
     };
 
     if (sourceIds.isEmpty) {
-      throw StateError('Lokaler Style enthält keine Tile-Quellen.');
+      throw MbTilesException(
+        'Style contains no tile sources. Check style.json sources and layers.',
+        category: MapErrorCategory.styleMissingSource,
+      );
     }
 
     if (sourceIds.any(_knownVectorSourceAliases.contains)) {
@@ -431,16 +461,23 @@ class _MapViewState extends State<MapView> {
     required _MbtilesMetadataInfo metadata,
   }) async {
     Object? lastError;
+    final errors = <String>[];
 
     for (final styleAssetPath in _orderedLocalStyleAssets()) {
       try {
-        debugPrint('Lade lokalen Asset-Style: $styleAssetPath');
+        MapErrorHandler.logDebug(
+          'Loading local asset style',
+          context: styleAssetPath,
+        );
 
         final styleText = await rootBundle.loadString(styleAssetPath);
         final decoded = jsonDecode(styleText);
 
         if (decoded is! Map<String, dynamic>) {
-          throw StateError('Lokaler Style ist kein JSON-Objekt.');
+          throw MbTilesException(
+            'Style JSON is not a valid object',
+            category: MapErrorCategory.jsonInvalid,
+          );
         }
 
         _validateStyleCompatibility(
@@ -457,8 +494,9 @@ class _MapViewState extends State<MapView> {
           provider: provider,
         );
 
-        debugPrint(
-          'Lokaler Asset-Style geladen ($styleAssetPath): ${theme.layers.length} Layer, Sources: ${tileProviders.tileProviderBySource.keys.join(', ')}',
+        MapErrorHandler.logDebug(
+          'Style loaded successfully: ${theme.layers.length} layers',
+          context: styleAssetPath,
         );
 
         return _LocalVectorStyleLoadResult(
@@ -467,16 +505,31 @@ class _MapViewState extends State<MapView> {
           tileProviders: tileProviders,
           assetPath: styleAssetPath,
         );
-      } catch (error) {
-        lastError = error;
-        debugPrint(
-          'Lokaler Asset-Style fehlgeschlagen ($styleAssetPath): $error',
+      } catch (error, stackTrace) {
+        final mapError = MapErrorHandler.classify(
+          error,
+          stackTrace,
+          context: 'Style asset $styleAssetPath',
         );
+        MapErrorHandler.logError(
+          mapError.technicalMessage,
+          error: error,
+          stackTrace: stackTrace,
+          context: 'Vector style parse',
+        );
+        errors.add('$styleAssetPath: ${mapError.userMessage}');
+        lastError = error;
       }
     }
 
-    throw StateError(
-      'Kein lokaler Vektor-Style konnte geladen werden. Letzter Fehler: $lastError',
+    // All assets failed
+    final allErrors = errors.isNotEmpty 
+      ? errors.join('\n')
+      : 'Unknown error loading styles';
+    throw MbTilesException(
+      'Could not load any local vector style.\n$allErrors',
+      category: MapErrorCategory.assetMissing,
+      originalError: lastError,
     );
   }
 
@@ -593,10 +646,11 @@ class _MapViewState extends State<MapView> {
       return;
     }
 
-    throw StateError(
-      'Lokaler Style ist nicht mit dem MBTiles-Schema kompatibel. '
-      'MBTiles-Layer: ${mbtilesMetadata.vectorLayerIds.join(', ')}, '
-      'Style-Layer: ${styleSourceLayerIds.join(', ')}',
+    throw MbTilesException(
+      'Style layers not compatible with MBTiles data.\n'
+      'MBTiles layers: ${mbtilesMetadata.vectorLayerIds.join(', ')}\n'
+      'Style layers: ${styleSourceLayerIds.join(', ')}',
+      category: MapErrorCategory.styleLayerIncompatible,
     );
   }
 
