@@ -40,6 +40,11 @@ class _MapViewState extends State<MapView> {
   final ValhallaRoutingService _routingService = ValhallaRoutingService();
   final GpsNmeaSimulatorService _gpsSimulator = GpsNmeaSimulatorService();
   StreamSubscription<SimulatedGpsFix>? _gpsFixSubscription;
+  
+  /// Token to track initialization requests and prevent race conditions.
+  /// Incremented each time _initializeTileProvider is called.
+  int _initializationToken = 0;
+  
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
   TileProviders? _vectorTileProviders;
@@ -287,8 +292,20 @@ class _MapViewState extends State<MapView> {
 
   Future<void> _initializeTileProvider() async {
     _disposeTileResources();
+    
+    // Increment token to invalidate any previous initialization requests
+    _initializationToken++;
+    final currentToken = _initializationToken;
+    
+    MapErrorHandler.logDebug(
+      'Starting tile provider initialization',
+      context: 'Token $_initializationToken',
+    );
 
     if (widget.mbtilesPath == null) {
+      // Check token before setState to prevent race conditions
+      if (!mounted || _initializationToken != currentToken) return;
+      
       setState(() {
         _isLoading = false;
         _errorMessage = 'Keine Kartendaten verfügbar';
@@ -299,6 +316,16 @@ class _MapViewState extends State<MapView> {
     try {
       debugPrint('[map] Attempting to load MBTiles database: ${widget.mbtilesPath!}');
       final metadata = await _readMbtilesMetadata(widget.mbtilesPath!);
+      
+      // Token check after first async operation
+      if (_initializationToken != currentToken) {
+        MapErrorHandler.logDebug(
+          'Tile provider init cancelled (newer request running)',
+          context: 'Token $currentToken',
+        );
+        return;
+      }
+      
       final format = metadata.format;
       final minZoom = metadata.minZoom ?? MapConfig.minZoom.toDouble();
       final maxZoom = metadata.maxZoom ?? MapConfig.maxZoom.toDouble();
@@ -342,8 +369,13 @@ class _MapViewState extends State<MapView> {
           _activeVectorStyleAssetPath = null;
         }
 
-        if (!mounted) {
+        // Token check before setState
+        if (!mounted || _initializationToken != currentToken) {
           mbtiles.close();
+          MapErrorHandler.logDebug(
+            'Vector init cancelled (newer request running)',
+            context: 'Token $currentToken',
+          );
           return;
         }
 
@@ -366,6 +398,10 @@ class _MapViewState extends State<MapView> {
           format,
           mbtilesPath: widget.mbtilesPath,
         );
+        
+        // Token check before setState
+        if (!mounted || _initializationToken != currentToken) return;
+        
         setState(() {
           _isLoading = false;
           _errorMessage = error.userMessage;
@@ -379,8 +415,13 @@ class _MapViewState extends State<MapView> {
 
       final provider = MbTilesTileProvider.fromPath(path: widget.mbtilesPath!);
 
-      if (!mounted) {
+      // Token check before setState
+      if (!mounted || _initializationToken != currentToken) {
         provider.dispose();
+        MapErrorHandler.logDebug(
+          'Raster init cancelled (newer request running)',
+          context: 'Token $currentToken',
+        );
         return;
       }
 
@@ -393,11 +434,23 @@ class _MapViewState extends State<MapView> {
         _errorMessage = null;
       });
     } catch (e, stackTrace) {
+      // Token check even in error path
+      if (_initializationToken != currentToken) {
+        MapErrorHandler.logDebug(
+          'Error in cancelled tile provider init',
+          context: 'Token $currentToken (ignoring)',
+        );
+        return;
+      }
+      
       final mapError = MapErrorHandler.classify(
         e,
         stackTrace,
         context: 'TileProvider initialization',
       );
+      
+      if (!mounted) return;
+      
       setState(() {
         _isLoading = false;
         _errorMessage = mapError.userMessage;

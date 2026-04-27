@@ -29,10 +29,11 @@
   - ✅ MbTilesException für strukturierte Fehlerbehandlung
   - ✅ Tests validieren Fehlerklassifizierung (test/map_error_handler_test.dart)
 
-- [ ] Async-Race-Schutz beim MBTiles-Wechsel
-  - Request-Token/Generation einführen.
-  - Veraltete async-Resultate ignorieren.
-  - Keine `setState`-Aufrufe aus alten Requests.
+- [x] Async-Race-Schutz beim MBTiles-Wechsel
+  - ✅ Request-Token/Generation eingeführt (_initializationToken)
+  - ✅ Token inkrementiert bei jedem _initializeTileProvider Call
+  - ✅ Token-Check vor jedem setState verhindert stale Updates
+  - ✅ Tests validieren Token-basierte Deduplication (test/map_view_race_prevention_test.dart)
 
 ## P2 - Mittel
 - [ ] Rebuilds bei Zoom reduzieren
