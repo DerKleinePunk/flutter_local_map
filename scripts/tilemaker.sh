@@ -38,6 +38,7 @@ show_usage() {
   echo "Optionale Umgebungsvariablen fuer Raster-Schritt:"
   echo "  RASTER_MAXZOOM (default: 17)"
   echo "  RASTER_WORKERS (default: 8)"
+  echo "  RASTER_FORMAT  (default: png; 'jpeg' fuer kleinere Tiles ~3-5x)"
   echo "  RASTER_TILESERVER_INSTANCES (default: auto in render_raster.py)"
   echo "  RASTER_MAX_RENDERER_POOL_SIZES (z. B. 24 oder 24,12,6)"
   echo "  RASTER_MIN_RENDERER_POOL_SIZES (z. B. 24 oder 24,12,6)"
@@ -183,6 +184,11 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
     TILEMAKER_REBUILD_ARG+=(--merge)
   fi
 
+  # Anzahl Threads fuer tilemaker: Standard = alle verfuegbaren CPU-Kerne.
+  # Mit --threads 0 nutzt tilemaker automatisch alle Kerne.
+  # Kann per Env-Variable TILEMAKER_THREADS ueberschrieben werden.
+  TILEMAKER_THREADS="${TILEMAKER_THREADS:-0}"
+
   docker run -it --rm --pull always \
     -w /data \
     -v "$WORK_DIR:/data" \
@@ -192,6 +198,8 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
       --output /data/$OUTPUT_MBTILES \
       --config /workspace/scripts/tilemaker/config-openmaptiles-z17.json \
       --process /usr/src/app/resources/process-openmaptiles.lua \
+      --fast \
+      --threads "$TILEMAKER_THREADS" \
       "${TILEMAKER_REBUILD_ARG[@]}" \
       "${BBOX_ARG[@]}" \
       --store /data/temp
@@ -253,6 +261,7 @@ if [ "$GENERATE_RASTER" = "1" ]; then
   RASTER_OUTPUT="${OUTPUT_MBTILES%.mbtiles}_raster.mbtiles"
   RASTER_MAXZOOM="${RASTER_MAXZOOM:-17}"
   RASTER_WORKERS="${RASTER_WORKERS:-8}"
+  RASTER_FORMAT="${RASTER_FORMAT:-png}"
   RASTER_TILESERVER_INSTANCES="${RASTER_TILESERVER_INSTANCES:-}"
   RASTER_MAX_RENDERER_POOL_SIZES="${RASTER_MAX_RENDERER_POOL_SIZES:-}"
   RASTER_MIN_RENDERER_POOL_SIZES="${RASTER_MIN_RENDERER_POOL_SIZES:-}"
@@ -275,6 +284,7 @@ if [ "$GENERATE_RASTER" = "1" ]; then
     "$RASTER_OUTPUT" \
     --maxzoom "$RASTER_MAXZOOM" \
     --workers "$RASTER_WORKERS" \
+    --format "$RASTER_FORMAT" \
     "${TILESERVER_INSTANCES_ARG[@]}" \
     "${MAX_RENDERER_POOL_SIZES_ARG[@]}" \
     "${MIN_RENDERER_POOL_SIZES_ARG[@]}"

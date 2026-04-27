@@ -173,15 +173,15 @@ def read_metadata(db_path: Path) -> dict[str, str]:
     return meta
 
 
-def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_max: int) -> sqlite3.Connection:
+def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_max: int, tile_format: str = "png") -> sqlite3.Connection:
     if output_path.exists():
         output_path.unlink()
     conn = sqlite3.connect(str(output_path))
     cur = conn.cursor()
     cur.execute("PRAGMA journal_mode=WAL")
-    cur.execute("PRAGMA synchronous=NORMAL")
-    cur.execute("PRAGMA temp_store=FILE")
-    cur.execute("PRAGMA cache_size=-65536")
+    cur.execute("PRAGMA synchronous=OFF")   # sicher: DB wird neu erstellt
+    cur.execute("PRAGMA temp_store=MEMORY")
+    cur.execute("PRAGMA cache_size=-131072")  # 128 MB
     cur.execute("CREATE TABLE metadata (name TEXT PRIMARY KEY, value TEXT)")
     cur.execute("""
         CREATE TABLE tiles (
@@ -197,7 +197,7 @@ def create_raster_mbtiles(output_path: Path, source_meta: dict[str, str], zoom_m
         "type":        "baselayer",
         "version":     "1.0",
         "description": source_meta.get("description", "Raster-Tiles gerendert aus Vektor-MBTiles"),
-        "format":      "png",
+        "format":      tile_format,
         "bounds":      source_meta.get("bounds", ""),
         "minzoom":     source_meta.get("minzoom", "0"),
         "maxzoom":     str(zoom_max),
@@ -489,6 +489,7 @@ def download_tile(
     x: int,
     y: int,
     port: int,
+    tile_format: str = "png",
 ) -> tuple[int, int, int, bytes | None]:
     session = getattr(_thread_local, "session", None)
     if session is None:
@@ -498,7 +499,8 @@ def download_tile(
         session.mount("https://", adapter)
         _thread_local.session = session
 
-    url = f"http://localhost:{port}/styles/{STYLE_NAME}/{z}/{x}/{y}.png"
+    ext = "jpg" if tile_format == "jpeg" else tile_format
+    url = f"http://localhost:{port}/styles/{STYLE_NAME}/{z}/{x}/{y}.{ext}"
     try:
         resp = session.get(url, timeout=15)
         if resp.status_code == 200:
@@ -528,6 +530,12 @@ def main() -> int:
         "output",
         nargs="?",
         help="Ausgabe Raster-MBTiles (Standard: <input>_raster.mbtiles)",
+    )
+    parser.add_argument(
+        "--format",
+        choices=["png", "jpeg"],
+        default="png",
+        help="Ausgabe-Format der Raster-Tiles: png (Standard) oder jpeg (kleiner, schneller, kein Transparenz-Support)",
     )
     parser.add_argument(
         "--maxzoom",
@@ -614,6 +622,7 @@ def main() -> int:
     print(f"[info]  Tiles:   {total_tiles:,}")
     print(f"[info]  Temp:    {TMP_DIR}")
     print(f"[info]  Server:  {args.tileserver_instances}")
+    print(f"[info]  Format:  {args.format}")
     if args.max_renderer_pool_sizes:
         print(f"[info]  maxRendererPoolSizes: {args.max_renderer_pool_sizes}")
     if args.min_renderer_pool_sizes:
@@ -645,7 +654,7 @@ def main() -> int:
     ports = [port for _, port in _tileserver_instances]
 
     # Raster-MBTiles befüllen
-    conn = create_raster_mbtiles(output_path, meta, zoom_max)
+    conn = create_raster_mbtiles(output_path, meta, zoom_max, args.format)
     cur = conn.cursor()
     successful = 0
     failed = 0
@@ -679,7 +688,7 @@ def main() -> int:
                 except StopIteration:
                     break
                 inflight.add(
-                    executor.submit(download_tile, z, x, y, ports[(z + x + y) % len(ports)])
+                    executor.submit(download_tile, z, x, y, ports[(z + x + y) % len(ports)], args.format)
                 )
 
         submit_until_full()
