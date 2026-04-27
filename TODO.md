@@ -36,10 +36,11 @@
   - ✅ Tests validieren Token-basierte Deduplication (test/map_view_race_prevention_test.dart)
 
 ## P2 - Mittel
-- [ ] Rebuilds bei Zoom reduzieren
-  - Zoom-Badge entkoppeln.
-  - Karten-Rebuilds minimieren.
-  - Funktionalität unverändert halten.
+- [x] Rebuilds bei Zoom reduzieren
+  - ✅ ValueNotifier<double> für Zoom-State eingeführt
+  - ✅ onPositionChanged nur ValueNotifier aktualisieren (kein setState)
+  - ✅ Separates _ZoomBadgeWidget mit ValueListenableBuilder
+  - ✅ Badge updates unabhängig von Map-Rebuilds
 
 - [ ] Offline-Smoke-Testmatrix dokumentieren und ausführen
   - pbf + gültiger Asset-Style

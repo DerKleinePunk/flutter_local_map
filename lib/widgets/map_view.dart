@@ -45,6 +45,11 @@ class _MapViewState extends State<MapView> {
   /// Incremented each time _initializeTileProvider is called.
   int _initializationToken = 0;
   
+  /// ValueNotifier for zoom level to decouple badge updates from map rebuilds.
+  /// This allows the zoom badge to update independently without triggering full map redraws.
+  late final ValueNotifier<double> _zoomNotifier;
+  
+  
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
   TileProviders? _vectorTileProviders;
@@ -85,6 +90,7 @@ class _MapViewState extends State<MapView> {
   @override
   void initState() {
     super.initState();
+    _zoomNotifier = ValueNotifier<double>(MapConfig.initialZoom.toDouble());
     _initializeTileProvider();
     _initializeGeocoder();
     _checkRoutingAvailability();
@@ -806,6 +812,7 @@ class _MapViewState extends State<MapView> {
     _disposeTileResources();
     _mapController.dispose();
     _geocoder.close();
+    _zoomNotifier.dispose();
     super.dispose();
   }
 
@@ -853,9 +860,10 @@ class _MapViewState extends State<MapView> {
         onPositionChanged: (camera, hasGesture) {
           if (!mounted) return;
           if ((camera.zoom - _currentZoom).abs() < 0.01) return;
-          setState(() {
-            _currentZoom = camera.zoom;
-          });
+          // Update internal state without setState to avoid map rebuild
+          _currentZoom = camera.zoom;
+          // Update zoom notifier to trigger badge update
+          _zoomNotifier.value = camera.zoom;
         },
         // Begrenze die Kamera auf die Hessen-Bounding-Box
         cameraConstraint: CameraConstraint.containCenter(
@@ -1052,7 +1060,9 @@ class _MapViewState extends State<MapView> {
         Positioned(
           top: 12,
           left: 12,
-          child: IgnorePointer(child: _buildZoomBadge(context)),
+          child: IgnorePointer(
+            child: _ZoomBadgeWidget(zoomNotifier: _zoomNotifier),
+          ),
         ),
         Positioned(
           top: 12,
@@ -1210,34 +1220,6 @@ class _MapViewState extends State<MapView> {
     );
   }
 
-  Widget _buildZoomBadge(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.zoom_in, size: 14, color: colorScheme.onSurfaceVariant),
-            const SizedBox(width: 6),
-            Text(
-              'Zoom ${_currentZoom.toStringAsFixed(1)}',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildRoutingBadge(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final hasRoute = _routePolyline.isNotEmpty;
@@ -1360,6 +1342,48 @@ class _PulsingTargetMarkerState extends State<_PulsingTargetMarker> {
       child: Icon(Icons.location_on, color: widget.color, size: 44),
       builder: (context, scale, child) {
         return Transform.scale(scale: scale, child: child);
+      },
+    );
+  }
+}
+
+/// Separate widget for zoom badge that updates independently without triggering map rebuilds.
+/// Uses ValueListenableBuilder to listen to zoom changes without setState.
+class _ZoomBadgeWidget extends StatelessWidget {
+  final ValueNotifier<double> zoomNotifier;
+
+  const _ZoomBadgeWidget({required this.zoomNotifier});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ValueListenableBuilder<double>(
+      valueListenable: zoomNotifier,
+      builder: (context, zoom, _) {
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            color: colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.zoom_in, size: 14, color: colorScheme.onSurfaceVariant),
+                const SizedBox(width: 6),
+                Text(
+                  'Zoom ${zoom.toStringAsFixed(1)}',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
       },
     );
   }
