@@ -1,10 +1,10 @@
 # TODO - Offline-Karten (flutter_map)
 
 ## P0 - Muss sofort
-- [ ] Non-Regression: Raster-MBTiles-Unterstützung muss erhalten bleiben
-  - Lesen von Raster-MBTiles (png/jpg/jpeg/webp) darf durch Offline-Refactoring nicht beeinträchtigt werden.
-  - Anzeige von Raster-MBTiles im `TileLayer` muss unverändert funktionieren.
-  - Keine Änderung am Format-Fallback-Verhalten: unbekannte Formate weiterhin mit klarer Fehlermeldung.
+- [x] Non-Regression: Raster-MBTiles-Unterstützung muss erhalten bleiben
+  - ✅ Lesen von Raster-MBTiles (png/jpg/jpeg/webp) funktioniert, Metadaten-Abfrage ok
+  - ✅ Anzeige von Raster-MBTiles im `TileLayer` funktioniert unverändert
+  - ✅ Format-Erkennung und Fallback-Verhalten validiert durch test/mbtiles_regression_test.dart
 
 - [x] Remote-Style-Loading komplett entfernen
   - In [lib/widgets/map_view.dart](lib/widgets/map_view.dart) alle URL-basierten Style-Aufrufe löschen.
