@@ -49,7 +49,7 @@ class MapConfig {
   static const int initialZoom = 11;
 
   // MBTiles Dateiname
-  static const String mbtilesFilename = 'hessen.mbtiles';
+  static const String mbtilesFilename = 'germany.mbtiles';//'hessen.mbtiles';
 
   // Download-URL (wird nach Azure Pipeline-Setup aktualisiert)
   // TODO: Ersetze diese URL mit der tatsächlichen Azure Artifacts/Blob Storage URL

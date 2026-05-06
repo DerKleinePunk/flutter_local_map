@@ -40,16 +40,15 @@ class _MapViewState extends State<MapView> {
   final ValhallaRoutingService _routingService = ValhallaRoutingService();
   final GpsNmeaSimulatorService _gpsSimulator = GpsNmeaSimulatorService();
   StreamSubscription<SimulatedGpsFix>? _gpsFixSubscription;
-  
+
   /// Token to track initialization requests and prevent race conditions.
   /// Incremented each time _initializeTileProvider is called.
   int _initializationToken = 0;
-  
+
   /// ValueNotifier for zoom level to decouple badge updates from map rebuilds.
   /// This allows the zoom badge to update independently without triggering full map redraws.
   late final ValueNotifier<double> _zoomNotifier;
-  
-  
+
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
   TileProviders? _vectorTileProviders;
@@ -95,7 +94,6 @@ class _MapViewState extends State<MapView> {
     _initializeGeocoder();
     _checkRoutingAvailability();
     _gpsFixSubscription = _gpsSimulator.fixes.listen(_onSimulatedGpsFix);
-    _initializeGpsSimulator();
   }
 
   Future<void> _initializeGpsSimulator() async {
@@ -298,11 +296,11 @@ class _MapViewState extends State<MapView> {
 
   Future<void> _initializeTileProvider() async {
     _disposeTileResources();
-    
+
     // Increment token to invalidate any previous initialization requests
     _initializationToken++;
     final currentToken = _initializationToken;
-    
+
     MapErrorHandler.logDebug(
       'Starting tile provider initialization',
       context: 'Token $_initializationToken',
@@ -311,7 +309,7 @@ class _MapViewState extends State<MapView> {
     if (widget.mbtilesPath == null) {
       // Check token before setState to prevent race conditions
       if (!mounted || _initializationToken != currentToken) return;
-      
+
       setState(() {
         _isLoading = false;
         _errorMessage = 'Keine Kartendaten verfügbar';
@@ -320,9 +318,11 @@ class _MapViewState extends State<MapView> {
     }
 
     try {
-      debugPrint('[map] Attempting to load MBTiles database: ${widget.mbtilesPath!}');
+      debugPrint(
+        '[map] Attempting to load MBTiles database: ${widget.mbtilesPath!}',
+      );
       final metadata = await _readMbtilesMetadata(widget.mbtilesPath!);
-      
+
       // Token check after first async operation
       if (_initializationToken != currentToken) {
         MapErrorHandler.logDebug(
@@ -331,7 +331,7 @@ class _MapViewState extends State<MapView> {
         );
         return;
       }
-      
+
       final format = metadata.format;
       final minZoom = metadata.minZoom ?? MapConfig.minZoom.toDouble();
       final maxZoom = metadata.maxZoom ?? MapConfig.maxZoom.toDouble();
@@ -404,10 +404,10 @@ class _MapViewState extends State<MapView> {
           format,
           mbtilesPath: widget.mbtilesPath,
         );
-        
+
         // Token check before setState
         if (!mounted || _initializationToken != currentToken) return;
-        
+
         setState(() {
           _isLoading = false;
           _errorMessage = error.userMessage;
@@ -448,15 +448,15 @@ class _MapViewState extends State<MapView> {
         );
         return;
       }
-      
+
       final mapError = MapErrorHandler.classify(
         e,
         stackTrace,
         context: 'TileProvider initialization',
       );
-      
+
       if (!mounted) return;
-      
+
       setState(() {
         _isLoading = false;
         _errorMessage = mapError.userMessage;
@@ -582,9 +582,9 @@ class _MapViewState extends State<MapView> {
     }
 
     // All assets failed
-    final allErrors = errors.isNotEmpty 
-      ? errors.join('\n')
-      : 'Unknown error loading styles';
+    final allErrors = errors.isNotEmpty
+        ? errors.join('\n')
+        : 'Unknown error loading styles';
     throw MbTilesException(
       'Could not load any local vector style.\n$allErrors',
       category: MapErrorCategory.assetMissing,
@@ -1371,7 +1371,11 @@ class _ZoomBadgeWidget extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.zoom_in, size: 14, color: colorScheme.onSurfaceVariant),
+                Icon(
+                  Icons.zoom_in,
+                  size: 14,
+                  color: colorScheme.onSurfaceVariant,
+                ),
                 const SizedBox(width: 6),
                 Text(
                   'Zoom ${zoom.toStringAsFixed(1)}',
