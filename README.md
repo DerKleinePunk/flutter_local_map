@@ -61,6 +61,7 @@ flutter run -d linux
 - Tilemaker-Skript: [scripts/tilemaker.sh](scripts/tilemaker.sh)
 - Tilemaker z17 Config: [scripts/tilemaker/config-openmaptiles-z17.json](scripts/tilemaker/config-openmaptiles-z17.json)
 - Raster-Renderer (Vektor -> PNG-MBTiles): [scripts/render_raster.py](scripts/render_raster.py)
+- Hoehenlinien-Generator (DEM -> Kontur-MBTiles): [scripts/build_contours.sh](scripts/build_contours.sh)
 - Experimenteller Renderer mit Benchmark-Fokus: [scripts/render_raster_test.py](scripts/render_raster_test.py)
 - MapLibre Native Helper (persistent worker): [scripts/render_maplibre_native.js](scripts/render_maplibre_native.js)
 - Valhalla Build/Runtime Anleitung: [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md)
@@ -169,6 +170,94 @@ FORCE_REBUILD=1 ./tilemaker.sh raster
 FORCE_REBUILD=1 ./tilemaker.sh vogelsberg raster
 FORCE_REBUILD=1 ./tilemaker.sh braunschweig raster
 ```
+
+## Hoehenlinien (Konturlinien)
+
+Das Skript [scripts/build_contours.sh](scripts/build_contours.sh) erzeugt Vektor-MBTiles mit Hoehenlinien, die beim Raster-Rendering direkt in die PNG-Tiles eingebacken werden.
+
+**Datenquelle:** `elevation-tiles-prod` GeoTIFF-DEM auf AWS (`https://s3.amazonaws.com/elevation-tiles-prod/geotiff/{z}/{x}/{y}.tif`). Das sind oeffentlich erreichbare Hoehenkacheln mit echten Hoehenwerten in Metern; im aktuellen Skript wird Zoom `12` verwendet.
+
+**Voraussetzung:** Docker (GDAL und tippecanoe laufen in Containern – keine lokale Installation noetig). Verwendete Images:
+
+- `ghcr.io/osgeo/gdal:ubuntu-small-latest`
+- `klokantech/tippecanoe:latest`
+
+**Pipeline (4 Schritte, je Skip-fähig):**
+
+| Schritt | Tool | Ergebnis |
+|---------|------|---------|
+| 1 | Download + `gdalbuildvrt` + `gdal_translate` | `{region}_dem.tif` – DEM aus XYZ-Kacheln zusammengefuegt und auf BBox geclippt |
+| 2 | `gdal_contour` | `{region}_contours.gpkg` – Linien alle 10 m |
+| 3 | `ogr2ogr` | `{region}_contours.geojson` |
+| 4 | `tippecanoe` | `{region}_contours.mbtiles` – z9–z14 |
+
+Hinweise zum Cache-/Rebuild-Verhalten:
+
+- DEM-Kacheln werden regionsbezogen unter `map/tiles-germany/dem_tiles/<region>/z12/` gecacht.
+- `FORCE_REBUILD=1` loescht auch alle Zwischenprodukte (`*_dem.tif`, `*_contours.gpkg`, `*_contours.geojson`, finale MBTiles und den regionalen DEM-Cache`) und baut den kompletten Konturlinien-Stack neu auf.
+- Leere oder ungueltige Zwischenprodukte werden vom Skript automatisch erkannt und neu erzeugt.
+
+Ausfuehrung:
+
+```bash
+cd scripts
+
+# Vogelsberg (Standard)
+./build_contours.sh vogelsberg
+
+# Braunschweig
+./build_contours.sh braunschweig
+
+# Deutschland (mehrere GB DEM, langsam)
+./build_contours.sh germany
+```
+
+Optionale Umgebungsvariablen:
+
+- `CONTOUR_INTERVAL` – Hoehenlinien-Abstand in Metern (Standard: `10`)
+- `CONTOUR_MINZOOM` – Tippecanoe Minzoom (Standard: `9`)
+- `CONTOUR_MAXZOOM` – Tippecanoe Maxzoom (Standard: `14`)
+- `FORCE_REBUILD=1` – Alle Zwischendateien neu erzeugen
+
+```bash
+# 20-m-Intervall statt 10 m
+CONTOUR_INTERVAL=20 ./build_contours.sh vogelsberg
+
+# Neuaufbau erzwingen
+FORCE_REBUILD=1 ./build_contours.sh vogelsberg
+```
+
+**Hoehenlinien in Raster-Tiles einbacken:**
+
+Nach der Erzeugung der Kontur-MBTiles werden diese beim Raster-Rendering ueber `RASTER_CONTOURS` eingebunden. Der Renderer (`render_raster.py`) injiziert die Linien automatisch in den MapLibre-Style, sodass sie in jedem PNG-Tile sichtbar sind.
+
+Dargestellte Layer (via `_inject_contour_layers_into_style`):
+
+- **Minor-Linien** (jede 10 m, ausser 100-m-Vielfache): grau, 0.5 px, ab z11
+- **Major-Linien** (jede 100 m): dunkelgrau, 1.2 px, ab z11
+- **Beschriftungen** (jede 100 m): Hoehenangabe in Metern entlang der Linie, ab z12
+
+```bash
+# Vollstaendiger Workflow Vogelsberg:
+
+# 1. Konturlinien erzeugen
+./build_contours.sh vogelsberg
+
+# 2. Vektor + Raster mit eingebackenen Hoehenlinien
+RASTER_CONTOURS=vogelsberg_contours.mbtiles ./tilemaker.sh vogelsberg raster
+
+# Kompletter Neuaufbau der Konturlinien-Zwischenprodukte
+FORCE_REBUILD=1 ./build_contours.sh vogelsberg
+```
+
+Ohne `RASTER_CONTOURS` werden Raster-Tiles wie bisher ohne Hoehenlinien erzeugt.
+
+Ausgabedateien (in `map/tiles-germany/`):
+
+- `{region}_dem.tif` – geclipptes DEM (Zwischenprodukt)
+- `{region}_contours.gpkg` – GeoPackage (Zwischenprodukt)
+- `{region}_contours.geojson` – GeoJSON (Zwischenprodukt)
+- `{region}_contours.mbtiles` – **fertige Vektor-MBTiles fuer den Raster-Schritt**
 
 ## Offline-Indizierung und Ortssuche
 

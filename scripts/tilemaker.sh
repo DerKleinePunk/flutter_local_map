@@ -42,6 +42,8 @@ show_usage() {
   echo "  RASTER_TILESERVER_INSTANCES (default: auto in render_raster.py)"
   echo "  RASTER_MAX_RENDERER_POOL_SIZES (z. B. 24 oder 24,12,6)"
   echo "  RASTER_MIN_RENDERER_POOL_SIZES (z. B. 24 oder 24,12,6)"
+  echo "  RASTER_CONTOURS (Dateiname einer Konturlinien-MBTiles in map/tiles-germany/,"
+  echo "                   z. B. vogelsberg_contours.mbtiles – werden in Raster-Tiles eingebacken)"
 }
 
 # Vogelsberg: Testgebiet rund um Fulda / Vogelsberg
@@ -95,11 +97,35 @@ case "$REGION" in
 esac
 
 # Deutschland PBF (~4 GB)
+PBF_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+PBF_MD5_URL="${PBF_URL}.md5"
+PBF_MD5_FILE="${PBF_FILE}.md5"
+
+_check_pbf_md5() {
+  echo "[md5] Lade Prüfsumme herunter..."
+  wget -q -O "$PBF_MD5_FILE" "$PBF_MD5_URL" || { echo "[warning] Prüfsummen-Download fehlgeschlagen"; return 1; }
+  echo "[md5] Prüfe Integrität von $PBF_FILE"
+  if md5sum -c "$PBF_MD5_FILE" --quiet 2>/dev/null; then
+    echo "[md5] Prüfsumme OK"
+    return 0
+  else
+    echo "[md5] Prüfsumme FEHLGESCHLAGEN"
+    return 1
+  fi
+}
+
 if [ -f "$PBF_FILE" ]; then
-  echo "[skip] $PBF_FILE ist bereits vorhanden"
+  echo "[check] $PBF_FILE gefunden, prüfe Prüfsumme..."
+  if ! _check_pbf_md5; then
+    echo "[download] Datei beschädigt oder veraltet – lade $PBF_FILE neu herunter"
+    rm -f "$PBF_FILE"
+    wget -O "$PBF_FILE" "$PBF_URL"
+    _check_pbf_md5 || { echo "[error] MD5-Prüfung nach Neudownload fehlgeschlagen"; exit 1; }
+  fi
 else
   echo "[download] Lade $PBF_FILE herunter"
-  wget -O "$PBF_FILE" https://download.geofabrik.de/europe/germany-latest.osm.pbf
+  wget -O "$PBF_FILE" "$PBF_URL"
+  _check_pbf_md5 || { echo "[error] MD5-Prüfung nach Download fehlgeschlagen"; exit 1; }
 fi
 
 # Küsten-/Wasserdaten
@@ -265,9 +291,11 @@ if [ "$GENERATE_RASTER" = "1" ]; then
   RASTER_TILESERVER_INSTANCES="${RASTER_TILESERVER_INSTANCES:-}"
   RASTER_MAX_RENDERER_POOL_SIZES="${RASTER_MAX_RENDERER_POOL_SIZES:-}"
   RASTER_MIN_RENDERER_POOL_SIZES="${RASTER_MIN_RENDERER_POOL_SIZES:-}"
+  RASTER_CONTOURS="${RASTER_CONTOURS:-}"
   TILESERVER_INSTANCES_ARG=()
   MAX_RENDERER_POOL_SIZES_ARG=()
   MIN_RENDERER_POOL_SIZES_ARG=()
+  CONTOURS_ARG=()
   if [ -n "$RASTER_TILESERVER_INSTANCES" ]; then
     TILESERVER_INSTANCES_ARG=(--tileserver-instances "$RASTER_TILESERVER_INSTANCES")
   fi
@@ -276,6 +304,9 @@ if [ "$GENERATE_RASTER" = "1" ]; then
   fi
   if [ -n "$RASTER_MIN_RENDERER_POOL_SIZES" ]; then
     MIN_RENDERER_POOL_SIZES_ARG=(--min-renderer-pool-sizes "$RASTER_MIN_RENDERER_POOL_SIZES")
+  fi
+  if [ -n "$RASTER_CONTOURS" ]; then
+    CONTOURS_ARG=(--contours "$RASTER_CONTOURS")
   fi
 
   echo "[raster] Erzeuge $RASTER_OUTPUT aus $OUTPUT_MBTILES"
@@ -287,7 +318,8 @@ if [ "$GENERATE_RASTER" = "1" ]; then
     --format "$RASTER_FORMAT" \
     "${TILESERVER_INSTANCES_ARG[@]}" \
     "${MAX_RENDERER_POOL_SIZES_ARG[@]}" \
-    "${MIN_RENDERER_POOL_SIZES_ARG[@]}"
+    "${MIN_RENDERER_POOL_SIZES_ARG[@]}" \
+    "${CONTOURS_ARG[@]}"
 fi
 
 # Build Valhalla routing tiles

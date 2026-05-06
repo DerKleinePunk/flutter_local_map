@@ -412,11 +412,85 @@ def start_tileserver(port: int, verbose_level: int = 2) -> tuple[str, int]:
     return (container_id, port)
 
 
+def _inject_contour_layers_into_style(style_path: Path) -> None:
+    """Fuegt Konturlinien-Source und -Layer in eine bestehende style.json ein."""
+    with open(style_path, encoding="utf-8") as f:
+        style = json.load(f)
+
+    # Source hinzufuegen
+    style.setdefault("sources", {})["contours"] = {
+        "type": "vector",
+        "url": "mbtiles://{contours}",
+    }
+
+    # Kontur-Layer vor dem ersten Symbol-Layer einfuegen (unter Beschriftungen)
+    contour_layers = [
+        {
+            "id": "contour-line-minor",
+            "type": "line",
+            "source": "contours",
+            "source-layer": "contour",
+            "filter": ["all", ["!=", ["get", "ele"], 0], ["!=", ["%", ["get", "ele"], 100], 0]],
+            "paint": {
+                "line-color": "#b5b5b5",
+                "line-width": 0.5,
+                "line-opacity": 0.8,
+            },
+            "minzoom": 11,
+        },
+        {
+            "id": "contour-line-major",
+            "type": "line",
+            "source": "contours",
+            "source-layer": "contour",
+            "filter": ["all", ["!=", ["get", "ele"], 0], ["==", ["%", ["get", "ele"], 100], 0]],
+            "paint": {
+                "line-color": "#a0a0a0",
+                "line-width": 1.2,
+                "line-opacity": 0.85,
+            },
+            "minzoom": 11,
+        },
+        {
+            "id": "contour-label",
+            "type": "symbol",
+            "source": "contours",
+            "source-layer": "contour",
+            "filter": ["all", ["!=", ["get", "ele"], 0], ["==", ["%", ["get", "ele"], 100], 0]],
+            "layout": {
+                "symbol-placement": "line",
+                "text-field": "{ele}",
+                "text-size": 10,
+                "text-font": ["Noto Sans Regular"],
+            },
+            "paint": {
+                "text-color": "#888888",
+                "text-halo-color": "#ffffff",
+                "text-halo-width": 1,
+            },
+            "minzoom": 12,
+        },
+    ]
+
+    layers: list = style.get("layers", [])
+    first_symbol_idx = next(
+        (i for i, layer in enumerate(layers) if layer.get("type") == "symbol"),
+        len(layers),
+    )
+    style["layers"] = layers[:first_symbol_idx] + contour_layers + layers[first_symbol_idx:]
+
+    with open(style_path, "w", encoding="utf-8") as f:
+        json.dump(style, f, indent=2, ensure_ascii=False)
+
+    print(f"[contours] Konturlinien-Layer in Style eingefuegt: {style_path.name}")
+
+
 def prepare_tileserver_data(
     mbtiles_name: str,
     bbox_str: str,
     max_renderer_pool_sizes: list[int] | None,
     min_renderer_pool_sizes: list[int] | None,
+    contours_path: Path | None = None,
 ) -> None:
     TMP_DIR.mkdir(parents=True, exist_ok=True)
     TMP_DIR.chmod(0o755)
@@ -425,10 +499,22 @@ def prepare_tileserver_data(
     dst = TMP_DIR / "source.mbtiles"
     copy_file_with_progress(src, dst)
 
+    if contours_path is not None:
+        contour_dst = TMP_DIR / "contours.mbtiles"
+        print(f"[contours] Kopiere {contours_path.name} nach {contour_dst}")
+        copy_file_with_progress(contours_path, contour_dst)
+
     unpack_styles_zip_to_tmp()
 
+    if contours_path is not None:
+        style_file = TMP_DIR / "styles" / STYLE_NAME / "style.json"
+        if style_file.exists():
+            _inject_contour_layers_into_style(style_file)
+        else:
+            print(f"[warn] Style-Datei nicht gefunden, Konturlinien-Injektion uebersprungen: {style_file}")
+
     bounds = list(map(float, bbox_str.split(",")))
-    config = {
+    config: dict = {
         "options": {
             "paths": {
                 "fonts": "fonts",
@@ -436,7 +522,7 @@ def prepare_tileserver_data(
             }
         },
         "data": {
-           "openmaptiles": {
+            "openmaptiles": {
                 "mbtiles": "source.mbtiles"
             },
         },
@@ -450,6 +536,9 @@ def prepare_tileserver_data(
             },
         },
     }
+
+    if contours_path is not None:
+        config["data"]["contours"] = {"mbtiles": "contours.mbtiles"}
 
     if max_renderer_pool_sizes:
         print(f"[config] Setze maxRendererPoolSizes: {max_renderer_pool_sizes}")
@@ -584,6 +673,10 @@ def main() -> int:
         "--tmp-dir",
         help="Arbeitsverzeichnis fuer tileserver-Dateien. Unter WSL ist standardmaessig /tmp/... aktiv.",
     )
+    parser.add_argument(
+        "--contours",
+        help="Optionale Konturlinien-MBTiles (Dateiname relativ zu map/tiles-germany/ oder absoluter Pfad). Werden in die Raster-Tiles eingebacken.",
+    )
     args = parser.parse_args()
 
     global TMP_DIR
@@ -630,11 +723,21 @@ def main() -> int:
     if running_in_wsl() and str(input_path).startswith("/mnt/"):
         print("[info]  WSL erkannt: kopiere MBTiles einmalig nach schnellem Linux-Temp statt direkt von /mnt/... zu serven")
 
+    contours_path: Path | None = None
+    if args.contours:
+        p = Path(args.contours)
+        contours_path = p if p.is_absolute() else WORK_DIR / args.contours
+        if not contours_path.exists():
+            print(f"[error] Konturlinien-MBTiles nicht gefunden: {contours_path}")
+            return 1
+        print(f"[info]  Konturen: {contours_path.name}")
+
     prepare_tileserver_data(
         args.input,
         bbox_str,
         args.max_renderer_pool_sizes,
         args.min_renderer_pool_sizes,
+        contours_path=contours_path,
     )
 
     # tileserver-gl starten
