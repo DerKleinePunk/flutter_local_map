@@ -136,6 +136,66 @@ Windows/Powershell Variante:
   -Port 8002
 ```
 
+## Optional: Native Pi-Binaries ohne Docker (Cross-Compile)
+
+Wenn Docker auf dem Pi nicht gewuenscht ist, koennen Valhalla-Binaries als ARM64 auf dem Host gebaut und dann auf den Pi kopiert werden.
+
+Voraussetzungen auf dem Host:
+
+- `cmake`, `ninja-build`
+- Cross-Toolchain: `gcc-aarch64-linux-gnu`, `g++-aarch64-linux-gnu`
+- `rsync`, `ssh`, `scp`
+
+Empfohlene Reihenfolge:
+
+1) Pi-Sysroot ziehen (hier mit deiner Pi-IP `192.168.2.50`):
+
+```bash
+./scripts/valhalla/fetch_pi_sysroot.sh \
+  --host 192.168.2.50 \
+  --user <pi-user> \
+  --out ./map/valhalla/pi-sysroot
+```
+
+2) Valhalla fuer ARM64 cross-compilen:
+
+```bash
+./scripts/valhalla/cross_compile_valhalla_pi.sh \
+  --source /pfad/zum/valhalla-source \
+  --sysroot ./map/valhalla/pi-sysroot \
+  --build ./map/valhalla/build-aarch64 \
+  --install ./map/valhalla/install-aarch64
+```
+
+Ergebnis:
+
+- Installationsordner: `./map/valhalla/install-aarch64`
+- Archiv: `./map/valhalla/valhalla-aarch64.tar.gz`
+
+3) Binaries (optional plus Daten) auf den Pi deployen:
+
+```bash
+./scripts/valhalla/deploy_valhalla_pi.sh \
+  --host 192.168.2.50 \
+  --user <pi-user> \
+  --archive ./map/valhalla/valhalla-aarch64.tar.gz \
+  --target /opt/valhalla \
+  --data ./map/valhalla/output
+```
+
+4) Auf dem Pi nativ starten (Beispiel):
+
+```bash
+cd /opt/valhalla
+./bin/valhalla_service ./data/valhalla.json 1
+```
+
+Hinweise:
+
+- Cross-Compile muss zur Pi-Architektur passen (`aarch64` fuer 64-bit Raspberry Pi OS).
+- Sysroot und Pi-OS sollten zusammenpassen (glibc-Versionen).
+- Fuer produktiven Betrieb empfiehlt sich ein systemd-Service auf dem Pi.
+
 ## 5) Route lokal testen
 
 ```bash
