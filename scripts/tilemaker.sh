@@ -102,14 +102,28 @@ PBF_MD5_URL="${PBF_URL}.md5"
 PBF_MD5_FILE="${PBF_FILE}.md5"
 
 _check_pbf_md5() {
+  local expected actual
   echo "[md5] Lade Prüfsumme herunter..."
   wget -q -O "$PBF_MD5_FILE" "$PBF_MD5_URL" || { echo "[warning] Prüfsummen-Download fehlgeschlagen"; return 1; }
   echo "[md5] Prüfe Integrität von $PBF_FILE"
-  if md5sum -c "$PBF_MD5_FILE" --quiet 2>/dev/null; then
+
+  # Geofabrik liefert in *.md5 oft einen versionierten Dateinamen
+  # (z. B. germany-260505.osm.pbf) statt germany-latest.osm.pbf.
+  # Deshalb vergleichen wir nur den Hashwert und ignorieren den Dateinamen.
+  expected="$(awk '{print $1; exit}' "$PBF_MD5_FILE" || true)"
+  if [ -z "$expected" ]; then
+    echo "[warning] Konnte erwartete Prüfsumme nicht lesen: $PBF_MD5_FILE"
+    return 1
+  fi
+
+  actual="$(md5sum "$PBF_FILE" | awk '{print $1}')"
+  if [ "$actual" = "$expected" ]; then
     echo "[md5] Prüfsumme OK"
     return 0
   else
     echo "[md5] Prüfsumme FEHLGESCHLAGEN"
+    echo "       erwartet: $expected"
+    echo "       erhalten: $actual"
     return 1
   fi
 }
