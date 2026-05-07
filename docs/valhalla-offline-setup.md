@@ -183,6 +183,29 @@ Ergebnis:
   --data ./map/valhalla/output
 ```
 
+WSL-Hinweis (wichtig):
+
+- In WSL besser einen absoluten Remote-Pfad verwenden, z. B. `/home/pi/test/valhalla`.
+- Wenn `~` genutzt wird, dann nur gequotet uebergeben (`--target '~/test/valhalla'`), damit es nicht lokal expandiert.
+
+SSH-Key-Login einrichten (empfohlen, keine Passwort-Prompts bei ssh/scp/rsync):
+
+```bash
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+[[ -f ~/.ssh/id_ed25519 ]] || ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N "" -C "wsl-valhalla-$(hostname)"
+ssh-copy-id -i ~/.ssh/id_ed25519.pub -o StrictHostKeyChecking=accept-new pi@192.168.2.50
+ssh -o BatchMode=yes -o ConnectTimeout=8 pi@192.168.2.50 'echo KEY_OK'
+```
+
+Optional: Alias in WSL fuer schnellen Deploy:
+
+```bash
+echo "alias deploy-pi='cd /mnt/d/Projects/Privat/Flutter/map_local && ./scripts/valhalla/deploy_valhalla_pi.sh --host 192.168.2.50 --user pi --archive ./map/valhalla/valhalla-aarch64.tar.gz --target /home/pi/test/valhalla --data ./map/valhalla/output'" >> ~/.bashrc
+source ~/.bashrc
+deploy-pi
+```
+
 4) Auf dem Pi nativ starten (Beispiel):
 
 ```bash
