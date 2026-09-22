@@ -1,6 +1,7 @@
 {
   "version": 8,
   "name": "openmaptiles-offline-basic",
+  "id": "openmaptiles-offline-basic",
   "metadata": {
     "generator": "tilemaker-openmaptiles",
     "offline": true

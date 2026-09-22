@@ -1,6 +1,7 @@
 {
   "version": 8,
   "name": "openmaptiles-offline-contrast",
+  "id": "openmaptiles-offline-contrast",
   "metadata": {
     "generator": "tilemaker-openmaptiles",
     "offline": true,

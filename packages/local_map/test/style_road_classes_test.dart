@@ -51,6 +51,34 @@ void main() {
     expect(styles, isNotEmpty);
   });
 
+  test('jeder Style hat eine eigene id', () {
+    // vector_map_tiles entscheidet allein an `theme.id` und `theme.version`,
+    // ob es nach einem Stilwechsel neu zeichnet - siehe
+    // VectorTileLayerOptions.hasRenderDifferences und
+    // _VectorTileLayerState.didUpdateWidget. ThemeReader setzt
+    // `json['id'] ?? 'default'`. Ohne eigene id tragen alle Styles dieselbe,
+    // der Umschalter wirkt korrekt, und das Bild aendert sich trotzdem nie.
+    final ids = <String, String>{};
+    for (final style in styles) {
+      final json =
+          jsonDecode(style.readAsStringSync()) as Map<String, dynamic>;
+      final id = json['id'];
+      final name = style.uri.pathSegments.last;
+
+      expect(
+        id,
+        isA<String>().having((s) => s.isNotEmpty, 'nicht leer', isTrue),
+        reason: '$name braucht ein id-Feld',
+      );
+      expect(
+        ids,
+        isNot(contains(id)),
+        reason: '$name teilt sich die id "$id" mit ${ids[id]}',
+      );
+      ids[id as String] = name;
+    }
+  });
+
   for (final style in styles) {
     final name = style.uri.pathSegments.last;
 
