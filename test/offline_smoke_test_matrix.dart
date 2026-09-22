@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
-import '../lib/services/map_error_handler.dart';
+import 'package:map_local/services/map_error_handler.dart';
 
 /// Comprehensive offline smoke test matrix for MBTiles handling.
 /// Tests all critical offline scenarios to ensure robustness.

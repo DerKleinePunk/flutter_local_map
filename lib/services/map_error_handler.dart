@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 /// Kategorisiert Fehler im Offline-Kartenbetrieb für bessere Fehlerbehandlung und Logging.
