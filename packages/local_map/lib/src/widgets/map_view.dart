@@ -895,6 +895,14 @@ class _MapViewState extends State<MapView> {
         initialZoom: _currentZoom,
         minZoom: _activeMinZoom,
         maxZoom: _activeMaxZoom,
+        // Tastaturbedienung: Pfeiltasten schieben (Standard von flutter_map),
+        // R und F zoomen. Auf einem Geraet ohne Zeigergeraet - etwa bei der
+        // Inbetriebnahme am Pi, solange der Touchscreen nicht angeschlossen
+        // ist - ist das die einzige Moeglichkeit, die Karte zu bewegen.
+        // Auf einem Touchgeraet aendert es nichts.
+        interactionOptions: const InteractionOptions(
+          keyboardOptions: KeyboardOptions(enableRFZooming: true),
+        ),
         onTap: (tapPosition, latLng) {
           if (_selectedSearchResult == null || !mounted) {
             return;

@@ -174,6 +174,11 @@ mitbringt und die das Flutter-Bundle **nicht** enthält:
    (`sudo apt install adwaita-icon-theme`, Start mit `-t Adwaita`). Sonst ist
    der Mauszeiger unsichtbar, was wie tote Eingabe aussieht.
 
+**Tastaturbedienung:** Pfeiltasten schieben die Karte, **R** zoomt hinein, **F**
+heraus. Auf einem Ziel ohne angeschlossenes Zeigergerät — etwa bei der
+Inbetriebnahme, solange der Touchscreen fehlt — ist das die einzige
+Möglichkeit, die Karte zu bewegen.
+
 Die Startposition aus [`MapConfig.center`](lib/src/config/map_config.dart) muss
 in den `bounds` der verwendeten MBTiles liegen. Tut sie das nicht, rückt das
 Package die Kamera in die Mitte der vorhandenen Kacheln und protokolliert das
