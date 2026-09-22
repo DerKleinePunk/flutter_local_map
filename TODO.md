@@ -88,6 +88,28 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
       Die Standard-Startposition (Alsfeld) liegt darin, die Kamerakorrektur
       meldet sich also nicht mehr - das leere Log ist der Nachweis. Gebaut in
       54 s, uebertragen in 70 s bei rund 77 MB/s.
+- [ ] **Die App wird nach einiger Laufzeit blind und stumm.** Auf dem Pi
+      bleibt das Bild irgendwann stehen und Beruehrungen bewirken nichts
+      mehr. Am 2026-09-23 eingekreist:
+      - Kein Absturz: der Prozess lebt, alle Threads schlafen regulaer, kein
+        OOM, keine Fehlerzeile.
+      - Nicht das Panel: `libinput debug-events` liefert `TOUCH_DOWN` /
+        `TOUCH_MOTION` weiterhin sauber auf `seat0`.
+      - Nicht die Sitzung: keine Suspend- oder VT-Zeile im Log, VT bleibt 1.
+      - Nicht USB-Stromsparen: `power/control=on`, nie suspendiert.
+      - Die Bildschaltungen (`LayerScene commit`) hoeren schlagartig auf und
+        kommen nie wieder. Ein Neustart behebt es sofort.
+      **Reproduktion ohne Bediener:** ein virtuelles Touchgeraet per `uinput`
+      anlegen und eine Wischgeste erzeugen, dann `LayerScene commit` im Log
+      zaehlen. Frisch gestartet ergibt das rund 45 neue Schaltungen, im
+      haengenden Zustand null. Skript lag als `/tmp/fake_touch.py` auf dem Pi.
+      **Naechster Verdacht:** verlorene Page-Flip-Ereignisse. Der Embedder
+      meldet genau das selbst:
+      `WaitForPendingFlip: no flip completion after 100ms; proceeding
+      (PAGE_FLIP_EVENT likely lost)`. Bleibt eine Flip-Antwort aus, bekommt
+      die Engine keinen Vsync mehr und zeichnet nie wieder - Eingaben werden
+      dabei weiter verarbeitet (CPU steigt), nur sichtbar wird nichts.
+      Gegenprobe waere `--drm-pipeline-depth 2` oder `--drm-async-flip no`.
 - [ ] **Messharness fuer den Pi bauen**, um echte Frame-Zeiten vom Zielgeraet
       zu bekommen statt der WSL2-Zahlen mit defektem GPU-Stack.
 
