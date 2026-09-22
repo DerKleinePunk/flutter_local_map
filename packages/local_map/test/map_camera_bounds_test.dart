@@ -161,4 +161,31 @@ void main() {
       );
     });
   });
+
+  group('steppedZoom', () {
+    test('eine Stufe hinein und heraus', () {
+      expect(steppedZoom(current: 11, direction: 1, min: 9, max: 17), 12);
+      expect(steppedZoom(current: 11, direction: -1, min: 9, max: 17), 10);
+    });
+
+    test('bleibt an den Anschlaegen stehen', () {
+      expect(steppedZoom(current: 17, direction: 1, min: 9, max: 17), 17);
+      expect(steppedZoom(current: 9, direction: -1, min: 9, max: 17), 9);
+    });
+
+    test('rueckt von einem Zwischenwert auf eine runde Stufe zu', () {
+      // Nach einer Kneifgeste steht der Zoom selten auf einer ganzen Stufe.
+      expect(
+        steppedZoom(current: 10.02, direction: 1, min: 9.49, max: 17),
+        closeTo(11.02, 1e-9),
+      );
+    });
+
+    test('haelt die Untergrenze aus den Kachelgrenzen ein', () {
+      expect(
+        steppedZoom(current: 9.8, direction: -1, min: 9.49, max: 17),
+        closeTo(9.49, 1e-9),
+      );
+    });
+  });
 }

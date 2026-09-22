@@ -181,6 +181,11 @@ Kacheln aus dem Bild schiebt (bei Zoom 11 verschiebt ein Griff 320 px neben der
 Bildmitte das Zentrum um über 10 km). Gemessen in
 [test/pinch_gesture_test.dart](test/pinch_gesture_test.dart).
 
+**Zoomknöpfe:** Unten rechts liegen zwei 56 px große Knöpfe, die eine ganze
+Zoomstufe weiterschalten und dabei die Bildmitte behalten. Auf einem kleinen
+Fahrzeugdisplay ist das die verlässliche Bedienung — die Kneifgeste braucht
+zwei Finger und eine ruhige Hand. Am Zoom-Anschlag sind sie abgeschaltet.
+
 **Tastaturbedienung:** Pfeiltasten schieben die Karte, **R** zoomt hinein, **F**
 heraus. Auf einem Ziel ohne angeschlossenes Zeigergerät — etwa bei der
 Inbetriebnahme, solange der Touchscreen fehlt — ist das die einzige

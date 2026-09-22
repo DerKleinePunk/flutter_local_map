@@ -117,3 +117,16 @@ double effectiveMinZoom({
   }
   return math.min(fromTiles, max);
 }
+
+/// Zoomstufe nach einem Druck auf die Zoomknoepfe.
+///
+/// [direction] ist +1 zum Hinein- und -1 zum Herauszoomen. Das Ergebnis bleibt
+/// zwischen [min] und [max]; steht die Kamera schon am Anschlag, kommt der
+/// unveraenderte Wert zurueck, und der Aufrufer kann sich die Bewegung sparen.
+double steppedZoom({
+  required double current,
+  required int direction,
+  required double min,
+  required double max,
+}) =>
+    (current + direction).clamp(min, max);

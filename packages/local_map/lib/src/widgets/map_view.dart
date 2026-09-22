@@ -1175,8 +1175,73 @@ class _MapViewState extends State<MapView> {
         if (_isVectorMode)
           Positioned(top: 48, right: 12, child: _buildStyleSwitchChip(context)),
         Positioned(top: 84, right: 12, child: _buildGpsSimulatorChip(context)),
+        Positioned(
+          bottom: 16,
+          right: 12,
+          child: _buildZoomButtons(context),
+        ),
       ],
     );
+  }
+
+  /// Zoomknoepfe fuer die Bedienung mit dem Finger.
+  ///
+  /// Auf einem kleinen Fahrzeugdisplay ist die Kneifgeste unpraktisch - sie
+  /// braucht zwei Finger und eine ruhige Hand. Die Knoepfe sind 56 px gross,
+  /// damit sie mit dem Daumen sicher zu treffen sind.
+  Widget _buildZoomButtons(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return ValueListenableBuilder<double>(
+      valueListenable: _zoomNotifier,
+      builder: (context, zoom, _) {
+        return Material(
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.92),
+          borderRadius: BorderRadius.circular(16),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ZoomButton(
+                icon: Icons.add,
+                tooltip: 'Hineinzoomen',
+                // Am Anschlag abgeschaltet, damit der Knopf nicht wirkungslos
+                // gedrueckt wird.
+                onPressed: zoom < _activeMaxZoom ? () => _stepZoom(1) : null,
+              ),
+              Divider(
+                height: 1,
+                thickness: 1,
+                color: colorScheme.outlineVariant,
+              ),
+              _ZoomButton(
+                icon: Icons.remove,
+                tooltip: 'Herauszoomen',
+                onPressed: zoom > _activeMinZoom ? () => _stepZoom(-1) : null,
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Zoomt um [direction] Stufen und behaelt dabei die Bildmitte - wie die
+  /// Kneifgeste, deren Brennpunktverankerung bewusst abgeschaltet ist.
+  void _stepZoom(int direction) {
+    final camera = _mapController.camera;
+    final target = steppedZoom(
+      current: camera.zoom,
+      direction: direction,
+      min: _activeMinZoom,
+      max: _activeMaxZoom,
+    );
+    if (target == camera.zoom) {
+      return;
+    }
+    _mapController.move(camera.center, target);
+    _currentZoom = target;
+    _zoomNotifier.value = target;
   }
 
   Widget _buildGpsSimulatorChip(BuildContext context) {
@@ -1457,6 +1522,42 @@ class _PulsingTargetMarkerState extends State<_PulsingTargetMarker> {
 
 /// Separate widget for zoom badge that updates independently without triggering map rebuilds.
 /// Uses ValueListenableBuilder to listen to zoom changes without setState.
+class _ZoomButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onPressed;
+
+  const _ZoomButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final enabled = onPressed != null;
+
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onPressed,
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Icon(
+            icon,
+            size: 28,
+            color: enabled
+                ? colorScheme.onSurface
+                : colorScheme.onSurface.withValues(alpha: 0.3),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ZoomBadgeWidget extends StatelessWidget {
   final ValueNotifier<double> zoomNotifier;
 
