@@ -429,14 +429,58 @@ als Default gesetzt:
 - Download-URL und Dateiname
 - Speicherort-Strategie fuer Offline-Daten
 - Vektor-Styles, Valhalla-Endpunkt, GPS-Tourdatei
+- Vektor-Speicherbudget: `memoryTileCacheMaxSize`, `memoryTileDataCacheMaxSize`,
+  `textCacheMaxSize`, `vectorConcurrency`, `vectorLayerMode`
+
+## Zielplattform und Betriebsgrenzen
+
+Zielgeraet ist ein **Raspberry Pi mit 4 GB RAM**. Ein 2-GB-Pi reicht nicht, weil
+neben der App auch die Valhalla-Routing-Engine auf demselben Geraet laeuft.
+Speicher- und Performancemessungen sind immer gegen dieses Budget zu bewerten.
+
+Gemessen (Release-Build, Vektorkarte, GPS-Route bei Maximalzoom 17, Stand
+2026-09-22): **~400 MB** Arbeitsspeicher. Sparsame Cache-Einstellungen
+(`memoryTileCacheMaxSize` 2 MB, `memoryTileDataCacheMaxSize` 6,
+`textCacheMaxSize` 30, `vectorConcurrency` 2) aendern daran nichts
+(402 vs. 411 MB) und sind deshalb nicht noetig.
+
+Die Anwendung arbeitet vollstaendig offline. Verifiziert wurde das in einem
+eigenen Netzwerk-Namespace (`unshare -rn`) ohne jede Verbindung; der einzige
+Netzwerkzugriff ueberhaupt ist die Valhalla-Abfrage auf `127.0.0.1:8002`.
 
 ## Troubleshooting
+
+### Vektorkarte ruckelt oder friert ein
+
+**Zuerst den Buildmodus pruefen.** `vector_map_tiles` benutzt `executor_lib`,
+und dort gilt:
+
+```dart
+Executor newExecutor({required int concurrency}) =>
+    kDebugMode ? QueueExecutor() : PoolExecutor(concurrency: concurrency);
+```
+
+Im Debug-Modus werden **keine Isolates** verwendet - Parsen und Rendern aller
+Kacheln laufen auf dem Main-Isolate. Derselbe Auto-Pan-Stresstest ergab:
+
+| Buildmodus | laengste UI-Blockade |
+| --- | --- |
+| Debug (`flutter run`) | 24,05 s |
+| Release | 2,76 s |
+
+Vektor-Performance also immer mit `flutter run --release` oder `--profile`
+messen, nie mit dem Standard-`flutter run`.
 
 ### Keine Karte sichtbar
 
 - Pruefen, ob MBTiles-Datei vorhanden ist
 - Format in MBTiles-Metadaten pruefen (`pbf` oder Rasterformat)
 - Download-URL und Speicherpfad in [packages/local_map/lib/src/config/map_config.dart](packages/local_map/lib/src/config/map_config.dart) pruefen
+- **Liegt die Kameraposition ueberhaupt im Abdeckungsbereich der MBTiles?**
+  Die `bounds` aus den Metadaten pruefen. Ein Koordinatenfehler faellt als
+  leere Karte auf, nicht als Fehlermeldung - genau so verbarg sich ein
+  Umrechnungsfehler im NMEA-Parser des GPS-Simulators, der die Kamera auf
+  15,36 statt 9,36 Grad Ost schickte und damit aus `hessen.mbtiles` heraus.
 
 ### Vektorlabels fehlen
 
