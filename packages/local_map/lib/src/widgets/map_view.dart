@@ -32,12 +32,7 @@ class MapView extends StatefulWidget {
   /// Ohne Angabe verwaltet [MapView] einen eigenen Controller.
   final MapController? mapController;
 
-  const MapView({
-    super.key,
-    this.mbtilesPath,
-    this.config,
-    this.mapController,
-  });
+  const MapView({super.key, this.mbtilesPath, this.config, this.mapController});
 
   @override
   State<MapView> createState() => _MapViewState();
@@ -53,8 +48,7 @@ class _MapViewState extends State<MapView> {
   /// Eigener Controller, nur angelegt wenn keiner uebergeben wurde.
   MapController? _ownedMapController;
   MapController get _mapController =>
-      widget.mapController ??
-      (_ownedMapController ??= MapController());
+      widget.mapController ?? (_ownedMapController ??= MapController());
 
   final OfflineGeocoder _geocoder = OfflineGeocoder();
   final GpsNmeaSimulatorService _gpsSimulator = GpsNmeaSimulatorService();
@@ -112,9 +106,7 @@ class _MapViewState extends State<MapView> {
   void initState() {
     super.initState();
     _config = widget.config ?? MapConfig.defaults;
-    _routingService = ValhallaRoutingService(
-      baseUri: _config.valhallaBaseUri,
-    );
+    _routingService = ValhallaRoutingService(baseUri: _config.valhallaBaseUri);
     _activeMinZoom = _config.minZoom;
     _activeMaxZoom = _config.maxZoom;
     _currentZoom = _config.initialZoom;
@@ -900,6 +892,16 @@ class _MapViewState extends State<MapView> {
       );
     }
 
+    return Stack(
+      // expand, damit die Karte die volle Flaeche bekommt: ein Stack misst
+      // sich sonst an seinem nicht positionierten Kind, und FlutterMap wuerde
+      // unter losen Vorgaben nicht mehr fuellen.
+      fit: StackFit.expand,
+      children: [_buildMap(context), ..._buildMapControls(context)],
+    );
+  }
+
+  Widget _buildMap(BuildContext context) {
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
@@ -924,7 +926,8 @@ class _MapViewState extends State<MapView> {
           //
           // Verschoben wird mit einem Finger, gezoomt zusaetzlich per
           // Doppeltipp und Mausrad.
-          flags: InteractiveFlag.drag |
+          flags:
+              InteractiveFlag.drag |
               InteractiveFlag.flingAnimation |
               InteractiveFlag.pinchZoom |
               InteractiveFlag.doubleTapZoom |
@@ -978,8 +981,7 @@ class _MapViewState extends State<MapView> {
                 VectorTileLayer.defaultTextCacheMaxSize,
             concurrency:
                 _config.vectorConcurrency ?? VectorTileLayer.defaultConcurrency,
-            layerMode:
-                _config.vectorLayerMode ?? VectorTileLayerMode.raster,
+            layerMode: _config.vectorLayerMode ?? VectorTileLayerMode.raster,
           )
         else
           TileLayer(
@@ -1081,8 +1083,10 @@ class _MapViewState extends State<MapView> {
               ),
             ],
           ),
-        // Attribution Layer
+        // Quellenangabe. Sie liegt links unten, damit die Bedienelemente
+        // rechts sie nicht verdecken koennen - sie muss sichtbar bleiben.
         RichAttributionWidget(
+          alignment: AttributionAlignment.bottomLeft,
           attributions: [
             TextSourceAttribution(
               '© OpenStreetMap contributors',
@@ -1092,96 +1096,105 @@ class _MapViewState extends State<MapView> {
             ),
           ],
         ),
-        // Search Bar
-        if (_geocoder.isInitialized)
-          Positioned(
-            top: 12,
-            left: 200,
-            right: 200,
-            child: Column(
-              children: [
-                PlaceSearchBar(
-                  mapController: _mapController,
-                  geocoder: _geocoder,
-                  initialZoom: _currentZoom,
-                  hintText: 'Start suchen...',
-                  prefixIcon: Icons.trip_origin,
-                  onClearSearch: () {
-                    if (!mounted) {
-                      return;
-                    }
-                    setState(() {
-                      _routeStart = null;
-                    });
-                    _tryBuildRoute();
-                  },
-                  onPlaceSelected: (result) {
-                    if (!mounted) {
-                      return;
-                    }
-                    setState(() {
-                      _selectedSearchResult = result;
-                      _routeStart = result;
-                    });
-                    _tryBuildRoute();
-                  },
-                ),
-                PlaceSearchBar(
-                  mapController: _mapController,
-                  geocoder: _geocoder,
-                  initialZoom: _currentZoom,
-                  hintText: 'Ziel suchen...',
-                  prefixIcon: Icons.flag,
-                  onClearSearch: () {
-                    if (!mounted) {
-                      return;
-                    }
-                    setState(() {
-                      _routeEnd = null;
-                    });
-                    _tryBuildRoute();
-                  },
-                  onPlaceSelected: (result) {
-                    if (!mounted) {
-                      return;
-                    }
-                    setState(() {
-                      _selectedSearchResult = result;
-                      _routeEnd = result;
-                    });
-                    _tryBuildRoute();
-                  },
-                ),
-              ],
-            ),
-          ),
-        Positioned(
-          top: 112,
-          left: 12,
-          child: IgnorePointer(child: _buildRoutingBadge(context)),
-        ),
-        Positioned(
-          top: 12,
-          left: 12,
-          child: IgnorePointer(
-            child: _ZoomBadgeWidget(zoomNotifier: _zoomNotifier),
-          ),
-        ),
-        Positioned(
-          top: 12,
-          right: 12,
-          child: IgnorePointer(child: _buildModeBadge(context)),
-        ),
-        if (_isVectorMode)
-          Positioned(top: 48, right: 12, child: _buildStyleSwitchChip(context)),
-        Positioned(top: 84, right: 12, child: _buildGpsSimulatorChip(context)),
-        Positioned(
-          bottom: 16,
-          right: 12,
-          child: _buildZoomButtons(context),
-        ),
       ],
     );
+  }
+
+  /// Bedienelemente ueber der Karte.
+  ///
+  /// Sie liegen bewusst **nicht** in `FlutterMap(children:)`. Dort sind sie
+  /// Kartenebenen, und ein Tipp konkurriert mit der Gestenerkennung der Karte:
+  /// auf einem Touchscreen wackelt der Finger immer ein paar Pixel, die
+  /// Skaliergeste gewinnt den Wettstreit, und der Knopf bekommt nichts ab. Als
+  /// Geschwister ueber der Karte faengt der oberste Treffer das Ereignis ab,
+  /// bevor die Karte es ueberhaupt sieht.
+  List<Widget> _buildMapControls(BuildContext context) {
+    return [
+      // Search Bar
+      if (_geocoder.isInitialized)
+        Positioned(
+          top: 12,
+          left: 200,
+          right: 200,
+          child: Column(
+            children: [
+              PlaceSearchBar(
+                mapController: _mapController,
+                geocoder: _geocoder,
+                initialZoom: _currentZoom,
+                hintText: 'Start suchen...',
+                prefixIcon: Icons.trip_origin,
+                onClearSearch: () {
+                  if (!mounted) {
+                    return;
+                  }
+                  setState(() {
+                    _routeStart = null;
+                  });
+                  _tryBuildRoute();
+                },
+                onPlaceSelected: (result) {
+                  if (!mounted) {
+                    return;
+                  }
+                  setState(() {
+                    _selectedSearchResult = result;
+                    _routeStart = result;
+                  });
+                  _tryBuildRoute();
+                },
+              ),
+              PlaceSearchBar(
+                mapController: _mapController,
+                geocoder: _geocoder,
+                initialZoom: _currentZoom,
+                hintText: 'Ziel suchen...',
+                prefixIcon: Icons.flag,
+                onClearSearch: () {
+                  if (!mounted) {
+                    return;
+                  }
+                  setState(() {
+                    _routeEnd = null;
+                  });
+                  _tryBuildRoute();
+                },
+                onPlaceSelected: (result) {
+                  if (!mounted) {
+                    return;
+                  }
+                  setState(() {
+                    _selectedSearchResult = result;
+                    _routeEnd = result;
+                  });
+                  _tryBuildRoute();
+                },
+              ),
+            ],
+          ),
+        ),
+      Positioned(
+        top: 112,
+        left: 12,
+        child: IgnorePointer(child: _buildRoutingBadge(context)),
+      ),
+      Positioned(
+        top: 12,
+        left: 12,
+        child: IgnorePointer(
+          child: _ZoomBadgeWidget(zoomNotifier: _zoomNotifier),
+        ),
+      ),
+      Positioned(
+        top: 12,
+        right: 12,
+        child: IgnorePointer(child: _buildModeBadge(context)),
+      ),
+      if (_isVectorMode)
+        Positioned(top: 48, right: 12, child: _buildStyleSwitchChip(context)),
+      Positioned(top: 84, right: 12, child: _buildGpsSimulatorChip(context)),
+      Positioned(bottom: 16, right: 12, child: _buildZoomButtons(context)),
+    ];
   }
 
   /// Zoomknoepfe fuer die Bedienung mit dem Finger.
