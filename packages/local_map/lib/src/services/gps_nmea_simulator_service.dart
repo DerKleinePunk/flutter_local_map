@@ -191,8 +191,8 @@ class GpsNmeaSimulatorService {
 
     final timestamp = _parseUtcDateTime(fields[1], null);
     if (kDebugMode) {
-      final timestamp = DateTime.now().toIso8601String();
-      print('[$timestamp] Parsed GGA fix: lat=$lat, lon=$lon, time=$timestamp');
+      final now = DateTime.now().toIso8601String();
+      print('[$now] Parsed GGA fix: lat=$lat, lon=$lon, time=$timestamp');
     }
 
     return SimulatedGpsFix(

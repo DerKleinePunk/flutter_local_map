@@ -171,9 +171,7 @@ class MapErrorHandler {
   }) {
     final msg = 'Kartendatenformat "$format" wird nicht unterstützt. '
         'Erwartet: png, jpg, jpeg, webp (Raster) oder pbf (Vektor).';
-    if (kDebugMode) {
-      debugPrint('$_logTag FORMAT_ERROR: $msg (File: $mbtilesPath)');
-    }
+    _logError(msg, null, null, 'File: $mbtilesPath');
     return MapError(
       category: MapErrorCategory.mbtilesFormatUnsupported,
       userMessage: msg,
@@ -199,21 +197,22 @@ class MapErrorHandler {
     _logError(message, error, stackTrace, context);
   }
 
+  /// Fehler werden bewusst auch im Release geloggt: auf dem Pi laeuft nur
+  /// Release, und ohne diese Zeilen ist eine leere Karte dort nicht
+  /// diagnostizierbar.
   static void _logError(
     String message,
     Object? error,
     StackTrace? stackTrace, [
     String? context,
   ]) {
-    if (kDebugMode) {
-      final contextStr = context != null ? ' [$context]' : '';
-      debugPrint('$_logTag ERROR$contextStr: $message');
-      if (error != null) {
-        debugPrint('$_logTag  Exception: $error');
-      }
-      if (stackTrace != null) {
-        debugPrint('$_logTag  Stacktrace: $stackTrace');
-      }
+    final contextStr = context != null ? ' [$context]' : '';
+    debugPrint('$_logTag ERROR$contextStr: $message');
+    if (error != null) {
+      debugPrint('$_logTag  Exception: $error');
+    }
+    if (stackTrace != null) {
+      debugPrint('$_logTag  Stacktrace: $stackTrace');
     }
   }
 }

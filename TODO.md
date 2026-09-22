@@ -40,11 +40,12 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
 - [ ] **Karte auf dem Pi visuell bestaetigen.** Die App oeffnet die MBTiles
       dort nachweislich, ob die Karte gezeichnet wird, wurde noch nicht mit
       Augen geprueft - zuletzt lief das Sample auf dem Schirm, nicht die App.
-- [ ] **`logError` aus der `kDebugMode`-Sperre nehmen.** In
+- [x] **`logError` aus der `kDebugMode`-Sperre genommen.** In
       [map_error_handler.dart](packages/local_map/lib/src/services/map_error_handler.dart)
-      sind `logDebug` *und* `logError` auf Debug beschraenkt. Auf dem Pi laeuft
-      immer Release - die Karte schweigt dort also auch bei Fehlern, was die
-      Diagnose unmoeglich macht. Fehler gehoeren ins Release-Log.
+      loggt `_logError` jetzt immer, `logDebug` bleibt auf Debug beschraenkt.
+      `classifyUnsupportedFormat` laeuft ueber denselben Pfad statt ueber einen
+      eigenen Debug-Block. Damit meldet sich die Karte auf dem Pi auch im
+      Release, wenn Style, MBTiles oder SQLite Aerger machen.
 - [ ] **Bildgroesse pruefen.** ivi-homescreen meldet `Size: 1920 x 720`, das ist
       sein Standardwert und nicht die Monitoraufloesung.
 - [ ] **Messharness fuer den Pi bauen**, um echte Frame-Zeiten vom Zielgeraet
@@ -98,6 +99,12 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
   `SchedulerBinding.instance.addTimingsCallback` ist aussagekraeftig.
 - **Eine leere Karte ist meist ein Koordinatenproblem**, kein Renderfehler.
   Zuerst pruefen, ob die Kameraposition in den `bounds` der MBTiles liegt.
+- **Tests liegen an zwei Orten.** `flutter test` im Repo-Root findet nur
+  `test/`, die 17 Tests des Pakets brauchen `flutter test` in
+  [packages/local_map/](packages/local_map/).
+- **`test/offline_smoke_test_matrix.dart` laeuft nie mit.** Der Dateiname endet
+  nicht auf `_test.dart`, `flutter test` sammelt sie also nicht ein - die
+  "12 Tests gruen" unter P2 sind seit dem Umbau unbelegt.
 
 ## P0 - Muss sofort
 - [x] Non-Regression: Raster-MBTiles-Unterstützung muss erhalten bleiben

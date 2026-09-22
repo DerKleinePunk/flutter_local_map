@@ -392,9 +392,8 @@ class _MapViewState extends State<MapView> {
             context: 'Loading vector style',
           );
           MapErrorHandler.logError(
-            'Fallback: Using light theme without styling',
-            error: assetError,
-            stackTrace: stackTrace,
+            'Fallback: helles Standardtheme ohne Styling '
+            '(${mapError.category.name}: ${mapError.userMessage})',
             context: 'Vector style loading',
           );
           vectorTheme = vtr.ProvidedThemes.lightTheme();
