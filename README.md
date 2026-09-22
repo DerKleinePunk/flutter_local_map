@@ -110,13 +110,30 @@ Hinweis:
 
 ## Abhaengigkeiten und Fork-Overrides
 
-Das Projekt nutzt fuer Flutter Map 8.x Fork-Overrides in [pubspec.yaml](pubspec.yaml):
+Das Projekt braucht fuer Flutter Map 8.x **zwei** Git-Overrides in
+[pubspec.yaml](pubspec.yaml):
 
 - `flutter_map_mbtiles` (Git-Override)
 - `vector_map_tiles_mbtiles` (Git-Override)
-- `vector_map_tiles` (Git-Override, Branch `9.0.0-beta.8`)
 
-Damit sind die benoetigten Anpassungen fuer den aktuellen Stack im Projekt fixiert.
+Grund ist nicht `flutter_map` selbst, sondern `mbtiles`: die auf pub.dev
+veroeffentlichten Versionen haengen an `mbtiles: ^0.4.0`, dieses Projekt nutzt
+`^0.5.0`. `vector_map_tiles_mbtiles` 1.2.0 fordert zusaetzlich noch
+`vector_map_tiles: ^8.0.0`. Solange upstream
+([josxha/flutter_map_plugins](https://github.com/josxha/flutter_map_plugins))
+nichts Neues veroeffentlicht - Stand dort ist September 2024 - bleiben die
+beiden Overrides noetig.
+
+`vector_map_tiles` kommt seit dem Upgrade auf 9.0.0-beta.13 **direkt von
+pub.dev**. Der frueher noetige Fork mit sechs eigenen Commits zum
+Cancellation-Handling ist entfallen: upstream hat das in den Betas 9 bis 13
+selbst geloest, und im Routentest taucht keine unbehandelte
+`CancellationException` mehr auf.
+
+Wichtig fuer konsumierende Projekte: `dependency_overrides` wirken nur im
+Root-Package und werden nicht transitiv vererbt. Die beiden Eintraege muessen
+dort also wiederholt werden, siehe
+[packages/local_map/README.md](packages/local_map/README.md).
 
 ## Lokale Tile-Erzeugung mit Tilemaker (z17)
 

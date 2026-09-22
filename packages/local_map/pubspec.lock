@@ -225,14 +225,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.9.2"
-  image:
-    dependency: transitive
-    description:
-      name: image
-      sha256: a1e7f4951e538a568e14b856702afc9ae1d2f4b202daced8d22c1b9cd211ce89
-      url: "https://pub.dev"
-    source: hosted
-    version: "4.10.1"
   intl:
     dependency: transitive
     description:
@@ -269,10 +261,10 @@ packages:
     dependency: "direct main"
     description:
       name: latlong2
-      sha256: "98227922caf49e6056f91b6c56945ea1c7b166f28ffcd5fb8e72fc0b453cc8fe"
+      sha256: "84b776b100a84a684a0aaa3fa4dc2c9b1931c658de533701ee4e09bfa991f8dc"
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.1"
+    version: "0.10.1"
   leak_tracker:
     dependency: transitive
     description:
@@ -333,10 +325,10 @@ packages:
     dependency: "direct main"
     description:
       name: mbtiles
-      sha256: "3255bee8bed9ad5bdd1cbc3589edfcd67fb9c44f67a039deb45393cf50a45850"
+      sha256: "0d9e5b35815a9292e51ffeac04bc885365511c8f985590d41f03894b7d43f1a2"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.0"
+    version: "0.5.1"
   meta:
     dependency: transitive
     description:
@@ -721,12 +713,11 @@ packages:
   vector_map_tiles:
     dependency: "direct main"
     description:
-      path: "."
-      ref: "9.0.0-beta.8"
-      resolved-ref: f5d5f95daa11f5f2f3e1258543974200448c0e85
-      url: "https://github.com/DerKleinePunk/flutter-vector-map-tiles.git"
-    source: git
-    version: "9.0.0-beta.8"
+      name: vector_map_tiles
+      sha256: "42dce00e0f69352663f4c9c78fe5cc900704f6dd46019640ebda0d84cc14ce68"
+      url: "https://pub.dev"
+    source: hosted
+    version: "9.0.0-beta.13"
   vector_map_tiles_mbtiles:
     dependency: "direct main"
     description:
@@ -752,14 +743,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.1"
-  vector_tile_dem:
-    dependency: transitive
-    description:
-      name: vector_tile_dem
-      sha256: "81a3568d2213817bd2698f919357e5107c0261491ae1014e821ed4fc3c2bf740"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.0.2"
   vector_tile_renderer:
     dependency: "direct main"
     description:

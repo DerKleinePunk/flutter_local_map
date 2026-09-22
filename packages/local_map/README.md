@@ -32,7 +32,7 @@ dependencies:
 
 ### Pflicht in beiden Varianten: dependency_overrides
 
-`local_map` benötigt drei geforkte Abhängigkeiten. `dependency_overrides`
+`local_map` benötigt zwei geforkte Abhängigkeiten. `dependency_overrides`
 werden von pub **nur im Root-Package** ausgewertet und **nicht** transitiv
 vererbt — ohne die folgenden Zeilen scheitert `flutter pub get` im
 konsumierenden Projekt an Versionskonflikten:
@@ -49,11 +49,11 @@ dependency_overrides:
       url: https://github.com/DerKleinePunk/flutter_map_plugins
       ref: to_flutter_map_8
       path: vector_map_tiles_mbtiles
-  vector_map_tiles:
-    git:
-      url: https://github.com/DerKleinePunk/flutter-vector-map-tiles.git
-      ref: 9.0.0-beta.8
 ```
+
+Noetig sind die beiden wegen `mbtiles`: die pub.dev-Versionen haengen an
+`^0.4.0`, dieses Package nutzt `^0.5.0`. `vector_map_tiles` selbst kommt seit
+9.0.0-beta.13 direkt von pub.dev und braucht **kein** Override mehr.
 
 ## Verwenden
 
