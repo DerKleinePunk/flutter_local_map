@@ -13,6 +13,7 @@ import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 import '../config/map_config.dart';
 import '../services/gps_nmea_simulator_service.dart';
+import '../services/map_camera_bounds.dart';
 import '../services/map_error_handler.dart';
 import '../services/offline_geocoder.dart';
 import '../services/valhalla_routing_service.dart';
@@ -78,6 +79,7 @@ class _MapViewState extends State<MapView> {
   SpriteStyle? _vectorSprites;
   late double _activeMinZoom;
   late double _activeMaxZoom;
+  late LatLng _initialCenter;
   late double _currentZoom;
   late int _selectedVectorStyleAssetIndex;
   String? _activeVectorStyleAssetPath;
@@ -115,6 +117,7 @@ class _MapViewState extends State<MapView> {
     _activeMinZoom = _config.minZoom;
     _activeMaxZoom = _config.maxZoom;
     _currentZoom = _config.initialZoom;
+    _initialCenter = _config.center;
     _selectedVectorStyleAssetIndex = _localVectorStyleAssets.isEmpty
         ? 0
         : _config.initialVectorStyleIndex % _localVectorStyleAssets.length;
@@ -367,6 +370,10 @@ class _MapViewState extends State<MapView> {
       final minZoom = metadata.minZoom ?? _config.minZoom;
       final maxZoom = metadata.maxZoom ?? _config.maxZoom;
       final boundedInitialZoom = _config.initialZoom.clamp(minZoom, maxZoom);
+      final initialCenter = centerWithinTiles(
+        configured: _config.center,
+        bounds: metadata.bounds,
+      );
 
       if (format == 'pbf') {
         final mbtiles = MbTiles(path: widget.mbtilesPath!);
@@ -420,6 +427,7 @@ class _MapViewState extends State<MapView> {
           _activeMinZoom = minZoom;
           _activeMaxZoom = maxZoom;
           _currentZoom = boundedInitialZoom;
+          _initialCenter = initialCenter;
           _isLoading = false;
           _errorMessage = null;
         });
@@ -463,6 +471,7 @@ class _MapViewState extends State<MapView> {
         _activeMinZoom = minZoom;
         _activeMaxZoom = maxZoom;
         _currentZoom = boundedInitialZoom;
+        _initialCenter = initialCenter;
         _isLoading = false;
         _errorMessage = null;
       });
@@ -780,12 +789,13 @@ class _MapViewState extends State<MapView> {
       debugPrint('[map] Attempting to open metadata database: $path');
       db = sqlite.sqlite3.open(path, mode: sqlite.OpenMode.readOnly);
       final rows = db.select(
-        "SELECT name, value FROM metadata WHERE name IN ('format', 'minzoom', 'maxzoom', 'json')",
+        "SELECT name, value FROM metadata WHERE name IN ('format', 'minzoom', 'maxzoom', 'json', 'bounds')",
       );
 
       String? format;
       double? minZoom;
       double? maxZoom;
+      LatLngBounds? bounds;
       Set<String> vectorLayerIds = const <String>{};
 
       for (final row in rows) {
@@ -800,6 +810,8 @@ class _MapViewState extends State<MapView> {
           maxZoom = double.tryParse(value.toString());
         } else if (name == 'json' && value is String) {
           vectorLayerIds = _extractVectorLayerIdsFromMetadataJson(value);
+        } else if (name == 'bounds' && value != null) {
+          bounds = parseMbtilesBounds(value.toString());
         }
       }
 
@@ -813,6 +825,7 @@ class _MapViewState extends State<MapView> {
         format: format,
         minZoom: minZoom,
         maxZoom: maxZoom,
+        bounds: bounds,
         vectorLayerIds: vectorLayerIds,
       );
     } finally {
@@ -878,7 +891,7 @@ class _MapViewState extends State<MapView> {
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
-        initialCenter: _config.center,
+        initialCenter: _initialCenter,
         initialZoom: _currentZoom,
         minZoom: _activeMinZoom,
         maxZoom: _activeMaxZoom,
@@ -1333,12 +1346,17 @@ class _MbtilesMetadataInfo {
   final String? format;
   final double? minZoom;
   final double? maxZoom;
+
+  /// Abdeckung der Kacheln, aus dem `bounds`-Eintrag der MBTiles-Metadaten.
+  /// `null`, wenn die Datei keinen (gueltigen) Eintrag hat.
+  final LatLngBounds? bounds;
   final Set<String> vectorLayerIds;
 
   const _MbtilesMetadataInfo({
     this.format,
     this.minZoom,
     this.maxZoom,
+    this.bounds,
     this.vectorLayerIds = const <String>{},
   });
 }
