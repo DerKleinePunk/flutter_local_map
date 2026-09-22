@@ -19,6 +19,37 @@ Gemessen (Release, GPS-Route bei Zoom 17, offline im Netzwerk-Namespace):
 alle Kacheln sichtbar, 422 MB RSS, schlechtester Frame 86 ms Build +
 118 ms Raster.
 
+### Pi-Portierung (Stand 2026-09-22 abends)
+
+Die App laeuft cross-compiliert auf dem Test-Pi. Kette: `emb_cli` 0.3.6 ->
+Flutter 3.47.5 -> vorgebaute arm64-Engine -> ivi-homescreen (Backend
+`drm-kms-egl`) -> Bundle -> rsync auf den Pi. Workspace liegt ausserhalb des
+Repos unter `/home/punky/develop/emb-workspace`, gebaut wird aus einem
+`git worktree`, damit dieses Arbeitsverzeichnis unberuehrt bleibt.
+
+Bestaetigt: **Bild kommt auf dem Monitor an** (Flutter-Sample sichtbar),
+60 Hz, Direct-Scanout, vc4. `libsqlite3.so` im Bundle ist korrektes aarch64 -
+die `FLUTTER_HOOK_CC`-Warnung von emb trifft uns nicht, weil `sqlite3` seine
+Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
+
+- [ ] **Touch-Eingabe funktioniert nicht.** Das Sample wird angezeigt, aber
+      Beruehrungen kommen nicht an. Eingabe laeuft im Embedder ueber libinput,
+      unabhaengig von `DISABLE_PLUGINS`. Zu pruefen: `libinput list-devices`
+      auf dem Pi, Rechte auf `/dev/input/event*` (User `pi` ist in Gruppe
+      `input`), ob seatd die Eingabegeraete durchreicht.
+- [ ] **Karte auf dem Pi visuell bestaetigen.** Die App oeffnet die MBTiles
+      dort nachweislich, ob die Karte gezeichnet wird, wurde noch nicht mit
+      Augen geprueft - zuletzt lief das Sample auf dem Schirm, nicht die App.
+- [ ] **`logError` aus der `kDebugMode`-Sperre nehmen.** In
+      [map_error_handler.dart](packages/local_map/lib/src/services/map_error_handler.dart)
+      sind `logDebug` *und* `logError` auf Debug beschraenkt. Auf dem Pi laeuft
+      immer Release - die Karte schweigt dort also auch bei Fehlern, was die
+      Diagnose unmoeglich macht. Fehler gehoeren ins Release-Log.
+- [ ] **Bildgroesse pruefen.** ivi-homescreen meldet `Size: 1920 x 720`, das ist
+      sein Standardwert und nicht die Monitoraufloesung.
+- [ ] **Messharness fuer den Pi bauen**, um echte Frame-Zeiten vom Zielgeraet
+      zu bekommen statt der WSL2-Zahlen mit defektem GPU-Stack.
+
 ### Offen
 
 - [ ] **MapLibre-Migration neu bewerten, bevor jemand anfaengt.** Der Plan
