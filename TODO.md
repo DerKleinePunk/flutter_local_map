@@ -71,6 +71,25 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
       `1920x1080 logical -> 1920x1080 px, pixel_ratio=1`. Also immer mit
       `-f` starten oder `-w/--height` setzen; `--drm-list-modes` listet die
       Modi des Geraets.
+- [ ] **Displaymodus 1024x600 unter Full-KMS klaeren.** Das Zielpanel ist ein
+      Waveshare 7" HDMI LCD (H), 1024x600, Bild ueber HDMI und Touch ueber
+      USB. Das Image von `carnine2` schaltet dafuer auf `vc4-fkms-v3d` um,
+      damit die `hdmi_cvt`-Zeilen greifen - ivi-homescreen faehrt aber
+      `modeset=atomic` mit Overlay- und Cursor-Plane, und das setzt Full-KMS
+      voraus. Am 2026-09-22 auf jeep-pi gegengeprueft: ein erzwungener Modus
+      per `video=HDMI-A-1:1024x600M@60D` in `cmdline.txt` wird vom Kernel
+      gebaut, aber vom vc4-Treiber abgelehnt:
+      `User-defined mode not supported: "1024x600": 60 49000 1024 1029 1042
+      1312 ...`. Grund sind die **ungeraden horizontalen Timings**
+      (`hsync_start` 1029) - der HDMI-Controller des Pi 4 kann die nicht
+      (`unsupported_odd_h_timings` fuer bcm2711). `MR` (Reduced Blanking)
+      aendert die Rechnung nicht. Bleibt unter Full-KMS also nur ein eigenes
+      EDID mit geraden Timings
+      (`drm_kms_helper.edid_firmware=HDMI-A-1:edid/1024x600.bin`). Vorher
+      aber pruefen, was das Panel selbst anbietet: `cat
+      /sys/class/drm/card*-HDMI-A-1/modes` mit angeschlossenem Waveshare und
+      ohne jede `hdmi_*`-Zeile. Liefert sein EDID 1024x600, eruebrigt sich
+      alles andere.
 - [ ] **Messharness fuer den Pi bauen**, um echte Frame-Zeiten vom Zielgeraet
       zu bekommen statt der WSL2-Zahlen mit defektem GPU-Stack.
 
