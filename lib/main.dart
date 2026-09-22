@@ -1,14 +1,8 @@
 import 'dart:async';
 import 'dart:ui';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'config/map_config.dart';
-import 'services/map_downloader.dart';
-import 'widgets/map_view.dart';
-import 'widgets/download_overlay.dart';
-import 'widgets/storage_settings_dialog.dart';
+import 'package:local_map/local_map.dart';
 
 void _logError(String source, Object error, StackTrace? stack) {
   final timestamp = DateTime.now().toIso8601String();
@@ -23,12 +17,9 @@ void _logError(String source, Object error, StackTrace? stack) {
 void main() {
   runZonedGuarded(
     () async {
-      WidgetsFlutterBinding.ensureInitialized();
-
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-        sqfliteFfiInit();
-        databaseFactory = databaseFactoryFfi;
-      }
+      // Initialisiert Binding + sqflite-FFI und legt die Karten-Config fest,
+      // die MapView/MapDownloader ohne explizites config:-Argument verwenden.
+      LocalMap.ensureInitialized(config: MapConfig.hessen);
 
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details);
@@ -172,8 +163,10 @@ class _MapHomePageState extends State<MapHomePage> {
 
     final result = await showDialog<MapStorageLocation>(
       context: context,
-      builder: (context) =>
-          StorageSettingsDialog(currentLocation: currentLocation),
+      builder: (context) => StorageSettingsDialog(
+        currentLocation: currentLocation,
+        config: _downloader.config,
+      ),
     );
 
     if (result != null && mounted) {
@@ -277,9 +270,11 @@ class _MapHomePageState extends State<MapHomePage> {
       return DownloadOverlay(
         downloader: _downloader,
         onDownloadComplete: _onDownloadComplete,
+        title: 'Kartendaten für Hessen',
       );
     }
 
+    // Ohne config: greift MapConfig.defaults aus LocalMap.ensureInitialized().
     return MapView(mbtilesPath: _mbtilesPath);
   }
 }

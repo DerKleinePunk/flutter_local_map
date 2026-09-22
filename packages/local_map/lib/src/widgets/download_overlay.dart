@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/map_downloader.dart';
-import '../config/map_config.dart';
 
 /// Download-Status Enum
 enum DownloadStatus {
@@ -15,10 +14,14 @@ class DownloadOverlay extends StatefulWidget {
   final MapDownloader downloader;
   final VoidCallback onDownloadComplete;
 
+  /// Überschrift über dem Download-Button, z.B. "Kartendaten für Hessen".
+  final String title;
+
   const DownloadOverlay({
     super.key,
     required this.downloader,
     required this.onDownloadComplete,
+    this.title = 'Kartendaten',
   });
 
   @override
@@ -191,13 +194,14 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
         return Column(
           children: [
             Text(
-              'Kartendaten für Hessen',
+              widget.title,
               style: Theme.of(context).textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Download erforderlich (~${MapConfig.estimatedFileSizeMB} MB)',
+              'Download erforderlich '
+              '(~${widget.downloader.config.estimatedFileSizeMB} MB)',
               style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),

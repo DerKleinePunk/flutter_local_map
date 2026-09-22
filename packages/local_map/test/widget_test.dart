@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:latlong2/latlong.dart';
 
-import 'package:map_local/services/offline_geocoder.dart';
-import 'package:map_local/widgets/search_bar.dart';
+import 'package:local_map/local_map.dart';
 
 void main() {
   testWidgets('Suggestion tap calls select callback after delayed release', (

@@ -1,0 +1,19 @@
+# Wird nur ausgewertet, wenn dieses Package selbst das Root-Package ist
+# (z.B. `flutter test` innerhalb von packages/local_map).
+# Konsumierende Projekte muessen dieselben Overrides in ihre eigene
+# pubspec.yaml eintragen - siehe README.md.
+dependency_overrides:
+  flutter_map_mbtiles:
+    git:
+      url: https://github.com/DerKleinePunk/flutter_map_plugins
+      ref: to_flutter_map_8
+      path: flutter_map_mbtiles
+  vector_map_tiles_mbtiles:
+    git:
+      url: https://github.com/DerKleinePunk/flutter_map_plugins
+      ref: to_flutter_map_8
+      path: vector_map_tiles_mbtiles
+  vector_map_tiles:
+    git:
+      url: https://github.com/DerKleinePunk/flutter-vector-map-tiles.git
+      ref: 9.0.0-beta.8

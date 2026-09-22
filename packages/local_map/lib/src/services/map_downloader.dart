@@ -8,24 +8,27 @@ import '../config/map_config.dart';
 class MapDownloader {
   final Dio _dio = Dio();
   String? _downloadPath;
-  final MapStorageLocation _storageLocation;
-  final String? _customPath;
+  final MapConfig _config;
 
-  /// Erstellt einen MapDownloader mit konfigurierbarem Speicherort
-  /// 
-  /// [storageLocation] Bestimmt, wo die Karten gespeichert werden
-  /// [customPath] Erforderlich wenn storageLocation == custom
-  MapDownloader({
-    MapStorageLocation? storageLocation,
-    String? customPath,
-  })  : _storageLocation = storageLocation ?? MapConfig.defaultStorageLocation,
-        _customPath = customPath ?? MapConfig.customStoragePath {
-    if (_storageLocation == MapStorageLocation.custom && _customPath == null) {
+  /// Erstellt einen MapDownloader
+  ///
+  /// [config] steuert Speicherort, Dateiname und Download-URL.
+  /// Ohne Angabe wird [MapConfig.defaults] verwendet.
+  MapDownloader({MapConfig? config}) : _config = config ?? MapConfig.defaults {
+    if (_config.storageLocation == MapStorageLocation.custom &&
+        _config.customStoragePath == null) {
       throw ArgumentError(
-        'customPath muss angegeben werden wenn storageLocation == custom',
+        'customStoragePath muss angegeben werden wenn '
+        'storageLocation == custom',
       );
     }
   }
+
+  /// Die aktive Konfiguration dieses Downloaders.
+  MapConfig get config => _config;
+
+  MapStorageLocation get _storageLocation => _config.storageLocation;
+  String? get _customPath => _config.customStoragePath;
 
   /// Initialisiert den Downloader und setzt den Download-Pfad
   Future<void> initialize() async {
@@ -35,7 +38,7 @@ class MapDownloader {
       _downloadPath = _customPath;
     } else {
       // Ansonsten erstellen wir den Standard-Unterordner
-      _downloadPath = p.join(baseDir.path, MapConfig.storageSubdirectory);
+      _downloadPath = p.join(baseDir.path, _config.storageSubdirectory);
     }
     
     // Erstelle das Verzeichnis, falls es nicht existiert
@@ -85,7 +88,7 @@ class MapDownloader {
     if (_downloadPath == null) {
       await initialize();
     }
-    return p.join(_downloadPath!, MapConfig.mbtilesFilename);
+    return p.join(_downloadPath!, _config.mbtilesFilename);
   }
 
   /// Prüft, ob die MBTiles-Datei bereits existiert
@@ -116,7 +119,7 @@ class MapDownloader {
       
       // Download mit Progress-Tracking
       await _dio.download(
-        MapConfig.downloadUrl,
+        _config.downloadUrl,
         path,
         onReceiveProgress: (received, total) {
           if (total != -1) {

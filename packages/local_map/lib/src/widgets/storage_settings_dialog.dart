@@ -7,9 +7,14 @@ import '../services/map_downloader.dart';
 class StorageSettingsDialog extends StatefulWidget {
   final MapStorageLocation currentLocation;
 
+  /// Liefert den vorbelegten benutzerdefinierten Pfad.
+  /// Ohne Angabe wird [MapConfig.defaults] verwendet.
+  final MapConfig? config;
+
   const StorageSettingsDialog({
     super.key,
     required this.currentLocation,
+    this.config,
   });
 
   @override
@@ -24,7 +29,8 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
   void initState() {
     super.initState();
     _selectedLocation = widget.currentLocation;
-    _customPathController.text = MapConfig.customStoragePath ?? '';
+    _customPathController.text =
+        (widget.config ?? MapConfig.defaults).customStoragePath ?? '';
   }
 
   @override
@@ -44,7 +50,6 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
         );
         return;
       }
-      MapConfig.customStoragePath = _customPathController.text;
     }
 
     // Speichere in SharedPreferences
@@ -197,21 +202,27 @@ class StoragePreferences {
   static const String _keyCustomPath = 'custom_storage_path';
 
   /// Lädt die gespeicherten Speicherort-Einstellungen
-  static Future<MapStorageLocation> loadStorageLocation() async {
+  ///
+  /// [config] liefert den Fallback, wenn nichts gespeichert ist.
+  /// Ohne Angabe wird [MapConfig.defaults] verwendet.
+  static Future<MapStorageLocation> loadStorageLocation({
+    MapConfig? config,
+  }) async {
+    final fallback = (config ?? MapConfig.defaults).storageLocation;
     final prefs = await SharedPreferences.getInstance();
     final locationName = prefs.getString(_keyStorageLocation);
 
     if (locationName == null) {
-      return MapConfig.defaultStorageLocation;
+      return fallback;
     }
 
     try {
       return MapStorageLocation.values.firstWhere(
         (e) => e.name == locationName,
-        orElse: () => MapConfig.defaultStorageLocation,
+        orElse: () => fallback,
       );
     } catch (e) {
-      return MapConfig.defaultStorageLocation;
+      return fallback;
     }
   }
 
@@ -222,17 +233,22 @@ class StoragePreferences {
   }
 
   /// Erstellt einen MapDownloader mit den gespeicherten Einstellungen
-  static Future<MapDownloader> createDownloader() async {
-    final location = await loadStorageLocation();
+  ///
+  /// Gibt eine [MapConfig] zurück, in der Speicherort und benutzerdefinierter
+  /// Pfad aus den SharedPreferences eingesetzt sind.
+  static Future<MapConfig> resolveConfig({MapConfig? config}) async {
+    final base = config ?? MapConfig.defaults;
+    final location = await loadStorageLocation(config: base);
     final customPath = await loadCustomPath();
 
-    if (location == MapStorageLocation.custom && customPath != null) {
-      MapConfig.customStoragePath = customPath;
-    }
-
-    return MapDownloader(
+    return base.copyWith(
       storageLocation: location,
-      customPath: customPath,
+      customStoragePath: customPath ?? base.customStoragePath,
     );
+  }
+
+  /// Erstellt einen MapDownloader mit den gespeicherten Einstellungen
+  static Future<MapDownloader> createDownloader({MapConfig? config}) async {
+    return MapDownloader(config: await resolveConfig(config: config));
   }
 }

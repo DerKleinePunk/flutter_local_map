@@ -20,9 +20,14 @@ import 'search_bar.dart';
 
 /// Widget zur Darstellung der Karte mit MBTiles
 class MapView extends StatefulWidget {
+  /// Pfad zur MBTiles-Datei (Raster oder Vektor/pbf).
   final String? mbtilesPath;
 
-  const MapView({super.key, this.mbtilesPath});
+  /// Zoom-Grenzen, Kartenmittelpunkt, Vektorstyles, Valhalla-Endpunkt usw.
+  /// Ohne Angabe wird [MapConfig.defaults] verwendet.
+  final MapConfig? config;
+
+  const MapView({super.key, this.mbtilesPath, this.config});
 
   @override
   State<MapView> createState() => _MapViewState();
@@ -37,8 +42,11 @@ class _MapViewState extends State<MapView> {
 
   final MapController _mapController = MapController();
   final OfflineGeocoder _geocoder = OfflineGeocoder();
-  final ValhallaRoutingService _routingService = ValhallaRoutingService();
   final GpsNmeaSimulatorService _gpsSimulator = GpsNmeaSimulatorService();
+
+  /// Aktive Konfiguration, in [initState] aus dem Widget uebernommen.
+  late MapConfig _config;
+  late final ValhallaRoutingService _routingService;
   StreamSubscription<SimulatedGpsFix>? _gpsFixSubscription;
 
   /// Token to track initialization requests and prevent race conditions.
@@ -54,10 +62,10 @@ class _MapViewState extends State<MapView> {
   TileProviders? _vectorTileProviders;
   vtr.Theme? _vectorTheme;
   SpriteStyle? _vectorSprites;
-  double _activeMinZoom = MapConfig.minZoom.toDouble();
-  double _activeMaxZoom = MapConfig.maxZoom.toDouble();
-  double _currentZoom = MapConfig.initialZoom.toDouble();
-  int _selectedVectorStyleAssetIndex = 2;
+  late double _activeMinZoom;
+  late double _activeMaxZoom;
+  late double _currentZoom;
+  late int _selectedVectorStyleAssetIndex;
   String? _activeVectorStyleAssetPath;
   GeocoderResult? _selectedSearchResult;
   GeocoderResult? _routeStart;
@@ -77,11 +85,8 @@ class _MapViewState extends State<MapView> {
   String? _errorMessage;
 
   static const Set<String> _rasterFormats = {'png', 'jpg', 'jpeg', 'webp'};
-  static const List<String> _localVectorStyleAssets = [
-    'assets/maps/style.json',
-    'assets/maps/style_second.json',
-    'assets/maps/style_navigation.json',
-  ];
+
+  List<String> get _localVectorStyleAssets => _config.vectorStyleAssets;
 
   bool get _isVectorMode =>
       _vectorTileProviders != null && _vectorTheme != null;
@@ -89,7 +94,17 @@ class _MapViewState extends State<MapView> {
   @override
   void initState() {
     super.initState();
-    _zoomNotifier = ValueNotifier<double>(MapConfig.initialZoom.toDouble());
+    _config = widget.config ?? MapConfig.defaults;
+    _routingService = ValhallaRoutingService(
+      baseUri: _config.valhallaBaseUri,
+    );
+    _activeMinZoom = _config.minZoom;
+    _activeMaxZoom = _config.maxZoom;
+    _currentZoom = _config.initialZoom;
+    _selectedVectorStyleAssetIndex = _localVectorStyleAssets.isEmpty
+        ? 0
+        : _config.initialVectorStyleIndex % _localVectorStyleAssets.length;
+    _zoomNotifier = ValueNotifier<double>(_currentZoom);
     _initializeTileProvider();
     _initializeGeocoder();
     _checkRoutingAvailability();
@@ -98,7 +113,9 @@ class _MapViewState extends State<MapView> {
 
   Future<void> _initializeGpsSimulator() async {
     try {
-      final loaded = await _gpsSimulator.loadDefaultTourFile();
+      final loaded = await _gpsSimulator.loadDefaultTourFile(
+        candidatePaths: _config.gpsTourFilePaths,
+      );
       if (!mounted) {
         return;
       }
@@ -333,12 +350,9 @@ class _MapViewState extends State<MapView> {
       }
 
       final format = metadata.format;
-      final minZoom = metadata.minZoom ?? MapConfig.minZoom.toDouble();
-      final maxZoom = metadata.maxZoom ?? MapConfig.maxZoom.toDouble();
-      final boundedInitialZoom = MapConfig.initialZoom.toDouble().clamp(
-        minZoom,
-        maxZoom,
-      );
+      final minZoom = metadata.minZoom ?? _config.minZoom;
+      final maxZoom = metadata.maxZoom ?? _config.maxZoom;
+      final boundedInitialZoom = _config.initialZoom.clamp(minZoom, maxZoom);
 
       if (format == 'pbf') {
         final mbtiles = MbTiles(path: widget.mbtilesPath!);
@@ -480,8 +494,8 @@ class _MapViewState extends State<MapView> {
     _vectorTheme = null;
     _vectorSprites = null;
 
-    _activeMinZoom = MapConfig.minZoom.toDouble();
-    _activeMaxZoom = MapConfig.maxZoom.toDouble();
+    _activeMinZoom = _config.minZoom;
+    _activeMaxZoom = _config.maxZoom;
   }
 
   TileProviders _buildVectorTileProviders({
@@ -796,6 +810,9 @@ class _MapViewState extends State<MapView> {
   @override
   void didUpdateWidget(MapView oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.config, widget.config)) {
+      _config = widget.config ?? MapConfig.defaults;
+    }
     if (oldWidget.mbtilesPath != widget.mbtilesPath) {
       setState(() {
         _isLoading = true;
@@ -845,7 +862,7 @@ class _MapViewState extends State<MapView> {
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
-        initialCenter: MapConfig.center,
+        initialCenter: _config.center,
         initialZoom: _currentZoom,
         minZoom: _activeMinZoom,
         maxZoom: _activeMaxZoom,
@@ -865,10 +882,10 @@ class _MapViewState extends State<MapView> {
           // Update zoom notifier to trigger badge update
           _zoomNotifier.value = camera.zoom;
         },
-        // Begrenze die Kamera auf die Hessen-Bounding-Box
-        cameraConstraint: CameraConstraint.containCenter(
-          bounds: MapConfig.hessenBounds,
-        ),
+        // Begrenzt die Kamera, wenn die Konfiguration Bounds vorgibt
+        cameraConstraint: _config.cameraBounds == null
+            ? const CameraConstraint.unconstrained()
+            : CameraConstraint.containCenter(bounds: _config.cameraBounds!),
       ),
       children: [
         if (_vectorTileProviders != null && _vectorTheme != null)
@@ -881,7 +898,7 @@ class _MapViewState extends State<MapView> {
         else
           TileLayer(
             tileProvider: _rasterTileProvider,
-            urlTemplate: 'mbtiles://hessen',
+            urlTemplate: _config.rasterUrlTemplate,
             maxZoom: _activeMaxZoom,
             // Platzhalter für nicht geladene Tiles
             errorTileCallback: (tile, error, stackTrace) {

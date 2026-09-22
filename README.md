@@ -50,10 +50,10 @@ flutter run -d linux
 
 ## Wichtige Dateien
 
-- App-Konfiguration: [lib/config/map_config.dart](lib/config/map_config.dart)
-- Karten-Widget: [lib/widgets/map_view.dart](lib/widgets/map_view.dart)
-- Download-Service: [lib/services/map_downloader.dart](lib/services/map_downloader.dart)
-- Routing-Service (Valhalla HTTP): [lib/services/valhalla_routing_service.dart](lib/services/valhalla_routing_service.dart)
+- App-Konfiguration: [packages/local_map/lib/src/config/map_config.dart](packages/local_map/lib/src/config/map_config.dart)
+- Karten-Widget: [packages/local_map/lib/src/widgets/map_view.dart](packages/local_map/lib/src/widgets/map_view.dart)
+- Download-Service: [packages/local_map/lib/src/services/map_downloader.dart](packages/local_map/lib/src/services/map_downloader.dart)
+- Routing-Service (Valhalla HTTP): [packages/local_map/lib/src/services/valhalla_routing_service.dart](packages/local_map/lib/src/services/valhalla_routing_service.dart)
 - Valhalla Build-Skript (optional mit BBox): [scripts/valhalla/build_valhalla_from_pbf.sh](scripts/valhalla/build_valhalla_from_pbf.sh)
 - Valhalla Run-Skript (lokaler Server): [scripts/valhalla/run_valhalla_server.sh](scripts/valhalla/run_valhalla_server.sh)
 - Valhalla Build-Skript fuer Windows/Pwsh: [scripts/valhalla/build_valhalla_from_pbf.ps1](scripts/valhalla/build_valhalla_from_pbf.ps1)
@@ -84,7 +84,7 @@ Wenn `minzoom`/`maxzoom` vorhanden sind, werden diese direkt als aktive Zoom-Gre
 
 ## Style-Thema fuer Vektor-MBTiles (wichtig)
 
-Die Datei [assets/maps/style.json](assets/maps/style.json) ist auf das von Tilemaker erzeugte OpenMapTiles-Schema ausgelegt.
+Die Datei [packages/local_map/assets/maps/style.json](packages/local_map/assets/maps/style.json) ist auf das von Tilemaker erzeugte OpenMapTiles-Schema ausgelegt.
 
 Wichtig fuer sichtbare Vektor-Karten:
 
@@ -96,9 +96,9 @@ Offline-first Verhalten:
 
 - Der Vektor-Style wird ausschliesslich lokal aus Assets geladen.
 - Lade-Reihenfolge:
-	1. [assets/maps/style.json](assets/maps/style.json) (Primary)
-	2. [assets/maps/style_second.json](assets/maps/style_second.json) (Secondary)
-	3. [assets/maps/style_navigation.json](assets/maps/style_navigation.json) (Navigation)
+	1. [packages/local_map/assets/maps/style.json](packages/local_map/assets/maps/style.json) (Primary)
+	2. [packages/local_map/assets/maps/style_second.json](packages/local_map/assets/maps/style_second.json) (Secondary)
+	3. [packages/local_map/assets/maps/style_navigation.json](packages/local_map/assets/maps/style_navigation.json) (Navigation)
 	4. internes Fallback-Theme
 - Remote-Styles, Remote-Glyphs und Remote-Sprites sind nicht Teil des Standardpfads.
 - Bei Inkompatibilitaet zwischen Style und MBTiles-Schema faellt die App auf ein internes Fallback-Theme zurueck.
@@ -278,7 +278,7 @@ Nach der Erzeugung von Vektor-MBTiles mit Tilemaker wird automatisch eine SQLite
 - `water_name` (Seen, Flüsse, Gewässer)
 - `transportation_name` (Straßen, Routen) — niedrigste Priorität
 
-Das [OfflineGeocoder](lib/services/offline_geocoder.dart)-Service nutzt `searchPrioritized()` für typsortierte Suchergebnisse. Die [PlaceSearchBar](lib/widgets/search_bar.dart)-Widget zeigt eine Autocomplete-Dropdown mit Typ-Icons und sortiert nach Priorität.
+Das [OfflineGeocoder](packages/local_map/lib/src/services/offline_geocoder.dart)-Service nutzt `searchPrioritized()` für typsortierte Suchergebnisse. Die [PlaceSearchBar](packages/local_map/lib/src/widgets/search_bar.dart)-Widget zeigt eine Autocomplete-Dropdown mit Typ-Icons und sortiert nach Priorität.
 
 **Wichtig:** Die Namen-DB wird automatisch als `{basename}_names.db` neben der MBTiles-Datei erzeugt (z.B. `vogelsberg_names.db` fuer `vogelsberg.mbtiles` oder `braunschweig_names.db` fuer `braunschweig.mbtiles`). Die App lädt sie beim Starten automatisch über `OfflineGeocoder.initialize()`.
 
@@ -312,7 +312,7 @@ Konkrete Setup-Schritte (Build + Pi Runtime + Testrequest) stehen in:
 
 - [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md)
 
-Raster-Schritt (optional) nutzt [scripts/render_raster.py](scripts/render_raster.py) und einen lokalen `tileserver-gl` Docker-Container mit dem Navigation-Style aus [assets/maps/style_navigation.json](assets/maps/style_navigation.json).
+Raster-Schritt (optional) nutzt [scripts/render_raster.py](scripts/render_raster.py) und einen lokalen `tileserver-gl` Docker-Container mit dem Navigation-Style aus [packages/local_map/assets/maps/style_navigation.json](packages/local_map/assets/maps/style_navigation.json).
 
 Optionale Umgebungsvariablen fuer den Raster-Schritt:
 
@@ -385,14 +385,50 @@ Beispiel mit grosser Datei (Germany, Sample):
 python scripts/render_raster_test.py map/tiles-germany/germany.mbtiles --maxzoom 17 --sample-tiles 5000 --renderer maplibre_native --maplibre-workers 4
 ```
 
+## Projektstruktur
+
+Die Kartenfunktionalitaet liegt als eigenstaendiges Flutter-Package unter
+[packages/local_map/](packages/local_map/) und kann von anderen Projekten
+eingebunden werden. Die App im Repository-Root ist die Demo-/Referenz-App
+dazu und bindet das Package per `path:`-Dependency ein.
+
+```
+flutter_local_map/
+├── lib/main.dart          App-Shell (Menue, Download-Flow, Theme)
+├── test/                  Tests, die echte MBTiles unter map/ brauchen
+├── packages/local_map/    Die Bibliothek
+│   ├── lib/local_map.dart Oeffentliche API (Barrel-Export)
+│   ├── lib/src/           config/ services/ widgets/
+│   ├── assets/maps/       Vektor-Styles
+│   └── test/              Unit-/Widget-Tests der Bibliothek
+├── map/                   Kartendaten (nicht im Git)
+└── scripts/               Tilemaker, Valhalla, Geocoder-Extraktion
+```
+
+Einbinden in ein anderes Projekt, Konfiguration und oeffentliche API sind in
+[packages/local_map/README.md](packages/local_map/README.md) beschrieben.
+Wichtig dabei: die drei `dependency_overrides` aus [pubspec.yaml](pubspec.yaml)
+muessen ins konsumierende Projekt kopiert werden, sie werden von pub nicht
+transitiv vererbt.
+
+Tests der Bibliothek laufen separat:
+
+```bash
+cd packages/local_map && flutter test
+```
+
 ## Konfiguration
 
-Relevante Einstellungen in [lib/config/map_config.dart](lib/config/map_config.dart):
+Relevante Einstellungen in [packages/local_map/lib/src/config/map_config.dart](packages/local_map/lib/src/config/map_config.dart). `MapConfig` ist eine
+uebergebbare Instanz; `MapConfig.hessen` enthaelt das Setup dieses Projekts und
+wird in [lib/main.dart](lib/main.dart) via `LocalMap.ensureInitialized()`
+als Default gesetzt:
 
-- Hessen-Bounding-Box
-- initiale Zoom-Werte (Fallback)
+- Bounding-Box (`cameraBounds`, hier Hessen; `null` = keine Begrenzung)
+- initiale Zoom-Werte (Fallback, MBTiles-Metadaten haben Vorrang)
 - Download-URL und Dateiname
 - Speicherort-Strategie fuer Offline-Daten
+- Vektor-Styles, Valhalla-Endpunkt, GPS-Tourdatei
 
 ## Troubleshooting
 
@@ -400,13 +436,13 @@ Relevante Einstellungen in [lib/config/map_config.dart](lib/config/map_config.da
 
 - Pruefen, ob MBTiles-Datei vorhanden ist
 - Format in MBTiles-Metadaten pruefen (`pbf` oder Rasterformat)
-- Download-URL und Speicherpfad in [lib/config/map_config.dart](lib/config/map_config.dart) pruefen
+- Download-URL und Speicherpfad in [packages/local_map/lib/src/config/map_config.dart](packages/local_map/lib/src/config/map_config.dart) pruefen
 
 ### Vektorlabels fehlen
 
 - Die lokalen Styles enthalten Label-Layer fuer `place`, `transportation_name` und `water_name`.
 - Wenn trotzdem keine Labels erscheinen, ist meist das zugrunde liegende Rendering (z. B. fehlende Glyph-Unterstuetzung) die Ursache.
-- In diesem Fall auf den zweiten Style umschalten und Logs in [lib/widgets/map_view.dart](lib/widgets/map_view.dart) pruefen.
+- In diesem Fall auf den zweiten Style umschalten und Logs in [packages/local_map/lib/src/widgets/map_view.dart](packages/local_map/lib/src/widgets/map_view.dart) pruefen.
 
 ### Zoom scheint begrenzt
 

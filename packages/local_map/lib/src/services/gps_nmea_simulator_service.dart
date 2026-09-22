@@ -3,6 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:path/path.dart' as p;
+
+import '../config/map_config.dart';
 
 class SimulatedGpsFix {
   final LatLng position;
@@ -49,14 +52,19 @@ class GpsNmeaSimulatorService {
     return _fixes.length;
   }
 
-  Future<int> loadDefaultTourFile() async {
-    final cwd = Directory.current.path;
-    final candidates = <String>[
-      '$cwd/scripts/gpstest/GPS-Adnan-Tour.txt',
-      '$cwd/scripts/GpsTest/GPS-Adnan-Tour.txt',
-    ];
+  /// Lädt die erste vorhandene Tourdatei aus [candidatePaths].
+  ///
+  /// Relative Pfade werden gegen das aktuelle Arbeitsverzeichnis aufgelöst.
+  /// Wird nichts übergeben, greift [MapConfig.defaults].
+  Future<int> loadDefaultTourFile({List<String>? candidatePaths}) async {
+    final candidates = candidatePaths ?? MapConfig.defaults.gpsTourFilePaths;
+    final resolved = candidates
+        .map((path) => p.isAbsolute(path)
+            ? path
+            : p.join(Directory.current.path, path))
+        .toList();
 
-    for (final path in candidates) {
+    for (final path in resolved) {
       final file = File(path);
       if (await file.exists()) {
         return loadFromPath(path);
@@ -64,7 +72,8 @@ class GpsNmeaSimulatorService {
     }
 
     throw Exception(
-      'Keine GPS-Tourdatei gefunden. Erwartet unter scripts/gpstest oder scripts/GpsTest.',
+      'Keine GPS-Tourdatei gefunden. Gesucht wurde in: '
+      '${resolved.join(", ")}',
     );
   }
 

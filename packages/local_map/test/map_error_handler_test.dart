@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:map_local/services/map_error_handler.dart';
+import 'package:local_map/local_map.dart';
 
 void main() {
   group('MapErrorHandler', () {

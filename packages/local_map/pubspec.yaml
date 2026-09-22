@@ -1,0 +1,51 @@
+name: local_map
+description: "Offline-Kartendarstellung (MBTiles Raster/Vektor, Geocoding, Valhalla-Routing) als wiederverwendbares Flutter-Package."
+version: 0.1.0
+
+# Private Bibliothek - nicht fuer pub.dev gedacht.
+publish_to: 'none'
+
+environment:
+  sdk: ^3.11.3
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Map dependencies
+  flutter_map: ^8.3.0
+  flutter_map_mbtiles: ^1.0.4
+  vector_map_tiles_mbtiles: ^1.2.0
+  vector_map_tiles: ^9.0.0-beta.8
+  mbtiles: ^0.5.0
+  vector_tile_renderer: ^6.0.0
+  latlong2: ^0.9.1
+
+  # File system and downloads
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  dio: ^5.7.0
+  http: ^1.2.2
+  sqlite3: ^3.3.0
+  sqflite: ^2.4.1
+  sqflite_common_ffi: ^2.3.3
+
+  # Settings persistence
+  shared_preferences: ^2.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+# WICHTIG: Die drei Forks unten liegen zusaetzlich in pubspec_overrides.yaml,
+# damit dieses Package auch alleine (flutter test in packages/local_map)
+# aufgeloest werden kann. dependency_overrides wirken nur im Root-Package,
+# deshalb muss jedes konsumierende Projekt sie in seine eigene pubspec.yaml
+# uebernehmen - siehe README.md.
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/maps/
