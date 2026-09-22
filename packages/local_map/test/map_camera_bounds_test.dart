@@ -107,4 +107,58 @@ void main() {
       );
     });
   });
+
+  group('effectiveMinZoom', () {
+    final braunschweig = LatLngBounds(
+      const LatLng(52.12, 10.28),
+      const LatLng(52.42, 10.78),
+    );
+    final deutschland = LatLngBounds(
+      const LatLng(47.265430, 5.864417),
+      const LatLng(55.147770, 15.050780),
+    );
+
+    test('kleiner Ausschnitt hebt die Untergrenze an', () {
+      // 0,5 Grad Breite -> 360/0,5 = 720 -> log2(720) ~ 9,49
+      final result = effectiveMinZoom(
+        fromMetadata: 4,
+        max: 17,
+        tiles: braunschweig,
+      );
+
+      expect(result, closeTo(9.49, 0.01));
+    });
+
+    test('grosser Ausschnitt hebt sie kaum an', () {
+      // rund 9,19 Grad Breite -> log2(360/9,19) ~ 5,29
+      final result = effectiveMinZoom(
+        fromMetadata: 4,
+        max: 17,
+        tiles: deutschland,
+      );
+
+      expect(result, closeTo(5.29, 0.01));
+    });
+
+    test('eine bereits hoehere Vorgabe bleibt stehen', () {
+      expect(
+        effectiveMinZoom(fromMetadata: 12, max: 17, tiles: braunschweig),
+        equals(12),
+      );
+    });
+
+    test('die Untergrenze uebersteigt nie den Maximalzoom', () {
+      expect(
+        effectiveMinZoom(fromMetadata: 4, max: 8, tiles: braunschweig),
+        equals(8),
+      );
+    });
+
+    test('ohne Kachelgrenzen bleibt es bei den Metadaten', () {
+      expect(
+        effectiveMinZoom(fromMetadata: 4, max: 17, tiles: null),
+        equals(4),
+      );
+    });
+  });
 }

@@ -369,8 +369,12 @@ class _MapViewState extends State<MapView> {
       }
 
       final format = metadata.format;
-      final minZoom = metadata.minZoom ?? _config.minZoom;
       final maxZoom = metadata.maxZoom ?? _config.maxZoom;
+      final minZoom = effectiveMinZoom(
+        fromMetadata: metadata.minZoom ?? _config.minZoom,
+        max: maxZoom,
+        tiles: metadata.bounds,
+      );
       final boundedInitialZoom = _config.initialZoom.clamp(minZoom, maxZoom);
       final initialCenter = centerWithinTiles(
         configured: _config.center,

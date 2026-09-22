@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -75,3 +77,43 @@ LatLngBounds? effectiveCameraBounds({
   required LatLngBounds? tiles,
 }) =>
     configured ?? tiles;
+
+/// Kleinste Zoomstufe, bei der die Kacheln noch etwa eine Kachelbreite
+/// (256 px) auf dem Schirm einnehmen.
+///
+/// Weiter herausgezoomt schrumpft ein kleiner Ausschnitt zu einem Punkt, und
+/// der Anwender sieht eine leere Flaeche, ohne zu erkennen, wohin er zurueck
+/// muss. Gerechnet wird ueber die Laengengrad-Spanne, weil die x-Achse in
+/// Mercator linear davon abhaengt.
+///
+/// `null`, wenn es keine Kachelgrenzen gibt oder sie den ganzen Globus
+/// umspannen - dann gibt es nichts zu begrenzen.
+double? minZoomForBounds(LatLngBounds? bounds) {
+  if (bounds == null) {
+    return null;
+  }
+
+  final lonSpan = bounds.east - bounds.west;
+  if (lonSpan <= 0 || lonSpan >= 360) {
+    return null;
+  }
+
+  return math.log(360 / lonSpan) / math.ln2;
+}
+
+/// Die Zoom-Untergrenze, mit der die Karte tatsaechlich arbeitet.
+///
+/// Nimmt die groessere von [fromMetadata] und der aus [tiles] abgeleiteten
+/// Grenze, ueberschreitet dabei aber nie [max] - sonst liesse sich die Karte
+/// gar nicht mehr darstellen.
+double effectiveMinZoom({
+  required double fromMetadata,
+  required double max,
+  required LatLngBounds? tiles,
+}) {
+  final fromTiles = minZoomForBounds(tiles);
+  if (fromTiles == null || fromTiles <= fromMetadata) {
+    return fromMetadata;
+  }
+  return math.min(fromTiles, max);
+}
