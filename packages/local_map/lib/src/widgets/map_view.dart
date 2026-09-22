@@ -593,8 +593,12 @@ class _MapViewState extends State<MapView> {
           provider: provider,
         );
 
-        MapErrorHandler.logDebug(
-          'Style loaded successfully: ${theme.layers.length} layers',
+        // Im Release sichtbar: welcher Style am Ende gilt. Die Schleife nimmt
+        // den ersten, der laedt - scheitert der gewaehlte, arbeitet die App
+        // still mit einem anderen weiter, und ohne diese Zeile sieht das auf
+        // dem Geraet niemand.
+        MapErrorHandler.logInfo(
+          'Style aktiv: ${theme.layers.length} Ebenen',
           context: styleAssetPath,
         );
 

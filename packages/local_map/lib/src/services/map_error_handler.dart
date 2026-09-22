@@ -187,6 +187,16 @@ class MapErrorHandler {
     }
   }
 
+  /// Meldungen ueber den Zustand der Karte, die auch im Release sichtbar sind.
+  ///
+  /// Gedacht fuer die wenigen Entscheidungen, die man auf dem Zielgeraet
+  /// nachvollziehen koennen muss - etwa welcher Style tatsaechlich geladen
+  /// wurde. Alles Weitere gehoert in [logDebug].
+  static void logInfo(String message, {String? context}) {
+    final contextStr = context != null ? ' [$context]' : '';
+    debugPrint('$_logTag INFO$contextStr: $message');
+  }
+
   /// Strukturiertes Error-Logging mit Kontext.
   static void logError(
     String message, {
