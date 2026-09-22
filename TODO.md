@@ -38,17 +38,19 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
       `braunschweig.mbtiles` ist (gleiche Groesse, Bounds 10,28-10,78 O /
       52,12-52,42 N), die Kamera aber auf Alsfeld startet. Seit `23dda12`
       rueckt die Kamera in die Abdeckung und sagt es im Log.
-- [ ] **Der Pi hat keine Schriftart.** `/usr/share/fonts` existiert dort
-      nicht, null Font-Dateien, kein fontconfig - Skia kann keinen Text
-      zeichnen, deshalb fehlt auf dem Pi jede Kartenbeschriftung. Lokal mit
-      derselben Kacheldatei und demselben Style ist die Schrift da. Fix:
-      `sudo apt install fonts-dejavu-core` auf dem Pi, oder eine Schrift als
-      Asset ins Bundle nehmen (fuer ein Kiosk-Geraet die robustere Variante).
-- [ ] **Kein sichtbarer Mauszeiger.** `[DrmCursor] no XCursor theme found`:
-      unter `/usr/share/icons/` liegen nur `hicolor` und `locolor`. Man zielt
-      also blind - das war der eigentliche Inhalt des Punktes "Touch
-      funktioniert nicht". Fix: `sudo apt install adwaita-icon-theme`, dann
-      `-t Adwaita`.
+- [x] **Schriftart auf dem Pi nachinstalliert** (`fonts-dejavu-core`).
+      `/usr/share/fonts` existierte dort nicht - ohne Schrift zeichnet Skia
+      keinen Buchstaben, deshalb fehlte jede Kartenbeschriftung, ohne
+      Fehlermeldung. Dokumentiert in [README.md](README.md) und
+      [packages/local_map/README.md](packages/local_map/README.md), damit es
+      nicht jeder neu sucht, der mit `emb_cli` baut.
+- [x] **Cursor-Theme nachinstalliert** (`adwaita-icon-theme`, Start mit
+      `-t Adwaita`). Der Embedder meldet jetzt
+      `[DrmCursor] ready (sprite=24px ...)` statt `no XCursor theme found`.
+- [ ] **Schrift ins Bundle nehmen statt aufs System zu vertrauen.** Fuer ein
+      Kiosk-Image ist eine Schrift als Flutter-Asset (`fonts:` in der
+      pubspec plus `ThemeData.fontFamily`) robuster als ein apt-Paket, das
+      beim naechsten Image wieder fehlt.
 - [ ] **Es haengt kein Touchscreen am Pi.** Einzige Zeigereingabe ist das
       Touchpad der Riitek-Funktastatur (`/dev/input/event1`, relative Maus).
       Bevor jemand weiter "Touch" sucht: das Geraet, das getestet werden

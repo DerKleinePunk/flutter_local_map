@@ -465,6 +465,79 @@ Die Anwendung arbeitet vollstaendig offline. Verifiziert wurde das in einem
 eigenen Netzwerk-Namespace (`unshare -rn`) ohne jede Verbindung; der einzige
 Netzwerkzugriff ueberhaupt ist die Valhalla-Abfrage auf `127.0.0.1:8002`.
 
+## Betrieb auf eingebettetem Linux (emb_cli / ivi-homescreen)
+
+Cross-Builds fuer den Pi entstehen mit **`emb_cli`** und laufen unter
+**ivi-homescreen** mit dem Backend `drm-kms-egl`, also ohne X11 und ohne
+Wayland-Compositor. Das Flutter-Bundle bringt die App mit, **nicht** aber die
+Dinge, die eine Desktop-Distribution sonst beisteuert. Auf einem schlanken
+Image (RaspiOS Lite, Yocto, Buildroot) fehlen sie, und jede Luecke sieht
+zunaechst wie ein Fehler der Karte aus.
+
+### Schriftarten sind Pflicht
+
+**Ohne installierte Schriftart zeichnet Skia keinen einzigen Buchstaben.** Die
+Karte erscheint dann vollstaendig ohne Beschriftung: Geometrie, Flaechen und
+Linien sind da, Orts- und Strassennamen fehlen restlos. Es gibt dazu weder
+eine Fehlermeldung noch eine Logzeile - Flutter hat schlicht keinen Glyphen,
+auf den es zurueckfallen kann.
+
+RaspiOS Lite hat kein `/usr/share/fonts`. Auf dem Zielgeraet also:
+
+```bash
+sudo apt install -y fonts-dejavu-core
+```
+
+Das genuegt fuer deutsche Karten. Wer mehr Schriftsysteme braucht, nimmt
+`fonts-noto-core`. Pruefen laesst sich das ohne die App:
+
+```bash
+find /usr/share/fonts -type f \( -name '*.ttf' -o -name '*.otf' \) | wc -l
+```
+
+Steht dort `0` oder existiert das Verzeichnis nicht, fehlt die Beschriftung
+garantiert. Fuer ein Kiosk-Image ist die robustere Variante, eine Schrift als
+Flutter-Asset ins Bundle zu nehmen (`fonts:` in der `pubspec.yaml` plus
+`ThemeData.fontFamily`) - dann haengt die App nicht an der Ausstattung des
+Systems.
+
+### Mauszeiger braucht ein XCursor-Theme
+
+Ohne Cursor-Theme meldet der Embedder beim Start:
+
+```
+[DrmCursor] no XCursor theme found (No such file or directory); no cursor sprite
+```
+
+Der Zeiger existiert dann, ist aber unsichtbar - man zielt blind, und das
+sieht aus, als kaeme die Eingabe nicht an. Abhilfe:
+
+```bash
+sudo apt install -y adwaita-icon-theme
+./homescreen -b . -f -t Adwaita
+```
+
+Danach steht `[DrmCursor] ready (sprite=24px ...)` im Log.
+
+### Weitere Laufzeitvoraussetzungen
+
+- Laufzeitpakete: `libegl1 libgles2 libgbm1 libseat1 libdisplay-info2
+  libinput10 libxkbcommon0`
+- `seatd` aktiv (`systemctl enable --now seatd`), sonst haengt `drm-kms-egl`
+  ueber SSH ohne Fehlermeldung an `libseat`.
+- **Immer mit `-f` starten.** Die Zeile `Size: 1920 x 720` im Log ist der
+  Default der View-Konfiguration, nicht die Monitoraufloesung; ohne `-f`
+  laeuft die View kleiner als der Scanout. `--drm-list-modes` zeigt die Modi
+  des angeschlossenen Geraets.
+- Routing: Die App fragt `http://127.0.0.1:8002` ab. Laeuft dort kein
+  Valhalla, meldet die Oberflaeche "Valhalla nicht zu erreichen" - siehe
+  [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md).
+- Die MBTiles liegen auf dem Geraet unter
+  `~/.local/share/homescreen/offline_maps/`. Der Dateiname sagt nichts ueber
+  den Inhalt: die Startposition muss in den `bounds` der Datei liegen, sonst
+  bleibt die Karte leer (die App korrigiert das inzwischen und schreibt eine
+  Zeile ins Log).
+
 ## Troubleshooting
 
 ### Vektorkarte ruckelt oder friert ein
@@ -504,12 +577,23 @@ Ein sichtbarer Ruckler beim Nachladen neuer Kacheln, kein Einfrieren.
   leere Karte auf, nicht als Fehlermeldung - genau so verbarg sich ein
   Umrechnungsfehler im NMEA-Parser des GPS-Simulators, der die Kamera auf
   15,36 statt 9,36 Grad Ost schickte und damit aus `hessen.mbtiles` heraus.
+  Die App faengt das inzwischen ab: liegt die Startposition ausserhalb der
+  `bounds`, rueckt sie in die Mitte der Kacheln und schreibt
+  `[MapError] ERROR [Camera bounds]: ...` ins Log - auch im Release. Steht die
+  Zeile da, passen Datei und erwartetes Gebiet nicht zusammen; der Dateiname
+  allein sagt darueber nichts.
 
 ### Vektorlabels fehlen
 
+- **Auf eingebetteten Zielen zuerst die Schriftarten pruefen.** Fehlt auf dem
+  Geraet jede Schrift, zeichnet Skia keinen Buchstaben und die Karte bleibt
+  komplett ohne Beschriftung - ohne Fehlermeldung. Siehe
+  [Betrieb auf eingebettetem Linux](#betrieb-auf-eingebettetem-linux-emb_cli--ivi-homescreen).
+  Gegenprobe: dieselbe MBTiles-Datei und derselben Style lokal starten. Ist die
+  Schrift dort da, liegt es am Zielsystem, nicht an Style oder Kacheln.
 - Die lokalen Styles enthalten Label-Layer fuer `place`, `transportation_name` und `water_name`.
-- Wenn trotzdem keine Labels erscheinen, ist meist das zugrunde liegende Rendering (z. B. fehlende Glyph-Unterstuetzung) die Ursache.
-- In diesem Fall auf den zweiten Style umschalten und Logs in [packages/local_map/lib/src/widgets/map_view.dart](packages/local_map/lib/src/widgets/map_view.dart) pruefen.
+- Erscheinen einzelne Labels nicht, auf den zweiten Style umschalten und die
+  Logs in [packages/local_map/lib/src/widgets/map_view.dart](packages/local_map/lib/src/widgets/map_view.dart) pruefen.
 
 ### Zoom scheint begrenzt
 

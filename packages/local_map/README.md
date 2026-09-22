@@ -155,6 +155,31 @@ Ergebnisse — die Karte funktioniert trotzdem. Die Datenbank wird mit
   `MbTilesException`, `RoutingException`
 - **Durchgereicht:** `LatLng`, `LatLngBounds`, `MapController`
 
+## Einsatz auf eingebettetem Linux (emb_cli / ivi-homescreen)
+
+Wer das Package auf einem schlanken Linux-Image betreibt — Raspberry Pi mit
+`emb_cli`-Cross-Build unter ivi-homescreen, Yocto, Buildroot —, muss zwei
+Dinge auf dem Zielgerät bereitstellen, die eine Desktop-Distribution
+mitbringt und die das Flutter-Bundle **nicht** enthält:
+
+1. **Eine Schriftart.** Ohne installierte Schrift zeichnet Skia keinen
+   einzigen Buchstaben. Die Karte erscheint dann mit Geometrie, aber ohne
+   jede Beschriftung — ohne Fehlermeldung und ohne Logzeile. RaspiOS Lite hat
+   kein `/usr/share/fonts`; `sudo apt install fonts-dejavu-core` genügt für
+   deutsche Karten. Prüfen mit
+   `find /usr/share/fonts -type f -name '*.ttf' | wc -l`. Für ein Kiosk-Image
+   ist es robuster, eine Schrift als Flutter-Asset ins Bundle zu legen, statt
+   sich auf das System zu verlassen.
+2. **Ein XCursor-Theme**, falls mit Maus oder Touchpad bedient wird
+   (`sudo apt install adwaita-icon-theme`, Start mit `-t Adwaita`). Sonst ist
+   der Mauszeiger unsichtbar, was wie tote Eingabe aussieht.
+
+Die Startposition aus [`MapConfig.center`](lib/src/config/map_config.dart) muss
+in den `bounds` der verwendeten MBTiles liegen. Tut sie das nicht, rückt das
+Package die Kamera in die Mitte der vorhandenen Kacheln und protokolliert das
+mit `[MapError] ERROR [Camera bounds]: ...` — diese Zeile erscheint auch im
+Release-Build.
+
 ## Tests
 
 ```bash
