@@ -900,6 +900,43 @@ class _MapViewState extends State<MapView> {
       );
     }
 
+    // VORUEBERGEHEND: protokolliert, welche Zeigerereignisse Flutter erreichen.
+    // Dient der Klaerung, ob bei einer Zwei-Finger-Geste ueberhaupt zwei
+    // Kontakte ankommen. Wird nach der Messung wieder entfernt.
+    return Listener(
+      onPointerDown: (e) {
+        _activePointers.add(e.pointer);
+        MapErrorHandler.logError(
+          'DOWN pointer=${e.pointer} device=${e.device} kind=${e.kind.name} '
+          'pos=${e.localPosition.dx.toStringAsFixed(0)},'
+          '${e.localPosition.dy.toStringAsFixed(0)} '
+          'gleichzeitig=${_activePointers.length}',
+          context: 'Pointer',
+        );
+      },
+      onPointerUp: (e) {
+        _activePointers.remove(e.pointer);
+        MapErrorHandler.logError(
+          'UP   pointer=${e.pointer} device=${e.device} '
+          'verbleibend=${_activePointers.length}',
+          context: 'Pointer',
+        );
+      },
+      onPointerCancel: (e) {
+        _activePointers.remove(e.pointer);
+        MapErrorHandler.logError(
+          'CANCEL pointer=${e.pointer} device=${e.device} '
+          'verbleibend=${_activePointers.length}',
+          context: 'Pointer',
+        );
+      },
+      child: _buildMap(context),
+    );
+  }
+
+  final Set<int> _activePointers = <int>{};
+
+  Widget _buildMap(BuildContext context) {
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
