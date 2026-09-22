@@ -68,6 +68,10 @@ class _MapViewState extends State<MapView> {
 
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
+
+  /// Metadaten der offenen MBTiles. Nur fuer den Stilwechsel gehalten, der
+  /// den Style ohne Neuaufbau der Kachelquelle pruefen muss.
+  _MbtilesMetadataInfo? _vectorMetadata;
   TileProviders? _vectorTileProviders;
   vtr.Theme? _vectorTheme;
   SpriteStyle? _vectorSprites;
@@ -422,6 +426,7 @@ class _MapViewState extends State<MapView> {
         }
 
         setState(() {
+          _vectorMetadata = metadata;
           _vectorMbTiles = mbtiles;
           _vectorTheme = vectorTheme;
           _vectorSprites = vectorSprites;
@@ -516,6 +521,7 @@ class _MapViewState extends State<MapView> {
 
     _vectorMbTiles?.close();
     _vectorMbTiles = null;
+    _vectorMetadata = null;
     _vectorTileProviders = null;
     _vectorTheme = null;
     _vectorSprites = null;
@@ -655,14 +661,69 @@ class _MapViewState extends State<MapView> {
       return;
     }
 
+    _selectedVectorStyleAssetIndex =
+        (_selectedVectorStyleAssetIndex + 1) % _localVectorStyleAssets.length;
+
+    // Im Vektormodus wechselt nur das Thema - die Kacheldatei bleibt dieselbe.
+    // Der volle Neuaufbau (Datenbank schliessen, neu oeffnen, Ladekreis statt
+    // Karte, alle Kacheln neu parsen) sah auf dem Pi wie eine loechrige Karte
+    // aus. Der leichte Weg tauscht Thema und Quellen im laufenden Betrieb.
+    final mbtiles = _vectorMbTiles;
+    final metadata = _vectorMetadata;
+    if (mbtiles != null && metadata != null) {
+      await _swapVectorStyle(mbtiles: mbtiles, metadata: metadata);
+      return;
+    }
+
     setState(() {
-      _selectedVectorStyleAssetIndex =
-          (_selectedVectorStyleAssetIndex + 1) % _localVectorStyleAssets.length;
       _isLoading = true;
       _errorMessage = null;
     });
 
     await _initializeTileProvider();
+  }
+
+  /// Tauscht nur Thema und Kachelquellen des Vektormodus aus.
+  ///
+  /// Schlaegt das Laden fehl, bleibt der bisherige Style stehen - eine leere
+  /// Karte waere das schlechtere Ergebnis als ein nicht ausgefuehrter Wechsel.
+  Future<void> _swapVectorStyle({
+    required MbTiles mbtiles,
+    required _MbtilesMetadataInfo metadata,
+  }) async {
+    final token = ++_initializationToken;
+    final provider = MbTilesVectorTileProvider(mbtiles: mbtiles);
+
+    try {
+      final styleResult = await _loadLocalVectorStyle(
+        provider: provider,
+        metadata: metadata,
+      );
+
+      if (!mounted || _initializationToken != token) {
+        return;
+      }
+
+      setState(() {
+        _vectorTheme = styleResult.theme;
+        _vectorSprites = styleResult.sprites;
+        _vectorTileProviders = styleResult.tileProviders;
+        _activeVectorStyleAssetPath = styleResult.assetPath;
+      });
+    } catch (error, stackTrace) {
+      final mapError = MapErrorHandler.classify(
+        error,
+        stackTrace,
+        context: 'Stilwechsel',
+      );
+      MapErrorHandler.logError(
+        'Stilwechsel abgebrochen, bisheriger Style bleibt aktiv '
+        '(${mapError.category.name})',
+        error: error,
+        stackTrace: stackTrace,
+        context: 'Stilwechsel',
+      );
+    }
   }
 
   String _activeVectorStyleLabel() {
