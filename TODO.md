@@ -135,6 +135,17 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
 - **Tests liegen an zwei Orten.** `flutter test` im Repo-Root findet nur
   `test/`, die 17 Tests des Pakets brauchen `flutter test` in
   [packages/local_map/](packages/local_map/).
+- **Zoom-Gesten auf kleinen Ausschnitten.** `flutter_map` verankert den Zoom
+  ab Werk am Brennpunkt der Geste (`pinchMove`) bzw. am Mauszeiger. Auf einer
+  Weltkarte ist das richtig, auf einem 34 km breiten Ausschnitt schiebt ein
+  Griff neben die Bildmitte die Kacheln aus dem Bild - bei Zoom 11 sind
+  320 px rund 11 km. In der Karte ist `pinchMove` deshalb aus, ebenso das
+  Drehen. Belegt in
+  [pinch_gesture_test.dart](packages/local_map/test/pinch_gesture_test.dart).
+- **Eingabegeraete nie ueber `/dev/input/eventN` ansprechen.** Die Nummern
+  verschieben sich bei Neustart und Umstecken - der Touchscreen lag erst auf
+  `event8`, spaeter auf `event4`, und `event8` war dann der HDMI-Audioanschluss.
+  Stabil ist nur der Pfad unter `/dev/input/by-id/`.
 - **RaspiOS Lite bringt weder Fonts noch Cursor-Themes mit.** Ohne
   `/usr/share/fonts` zeichnet Skia keinen Buchstaben, ohne XCursor-Theme gibt
   es keinen Mauszeiger. Beides sieht auf den ersten Blick nach einem
