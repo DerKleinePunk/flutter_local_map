@@ -906,26 +906,40 @@ class _MapViewState extends State<MapView> {
     return Listener(
       onPointerDown: (e) {
         _activePointers.add(e.pointer);
+        _moveCount[e.pointer] = 0;
+        _moveDistance[e.pointer] = 0;
         MapErrorHandler.logError(
-          'DOWN pointer=${e.pointer} device=${e.device} kind=${e.kind.name} '
+          'DOWN pointer=${e.pointer} device=${e.device} '
           'pos=${e.localPosition.dx.toStringAsFixed(0)},'
           '${e.localPosition.dy.toStringAsFixed(0)} '
-          'gleichzeitig=${_activePointers.length}',
+          'gleichzeitig=${_activePointers.length} '
+          'zoom=${_currentZoom.toStringAsFixed(2)}',
           context: 'Pointer',
         );
+      },
+      onPointerMove: (e) {
+        _moveCount[e.pointer] = (_moveCount[e.pointer] ?? 0) + 1;
+        _moveDistance[e.pointer] =
+            (_moveDistance[e.pointer] ?? 0) + e.delta.distance;
       },
       onPointerUp: (e) {
         _activePointers.remove(e.pointer);
         MapErrorHandler.logError(
           'UP   pointer=${e.pointer} device=${e.device} '
-          'verbleibend=${_activePointers.length}',
+          'bewegungen=${_moveCount[e.pointer] ?? 0} '
+          'strecke=${(_moveDistance[e.pointer] ?? 0).toStringAsFixed(0)}px '
+          'verbleibend=${_activePointers.length} '
+          'zoom=${_currentZoom.toStringAsFixed(2)}',
           context: 'Pointer',
         );
+        _moveCount.remove(e.pointer);
+        _moveDistance.remove(e.pointer);
       },
       onPointerCancel: (e) {
         _activePointers.remove(e.pointer);
         MapErrorHandler.logError(
           'CANCEL pointer=${e.pointer} device=${e.device} '
+          'bewegungen=${_moveCount[e.pointer] ?? 0} '
           'verbleibend=${_activePointers.length}',
           context: 'Pointer',
         );
@@ -935,6 +949,8 @@ class _MapViewState extends State<MapView> {
   }
 
   final Set<int> _activePointers = <int>{};
+  final Map<int, int> _moveCount = <int, int>{};
+  final Map<int, double> _moveDistance = <int, double>{};
 
   Widget _buildMap(BuildContext context) {
     return FlutterMap(
