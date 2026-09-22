@@ -174,6 +174,13 @@ mitbringt und die das Flutter-Bundle **nicht** enthält:
    (`sudo apt install adwaita-icon-theme`, Start mit `-t Adwaita`). Sonst ist
    der Mauszeiger unsichtbar, was wie tote Eingabe aussieht.
 
+**Gestenbedienung:** Ein Finger verschiebt, zwei Finger zoomen. Zwei Finger
+verschieben und drehen bewusst **nicht**: `flutter_map` verankert den Zoom sonst
+am Brennpunkt zwischen den Fingern, was auf einem kleinen Kartenausschnitt die
+Kacheln aus dem Bild schiebt (bei Zoom 11 verschiebt ein Griff 320 px neben der
+Bildmitte das Zentrum um über 10 km). Gemessen in
+[test/pinch_gesture_test.dart](test/pinch_gesture_test.dart).
+
 **Tastaturbedienung:** Pfeiltasten schieben die Karte, **R** zoomt hinein, **F**
 heraus. Auf einem Ziel ohne angeschlossenes Zeigergerät — etwa bei der
 Inbetriebnahme, solange der Touchscreen fehlt — ist das die einzige

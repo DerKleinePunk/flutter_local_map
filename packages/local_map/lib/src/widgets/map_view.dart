@@ -907,12 +907,32 @@ class _MapViewState extends State<MapView> {
         initialZoom: _currentZoom,
         minZoom: _activeMinZoom,
         maxZoom: _activeMaxZoom,
-        // Tastaturbedienung: Pfeiltasten schieben (Standard von flutter_map),
-        // R und F zoomen. Auf einem Geraet ohne Zeigergeraet - etwa bei der
-        // Inbetriebnahme am Pi, solange der Touchscreen nicht angeschlossen
-        // ist - ist das die einzige Moeglichkeit, die Karte zu bewegen.
-        // Auf einem Touchgeraet aendert es nichts.
         interactionOptions: const InteractionOptions(
+          // Zwei Finger zoomen, sie verschieben und drehen nicht.
+          //
+          // flutter_map verankert den Zoom sonst am Brennpunkt zwischen den
+          // Fingern (pinchMove). Das ist auf einer Weltkarte richtig, auf
+          // einem kleinen Ausschnitt aber fatal: bei Zoom 11 ist ein
+          // Bildpunkt rund 47 m breit, ein Griff 320 px neben der Mitte
+          // verschiebt das Zentrum beim Hineinzoomen um ueber 10 km - auf
+          // einem 7-Zoll-Schirm rutschen die Kacheln damit aus dem Bild.
+          // Gemessen in pinch_gesture_test.dart.
+          //
+          // Drehen ist ebenfalls aus: zwei Finger stehen nie exakt parallel,
+          // und eine versehentlich schief stehende Karte ist im Fahrzeug
+          // nichts, was jemand haben will.
+          //
+          // Verschoben wird mit einem Finger, gezoomt zusaetzlich per
+          // Doppeltipp und Mausrad.
+          flags: InteractiveFlag.drag |
+              InteractiveFlag.flingAnimation |
+              InteractiveFlag.pinchZoom |
+              InteractiveFlag.doubleTapZoom |
+              InteractiveFlag.doubleTapDragZoom |
+              InteractiveFlag.scrollWheelZoom,
+          // Pfeiltasten schieben (Standard von flutter_map), R und F zoomen.
+          // Auf einem Geraet ohne Zeigergeraet die einzige Moeglichkeit, die
+          // Karte zu bewegen.
           keyboardOptions: KeyboardOptions(enableRFZooming: true),
         ),
         onTap: (tapPosition, latLng) {
