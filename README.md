@@ -529,6 +529,11 @@ Danach steht `[DrmCursor] ready (sprite=24px ...)` im Log.
   Default der View-Konfiguration, nicht die Monitoraufloesung; ohne `-f`
   laeuft die View kleiner als der Scanout. `--drm-list-modes` zeigt die Modi
   des angeschlossenen Geraets.
+- **Displayaufloesung:** Beim Waveshare 7" HDMI LCD (H) verwirft der
+  vc4-Treiber den bevorzugten 1024x600-Modus des Panels, weil dessen Timings
+  ungerade sind - das Panel bekommt dann 1920x1080 und skaliert herunter,
+  Beschriftungen werden unleserlich. Loesung ohne `vc4-fkms-v3d`:
+  [docs/waveshare-1024x600-full-kms.md](docs/waveshare-1024x600-full-kms.md).
 - Routing: Die App fragt `http://127.0.0.1:8002` ab. Laeuft dort kein
   Valhalla, meldet die Oberflaeche "Valhalla nicht zu erreichen" - siehe
   [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md).
