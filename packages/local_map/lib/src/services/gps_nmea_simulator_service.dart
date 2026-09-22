@@ -216,12 +216,29 @@ class GpsNmeaSimulatorService {
       return null;
     }
 
-    final degreeDigits = isLatitude ? 2 : 3;
-    final divisor = _pow10(degreeDigits);
+    // NMEA kodiert Koordinaten als ddmm.mmmm (Breite) bzw. dddmm.mmmm
+    // (Laenge). Der Minutenanteil ist in beiden Faellen zweistellig, der
+    // Gradanteil alles davor - der Teiler ist deshalb immer 100.
+    //
+    // Achtung: Ein Teiler von 1000 fuer die Laenge ist falsch. `00921.8766`
+    // parst zu 921.8766; mit Teiler 1000 ergaebe das 0 Grad und 921,88
+    // Minuten, also 15,36 statt 9,36 Grad.
+    const divisor = 100.0;
     final degrees = (raw / divisor).floorToDouble();
     final minutes = raw - (degrees * divisor);
 
+    if (minutes < 0 || minutes >= 60) {
+      return null;
+    }
+
     var decimal = degrees + (minutes / 60.0);
+
+    // Plausibilitaet: Breite bis 90, Laenge bis 180 Grad.
+    final limit = isLatitude ? 90.0 : 180.0;
+    if (decimal > limit) {
+      return null;
+    }
+
     if (hemisphere == 'S' || hemisphere == 'W') {
       decimal *= -1;
     }
@@ -259,11 +276,4 @@ class GpsNmeaSimulatorService {
     return DateTime.utc(year, month, day, hour, minute, second);
   }
 
-  double _pow10(int exponent) {
-    var result = 1.0;
-    for (var i = 0; i < exponent; i++) {
-      result *= 10.0;
-    }
-    return result;
-  }
 }
