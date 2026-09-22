@@ -81,6 +81,13 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
       Custom Human interface` (`0484:5750`) mit `INPUT_PROP_DIRECT`,
       Multitouch und `BTN_TOUCH` auf `/dev/input/event8`; ein Mitschnitt am
       Kernel zeigte saubere Koordinaten. Am Embedder war nichts zu tun.
+- [x] **Richtige Kartendaten auf dem Pi** (2026-09-22). Statt des
+      Braunschweig-Ausschnitts liegt dort jetzt ein Hessen-Ausschnitt aus
+      `germany-vec.mbtiles` (Grenzen wie `MapConfig.hessenBounds`, z4-17,
+      1.553.711 Kacheln, 5,31 GB) plus `germany_names.db` fuer die Suche.
+      Die Standard-Startposition (Alsfeld) liegt darin, die Kamerakorrektur
+      meldet sich also nicht mehr - das leere Log ist der Nachweis. Gebaut in
+      54 s, uebertragen in 70 s bei rund 77 MB/s.
 - [ ] **Messharness fuer den Pi bauen**, um echte Frame-Zeiten vom Zielgeraet
       zu bekommen statt der WSL2-Zahlen mit defektem GPU-Stack.
 
