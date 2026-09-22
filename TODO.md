@@ -32,22 +32,43 @@ Bestaetigt: **Bild kommt auf dem Monitor an** (Flutter-Sample sichtbar),
 die `FLUTTER_HOOK_CC`-Warnung von emb trifft uns nicht, weil `sqlite3` seine
 Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
 
-- [ ] **Touch-Eingabe funktioniert nicht.** Das Sample wird angezeigt, aber
-      Beruehrungen kommen nicht an. Eingabe laeuft im Embedder ueber libinput,
-      unabhaengig von `DISABLE_PLUGINS`. Zu pruefen: `libinput list-devices`
-      auf dem Pi, Rechte auf `/dev/input/event*` (User `pi` ist in Gruppe
-      `input`), ob seatd die Eingabegeraete durchreicht.
-- [ ] **Karte auf dem Pi visuell bestaetigen.** Die App oeffnet die MBTiles
-      dort nachweislich, ob die Karte gezeichnet wird, wurde noch nicht mit
-      Augen geprueft - zuletzt lief das Sample auf dem Schirm, nicht die App.
+- [x] **Karte auf dem Pi visuell bestaetigt** (2026-09-22). Die Karte wird
+      gezeichnet. Sie war vorher leer, weil die Datei
+      `~/.local/share/homescreen/offline_maps/germany.mbtiles` in Wahrheit
+      `braunschweig.mbtiles` ist (gleiche Groesse, Bounds 10,28-10,78 O /
+      52,12-52,42 N), die Kamera aber auf Alsfeld startet. Seit `23dda12`
+      rueckt die Kamera in die Abdeckung und sagt es im Log.
+- [ ] **Der Pi hat keine Schriftart.** `/usr/share/fonts` existiert dort
+      nicht, null Font-Dateien, kein fontconfig - Skia kann keinen Text
+      zeichnen, deshalb fehlt auf dem Pi jede Kartenbeschriftung. Lokal mit
+      derselben Kacheldatei und demselben Style ist die Schrift da. Fix:
+      `sudo apt install fonts-dejavu-core` auf dem Pi, oder eine Schrift als
+      Asset ins Bundle nehmen (fuer ein Kiosk-Geraet die robustere Variante).
+- [ ] **Kein sichtbarer Mauszeiger.** `[DrmCursor] no XCursor theme found`:
+      unter `/usr/share/icons/` liegen nur `hicolor` und `locolor`. Man zielt
+      also blind - das war der eigentliche Inhalt des Punktes "Touch
+      funktioniert nicht". Fix: `sudo apt install adwaita-icon-theme`, dann
+      `-t Adwaita`.
+- [ ] **Es haengt kein Touchscreen am Pi.** Einzige Zeigereingabe ist das
+      Touchpad der Riitek-Funktastatur (`/dev/input/event1`, relative Maus).
+      Bevor jemand weiter "Touch" sucht: das Geraet, das getestet werden
+      soll, muss erst angeschlossen sein.
+- [ ] **Valhalla laeuft nicht auf dem Pi.** Die App spricht
+      `http://127.0.0.1:8002` an, dort lauscht nichts und `valhalla_service`
+      ist nicht installiert - daher die Meldung "Valhalla nicht zu
+      erreichen". Offener Deployment-Schritt, kein Fehler.
 - [x] **`logError` aus der `kDebugMode`-Sperre genommen.** In
       [map_error_handler.dart](packages/local_map/lib/src/services/map_error_handler.dart)
       loggt `_logError` jetzt immer, `logDebug` bleibt auf Debug beschraenkt.
       `classifyUnsupportedFormat` laeuft ueber denselben Pfad statt ueber einen
       eigenen Debug-Block. Damit meldet sich die Karte auf dem Pi auch im
       Release, wenn Style, MBTiles oder SQLite Aerger machen.
-- [ ] **Bildgroesse pruefen.** ivi-homescreen meldet `Size: 1920 x 720`, das ist
-      sein Standardwert und nicht die Monitoraufloesung.
+- [x] **Bildgroesse geklaert.** `Size: 1920 x 720` ist der Default der
+      View-Konfiguration, nicht der Scanout-Modus. Der Monitor (Lenovo
+      L1950wD an HDMI-A-1) kann 1920x1080@60. Mit `-f` meldet der Embedder
+      `1920x1080 logical -> 1920x1080 px, pixel_ratio=1`. Also immer mit
+      `-f` starten oder `-w/--height` setzen; `--drm-list-modes` listet die
+      Modi des Geraets.
 - [ ] **Messharness fuer den Pi bauen**, um echte Frame-Zeiten vom Zielgeraet
       zu bekommen statt der WSL2-Zahlen mit defektem GPU-Stack.
 
@@ -102,6 +123,12 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
 - **Tests liegen an zwei Orten.** `flutter test` im Repo-Root findet nur
   `test/`, die 17 Tests des Pakets brauchen `flutter test` in
   [packages/local_map/](packages/local_map/).
+- **RaspiOS Lite bringt weder Fonts noch Cursor-Themes mit.** Ohne
+  `/usr/share/fonts` zeichnet Skia keinen Buchstaben, ohne XCursor-Theme gibt
+  es keinen Mauszeiger. Beides sieht auf den ersten Blick nach einem
+  Renderfehler bzw. nach toter Eingabe aus.
+- **Der Pi startet die App im Vollbild nur mit `-f`.** Sonst laeuft die View
+  mit 1920x720 in einem 1920x1080-Scanout.
 - **`test/offline_smoke_test_matrix.dart` laeuft nie mit.** Der Dateiname endet
   nicht auf `_test.dart`, `flutter test` sammelt sie also nicht ein - die
   "12 Tests gruen" unter P2 sind seit dem Umbau unbelegt.
