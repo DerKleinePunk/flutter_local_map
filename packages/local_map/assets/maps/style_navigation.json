@@ -162,9 +162,10 @@
       "filter": [
         "in",
         "class",
+        "minor",
         "residential",
-        "service",
-        "unclassified"
+        "unclassified",
+        "service"
       ],
       "paint": {
         "line-color": "#ffffff",
