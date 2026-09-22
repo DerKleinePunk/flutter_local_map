@@ -461,15 +461,21 @@ Executor newExecutor({required int concurrency}) =>
 ```
 
 Im Debug-Modus werden **keine Isolates** verwendet - Parsen und Rendern aller
-Kacheln laufen auf dem Main-Isolate. Derselbe Auto-Pan-Stresstest ergab:
+Kacheln laufen auf dem Main-Isolate, und ein Backtrace waehrend einer Blockade
+landete entsprechend in der Dart-Garbage-Collection. Vektor-Performance
+deshalb immer mit `flutter run --release` oder `--profile` messen, nie mit dem
+Standard-`flutter run`.
 
-| Buildmodus | laengste UI-Blockade |
-| --- | --- |
-| Debug (`flutter run`) | 24,05 s |
-| Release | 2,76 s |
+**Richtig messen.** Wanduhr-Abstaende zwischen `Timer.periodic`-Ticks taugen
+dafuer nicht: unter WSL2/WSLg zeigt eine leere Flutter-App ohne jede Karte
+dieselben Aussetzer von mehreren Sekunden, dort wird der Prozess von der
+Umgebung ausgebremst. Aussagekraeftig ist nur
+`SchedulerBinding.instance.addTimingsCallback`, das die echten Frame-Zeiten
+der Engine liefert.
 
-Vektor-Performance also immer mit `flutter run --release` oder `--profile`
-messen, nie mit dem Standard-`flutter run`.
+So gemessen (Release, Vektorkarte, GPS-Route bei Zoom 17, 258 s):
+schlechtester Frame **112 ms Build + 171 ms Raster**, 256 ms Gesamtspanne.
+Ein sichtbarer Ruckler beim Nachladen neuer Kacheln, kein Einfrieren.
 
 ### Keine Karte sichtbar
 
