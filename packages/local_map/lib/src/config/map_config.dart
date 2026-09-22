@@ -1,4 +1,5 @@
 import 'package:flutter_map/flutter_map.dart';
+import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:latlong2/latlong.dart';
 
 /// Konfiguration fuer die Offline-Karte.
@@ -84,6 +85,37 @@ class MapConfig {
   /// aufgerufen, muss aber gesetzt sein.
   final String rasterUrlTemplate;
 
+  // ===== VEKTOR-SPEICHERBUDGET =====
+  // Zielplattform ist ein Raspberry Pi mit 4 GB RAM, auf dem zusaetzlich die
+  // Valhalla-Routing-Engine laeuft. Die Defaults hier entsprechen denen von
+  // VectorTileLayer; kleinere Werte senken den Working Set.
+
+  /// Groesse des Caches fuer rohe Kacheldaten in Bytes.
+  /// `null` = Default von `VectorTileLayer` (10 MB).
+  final int? memoryTileCacheMaxSize;
+
+  /// Anzahl geparster Vektorkacheln im Speicher.
+  /// `null` = Default von `VectorTileLayer` (20). Muss < 100 sein.
+  final int? memoryTileDataCacheMaxSize;
+
+  /// Groesse des Text-/Label-Caches.
+  /// `null` = Default von `VectorTileLayer` (100).
+  final int? textCacheMaxSize;
+
+  /// Anzahl der Worker-Isolates fuer das Parsen und Rendern.
+  /// `null` = Default von `VectorTileLayer`. Wirkt nur im Release-Build:
+  /// im Debug-Modus benutzt executor_lib grundsaetzlich keine Isolates.
+  final int? vectorConcurrency;
+
+  /// Renderpfad der Vektorkacheln.
+  ///
+  /// [VectorTileLayerMode.raster] (Default der Lib) rastert jede Kachel per
+  /// `toImageSync()` auf der GPU zwischen. Auf Geraeten mit schwachem oder
+  /// defektem GPU-Stack bleibt die Karte dann leer - in dem Fall
+  /// [VectorTileLayerMode.vector] verwenden, das direkt auf die Canvas malt.
+  /// `null` = Default von `VectorTileLayer`.
+  final VectorTileLayerMode? vectorLayerMode;
+
   /// Standard-Vektorstyles, die dieses Package mitliefert.
   static const List<String> packageVectorStyleAssets = [
     'packages/local_map/assets/maps/style.json',
@@ -113,6 +145,11 @@ class MapConfig {
     Uri? valhallaBaseUri,
     this.gpsTourFilePaths = _defaultGpsTourFilePaths,
     this.rasterUrlTemplate = 'mbtiles://local',
+    this.memoryTileCacheMaxSize,
+    this.memoryTileDataCacheMaxSize,
+    this.textCacheMaxSize,
+    this.vectorConcurrency,
+    this.vectorLayerMode,
   }) : valhallaBaseUri =
            valhallaBaseUri ?? Uri.parse('http://127.0.0.1:8002');
 
@@ -147,6 +184,11 @@ class MapConfig {
     Uri? valhallaBaseUri,
     List<String>? gpsTourFilePaths,
     String? rasterUrlTemplate,
+    int? memoryTileCacheMaxSize,
+    int? memoryTileDataCacheMaxSize,
+    int? textCacheMaxSize,
+    int? vectorConcurrency,
+    VectorTileLayerMode? vectorLayerMode,
   }) {
     return MapConfig(
       center: center ?? this.center,
@@ -168,6 +210,13 @@ class MapConfig {
       valhallaBaseUri: valhallaBaseUri ?? this.valhallaBaseUri,
       gpsTourFilePaths: gpsTourFilePaths ?? this.gpsTourFilePaths,
       rasterUrlTemplate: rasterUrlTemplate ?? this.rasterUrlTemplate,
+      memoryTileCacheMaxSize:
+          memoryTileCacheMaxSize ?? this.memoryTileCacheMaxSize,
+      memoryTileDataCacheMaxSize:
+          memoryTileDataCacheMaxSize ?? this.memoryTileDataCacheMaxSize,
+      textCacheMaxSize: textCacheMaxSize ?? this.textCacheMaxSize,
+      vectorConcurrency: vectorConcurrency ?? this.vectorConcurrency,
+      vectorLayerMode: vectorLayerMode ?? this.vectorLayerMode,
     );
   }
 }

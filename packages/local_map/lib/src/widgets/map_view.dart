@@ -27,7 +27,16 @@ class MapView extends StatefulWidget {
   /// Ohne Angabe wird [MapConfig.defaults] verwendet.
   final MapConfig? config;
 
-  const MapView({super.key, this.mbtilesPath, this.config});
+  /// Optionaler externer Controller, um die Kamera von aussen zu steuern.
+  /// Ohne Angabe verwaltet [MapView] einen eigenen Controller.
+  final MapController? mapController;
+
+  const MapView({
+    super.key,
+    this.mbtilesPath,
+    this.config,
+    this.mapController,
+  });
 
   @override
   State<MapView> createState() => _MapViewState();
@@ -40,7 +49,12 @@ class _MapViewState extends State<MapView> {
     'shortbread',
   };
 
-  final MapController _mapController = MapController();
+  /// Eigener Controller, nur angelegt wenn keiner uebergeben wurde.
+  MapController? _ownedMapController;
+  MapController get _mapController =>
+      widget.mapController ??
+      (_ownedMapController ??= MapController());
+
   final OfflineGeocoder _geocoder = OfflineGeocoder();
   final GpsNmeaSimulatorService _gpsSimulator = GpsNmeaSimulatorService();
 
@@ -827,7 +841,10 @@ class _MapViewState extends State<MapView> {
     _gpsFixSubscription?.cancel();
     _gpsSimulator.dispose();
     _disposeTileResources();
-    _mapController.dispose();
+    // Nur den selbst angelegten Controller entsorgen - ein uebergebener
+    // gehoert dem Aufrufer.
+    _ownedMapController?.dispose();
+    _ownedMapController = null;
     _geocoder.close();
     _zoomNotifier.dispose();
     super.dispose();
@@ -894,6 +911,20 @@ class _MapViewState extends State<MapView> {
             theme: _vectorTheme!,
             sprites: _vectorSprites,
             maximumZoom: _activeMaxZoom,
+            // Speicherbudget: ohne Angabe gelten die Defaults der Lib.
+            memoryTileCacheMaxSize:
+                _config.memoryTileCacheMaxSize ??
+                VectorTileLayer.defaultTileCacheMaxSize,
+            memoryTileDataCacheMaxSize:
+                _config.memoryTileDataCacheMaxSize ??
+                VectorTileLayer.defaultTileDataCacheMaxSize,
+            textCacheMaxSize:
+                _config.textCacheMaxSize ??
+                VectorTileLayer.defaultTextCacheMaxSize,
+            concurrency:
+                _config.vectorConcurrency ?? VectorTileLayer.defaultConcurrency,
+            layerMode:
+                _config.vectorLayerMode ?? VectorTileLayerMode.raster,
           )
         else
           TileLayer(
