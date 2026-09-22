@@ -75,4 +75,36 @@ void main() {
       );
     });
   });
+
+  group('effectiveCameraBounds', () {
+    final braunschweig = LatLngBounds(
+      const LatLng(52.12, 10.28),
+      const LatLng(52.42, 10.78),
+    );
+    final hessen = LatLngBounds(
+      const LatLng(49.3963, 7.7726),
+      const LatLng(51.6569, 10.2358),
+    );
+
+    test('eine ausdrueckliche Vorgabe hat Vorrang', () {
+      expect(
+        effectiveCameraBounds(configured: hessen, tiles: braunschweig),
+        equals(hessen),
+      );
+    });
+
+    test('ohne Vorgabe halten die Kachelgrenzen die Kamera fest', () {
+      expect(
+        effectiveCameraBounds(configured: null, tiles: braunschweig),
+        equals(braunschweig),
+      );
+    });
+
+    test('ohne beides bleibt die Kamera frei', () {
+      expect(
+        effectiveCameraBounds(configured: null, tiles: null),
+        isNull,
+      );
+    });
+  });
 }

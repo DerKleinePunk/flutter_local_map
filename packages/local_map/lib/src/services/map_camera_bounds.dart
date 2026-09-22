@@ -63,3 +63,15 @@ LatLng centerWithinTiles({
   );
   return fallback;
 }
+
+/// Waehlt die Grenzen, in denen sich die Kamera bewegen darf.
+///
+/// Vorrang hat eine ausdrueckliche Vorgabe aus der [configured]-Konfiguration.
+/// Fehlt sie, nehmen wir die Abdeckung der MBTiles: ausserhalb davon gibt es
+/// ohnehin nichts zu sehen, und auf einem kleinen Ausschnitt ist die Karte
+/// sonst mit zwei Tastendruecken ins Leere geschoben.
+LatLngBounds? effectiveCameraBounds({
+  required LatLngBounds? configured,
+  required LatLngBounds? tiles,
+}) =>
+    configured ?? tiles;

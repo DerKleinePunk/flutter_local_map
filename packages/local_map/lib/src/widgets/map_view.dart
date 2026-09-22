@@ -80,6 +80,7 @@ class _MapViewState extends State<MapView> {
   late double _activeMinZoom;
   late double _activeMaxZoom;
   late LatLng _initialCenter;
+  LatLngBounds? _activeCameraBounds;
   late double _currentZoom;
   late int _selectedVectorStyleAssetIndex;
   String? _activeVectorStyleAssetPath;
@@ -118,6 +119,7 @@ class _MapViewState extends State<MapView> {
     _activeMaxZoom = _config.maxZoom;
     _currentZoom = _config.initialZoom;
     _initialCenter = _config.center;
+    _activeCameraBounds = _config.cameraBounds;
     _selectedVectorStyleAssetIndex = _localVectorStyleAssets.isEmpty
         ? 0
         : _config.initialVectorStyleIndex % _localVectorStyleAssets.length;
@@ -374,6 +376,10 @@ class _MapViewState extends State<MapView> {
         configured: _config.center,
         bounds: metadata.bounds,
       );
+      final cameraBounds = effectiveCameraBounds(
+        configured: _config.cameraBounds,
+        tiles: metadata.bounds,
+      );
 
       if (format == 'pbf') {
         final mbtiles = MbTiles(path: widget.mbtilesPath!);
@@ -428,6 +434,7 @@ class _MapViewState extends State<MapView> {
           _activeMaxZoom = maxZoom;
           _currentZoom = boundedInitialZoom;
           _initialCenter = initialCenter;
+          _activeCameraBounds = cameraBounds;
           _isLoading = false;
           _errorMessage = null;
         });
@@ -472,6 +479,7 @@ class _MapViewState extends State<MapView> {
         _activeMaxZoom = maxZoom;
         _currentZoom = boundedInitialZoom;
         _initialCenter = initialCenter;
+        _activeCameraBounds = cameraBounds;
         _isLoading = false;
         _errorMessage = null;
       });
@@ -920,9 +928,12 @@ class _MapViewState extends State<MapView> {
           _zoomNotifier.value = camera.zoom;
         },
         // Begrenzt die Kamera, wenn die Konfiguration Bounds vorgibt
-        cameraConstraint: _config.cameraBounds == null
+        // Ohne ausdrueckliche Vorgabe halten die Grenzen der MBTiles die
+        // Kamera fest. Sonst schiebt man auf einem kleinen Ausschnitt mit
+        // zwei Tastendruecken ins Leere und findet nicht zurueck.
+        cameraConstraint: _activeCameraBounds == null
             ? const CameraConstraint.unconstrained()
-            : CameraConstraint.containCenter(bounds: _config.cameraBounds!),
+            : CameraConstraint.containCenter(bounds: _activeCameraBounds!),
       ),
       children: [
         if (_vectorTileProviders != null && _vectorTheme != null)
