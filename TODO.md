@@ -1,5 +1,73 @@
 # TODO - Offline-Karten (flutter_map)
 
+## Stand 2026-09-22
+
+### Was sich geaendert hat
+
+- Die Karte liegt als eigenstaendiges Package unter
+  [packages/local_map/](packages/local_map/). Die App im Root ist Demo und
+  Referenz. Einbindung in andere Projekte: siehe
+  [packages/local_map/README.md](packages/local_map/README.md).
+- **Der Vektormodus funktioniert.** Die Ursache der leeren Karte war ein
+  Umrechnungsfehler im NMEA-Parser (Teiler 1000 statt 100 beim Laengengrad),
+  der die Kamera auf 15,36 statt 9,36 Grad Ost schickte - also aus der
+  Abdeckung von `hessen.mbtiles` heraus (Ostgrenze 15,05). Commit `1a3f14a`.
+- `vector_map_tiles` kommt wieder von pub.dev (9.0.0-beta.13), der eigene
+  Fork ist abgeloest. Es bleiben zwei Git-Overrides.
+
+Gemessen (Release, GPS-Route bei Zoom 17, offline im Netzwerk-Namespace):
+alle Kacheln sichtbar, 422 MB RSS, schlechtester Frame 86 ms Build +
+118 ms Raster.
+
+### Offen
+
+- [ ] **MapLibre-Migration neu bewerten, bevor jemand anfaengt.** Der Plan
+      weiter unten (Phase 1-5, 8-13 Tage) entstand, weil der Vektormodus
+      unbrauchbar schien. Diese Annahme ist widerlegt. Vor einem Start also
+      klaeren, welches Problem MapLibre jetzt noch loesen soll.
+- [ ] **`sqlite3_flutter_libs` aus dem eigenen Fork werfen.** Das Paket ist
+      seit 0.6.0+eol (Februar 2026) tot: "Not used anymore, update to version
+      3.x of package:sqlite3 instead". Es haengt nur noch transitiv drin, weil
+      `flutter_map_mbtiles` es in seiner pubspec listet. Eine Zeile in
+      https://github.com/DerKleinePunk/flutter_map_plugins (Branch
+      `to_flutter_map_8`). Danach faellt `libsqlite3_flutter_libs_plugin.so`
+      aus dem Bundle.
+- [ ] **Flutter-SDK anheben.** 3.41.7 (April 2026) blockiert rund 30 Pakete,
+      darunter `sqlite3` 3.6.0 (braucht `hooks ^2.2.0`) sowie
+      `sqflite_common_ffi` 2.4.3 und `sqflite_common` 2.5.13 (brauchen
+      Dart ^3.12). Betrifft auch die Pi-Cross-Compile-Kette.
+- [ ] **Raster-Kachelnaehte.** Beim serverseitig gerenderten Raster werden
+      Labels an Kachelgrenzen abgeschnitten ("Ermenrod" endet mitten im
+      Wort), weil tileserver-gl jede Kachel isoliert rendert. Fix ist
+      `config["options"]["tileMargin"]` in
+      [scripts/render_raster.py](scripts/render_raster.py) neben den
+      bestehenden `maxRendererPoolSizes` - eine Zeile, aber ein Neu-Rendern
+      der 154 GB. Vorher klaeren, ob die Raster-Pipeline ueberhaupt noch
+      gebraucht wird, jetzt wo Vektor laeuft.
+- [ ] **Auf dem echten Pi gegenmessen.** Alle Zahlen oben stammen von WSL2
+      mit defektem GPU-Stack und sind dort vermutlich eher pessimistisch -
+      das ist aber eine Vermutung. Verfahren steht im
+      [README](README.md#vektorkarte-ruckelt-oder-friert-ein).
+- [ ] **Upstream-PR fuer die beiden verbliebenen Forks.** Sie existieren nur,
+      weil die pub.dev-Versionen an `mbtiles ^0.4.0` haengen (und
+      `vector_map_tiles_mbtiles` zusaetzlich an `vector_map_tiles ^8.0.0`).
+      Letzte Veroeffentlichung dort: September 2024.
+- [ ] **`jni` im Linux-Build beobachten.** Kam mit dem Upgrade von
+      `path_provider_android` neu herein und landet als `libdartjni.so` im
+      Bundle. Baut hier durch; falls die Pi-Kette stolpert,
+      `path_provider_android` per Override unter 2.3.1 halten.
+
+### Bekannte Stolperfallen
+
+- **Vektorperformance nie im Debug messen.** `executor_lib` liefert
+  `kDebugMode ? QueueExecutor() : PoolExecutor(...)` - im Debug laufen Parsen
+  und Rendern aller Kacheln auf dem Main-Isolate.
+- **Wanduhr-Abstaende sind kein Jank-Mass.** Unter WSL2/WSLg zeigt eine leere
+  Flutter-App ohne Karte Aussetzer bis 24 s. Nur
+  `SchedulerBinding.instance.addTimingsCallback` ist aussagekraeftig.
+- **Eine leere Karte ist meist ein Koordinatenproblem**, kein Renderfehler.
+  Zuerst pruefen, ob die Kameraposition in den `bounds` der MBTiles liegt.
+
 ## P0 - Muss sofort
 - [x] Non-Regression: Raster-MBTiles-Unterstützung muss erhalten bleiben
   - ✅ Lesen von Raster-MBTiles (png/jpg/jpeg/webp) funktioniert, Metadaten-Abfrage ok
@@ -7,12 +75,12 @@
   - ✅ Format-Erkennung und Fallback-Verhalten validiert durch test/mbtiles_regression_test.dart
 
 - [x] Remote-Style-Loading komplett entfernen
-  - In [lib/widgets/map_view.dart](lib/widgets/map_view.dart) alle URL-basierten Style-Aufrufe löschen.
+  - In [packages/local_map/lib/src/widgets/map_view.dart](packages/local_map/lib/src/widgets/map_view.dart) alle URL-basierten Style-Aufrufe löschen.
   - `_defaultVectorStyleUri` entfernen.
   - Kein Netzwerkzugriff mehr im Karten-Init.
 
 - [x] Lokalen Asset-Style als Primärstil setzen
-  - Primär: `assets/maps/style.json`
+  - Primär: `packages/local_map/assets/maps/style.json`
   - Fallback nur bei Fehler: `vtr.ProvidedThemes.lightTheme()`
   - Bug fixen: Nach erfolgreichem `ThemeReader` nicht auf `lightTheme()` überschreiben.
 
@@ -71,7 +139,7 @@
 - [ ] Baseline mit aktuellem Renderer aufnehmen und protokollieren.
 
 ### Phase 1 - Architektur entkoppeln (1-2 Tage)
-- [ ] In [lib/widgets/map_view.dart](lib/widgets/map_view.dart) Kartenkern von Renderer-spezifischer Tile/Style-Logik trennen.
+- [ ] In [packages/local_map/lib/src/widgets/map_view.dart](packages/local_map/lib/src/widgets/map_view.dart) Kartenkern von Renderer-spezifischer Tile/Style-Logik trennen.
 - [ ] Kartenkern stabil halten: Suche, Routing, GPS-Simulation, Badges, Kamera-Handling.
 - [ ] Zielzustand: Renderer austauschbar, ohne Business-Logik anzufassen.
 
