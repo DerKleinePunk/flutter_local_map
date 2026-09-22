@@ -179,7 +179,7 @@ packages:
     description:
       path: flutter_map_mbtiles
       ref: to_flutter_map_8
-      resolved-ref: ee4a622879c600d7b61dcaed7d5855e42bd67c57
+      resolved-ref: a1de42ff6b89ca2517f9d2890cf480f19a9a0a4a
       url: "https://github.com/DerKleinePunk/flutter_map_plugins"
     source: git
     version: "1.0.4"
@@ -645,14 +645,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.5.2"
-  sqlite3_flutter_libs:
-    dependency: transitive
-    description:
-      name: sqlite3_flutter_libs
-      sha256: eeb9e3a45207649076b808f8a5a74d68770d0b7f26ccef6d5f43106eee5375ad
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.5.42"
   stack_trace:
     dependency: transitive
     description:
@@ -738,7 +730,7 @@ packages:
     description:
       path: vector_map_tiles_mbtiles
       ref: to_flutter_map_8
-      resolved-ref: ee4a622879c600d7b61dcaed7d5855e42bd67c57
+      resolved-ref: a1de42ff6b89ca2517f9d2890cf480f19a9a0a4a
       url: "https://github.com/DerKleinePunk/flutter_map_plugins"
     source: git
     version: "1.2.1"
