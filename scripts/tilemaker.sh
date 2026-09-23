@@ -321,14 +321,21 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
   # Kann per Env-Variable TILEMAKER_THREADS ueberschrieben werden.
   TILEMAKER_THREADS="${TILEMAKER_THREADS:-0}"
 
+  # Die Konfiguration wandert ins Arbeitsverzeichnis, statt das Projekt
+  # zusaetzlich als /workspace einzuhaengen. Ein podman-remote-Server sieht
+  # das Projekt unter /home nicht und scheitert sonst an
+  # "statfs /home/...: no such file or directory" - und ein zweiter Mount
+  # bringt hier ohnehin nur diese eine Datei.
+  cp -f "$PROJECT_ROOT/scripts/tilemaker/config-openmaptiles-z17.json" \
+        "$WORK_DIR/tilemaker-config.json"
+
   "$CONTAINER_CMD" run "${TTY_ARG[@]}" --rm --pull always \
     -w /data \
     -v "$WORK_DIR:/data" \
-    -v "$PROJECT_ROOT:/workspace" \
     ghcr.io/systemed/tilemaker:master \
       --input /data/$PBF_FILE \
       --output /data/$OUTPUT_MBTILES \
-      --config /workspace/scripts/tilemaker/config-openmaptiles-z17.json \
+      --config /data/tilemaker-config.json \
       --process /usr/src/app/resources/process-openmaptiles.lua \
       --fast \
       --threads "$TILEMAKER_THREADS" \
