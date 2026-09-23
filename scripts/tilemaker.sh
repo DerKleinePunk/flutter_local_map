@@ -328,6 +328,10 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
   # bringt hier ohnehin nur diese eine Datei.
   cp -f "$PROJECT_ROOT/scripts/tilemaker/config-openmaptiles-z17.json" \
         "$WORK_DIR/tilemaker-config.json"
+  # Eigenes Lua statt des mitgelieferten, siehe Kopf der Datei: das
+  # Original legt jede kleine Wohnflaeche schon in z8.
+  cp -f "$PROJECT_ROOT/scripts/tilemaker/process-openmaptiles.lua" \
+        "$WORK_DIR/tilemaker-process.lua"
 
   "$CONTAINER_CMD" run "${TTY_ARG[@]}" --rm --pull always \
     -w /data \
@@ -336,7 +340,7 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
       --input /data/$PBF_FILE \
       --output /data/$OUTPUT_MBTILES \
       --config /data/tilemaker-config.json \
-      --process /usr/src/app/resources/process-openmaptiles.lua \
+      --process /data/tilemaker-process.lua \
       --fast \
       --threads "$TILEMAKER_THREADS" \
       "${TILEMAKER_REBUILD_ARG[@]}" \
