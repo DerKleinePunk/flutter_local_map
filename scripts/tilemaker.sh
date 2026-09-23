@@ -115,6 +115,13 @@ if [ -z "$CONTAINER_CMD" ]; then
     echo "        docker: WSL-Integration in Docker Desktop einschalten"
     echo "                (Settings -> Resources -> WSL Integration)"
     echo "        podman: sudo apt install podman"
+    echo ""
+    echo "        Achtung: ein podman-remote aus Podman Desktop reicht NICHT."
+    echo "        Der Server laeuft dann in einer anderen WSL-Distribution und"
+    echo "        loest -v dort auf, sieht also weder $WORK_DIR noch sonst"
+    echo "        etwas unter /home - der Lauf scheitert an"
+    echo "        'statfs ...: no such file or directory'. Gebraucht wird ein"
+    echo "        podman in DIESER Distribution."
     exit 1
   fi
 fi
