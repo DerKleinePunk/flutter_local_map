@@ -17,7 +17,14 @@ trap print_runtime EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-WORK_DIR="$PROJECT_ROOT/map/tiles-germany"
+# Arbeitsverzeichnis fuer Quelldaten, Zwischenspeicher und Ergebnis.
+#
+# Umstellbar, weil ein podman-remote aus Podman Desktop die Pfade auf dem
+# Server aufloest: der laeuft in einer anderen WSL-Distribution und sieht
+# nichts unter /home, sondern nur was unter /mnt/wsl liegt. Dann zeigt
+# TILEMAKER_WORK_DIR auf ein Verzeichnis der geteilten Platte, etwa
+# /mnt/wsl/code/tiles-germany.
+WORK_DIR="${TILEMAKER_WORK_DIR:-$PROJECT_ROOT/map/tiles-germany}"
 
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
@@ -37,6 +44,9 @@ show_usage() {
   echo "                     benoetigt gueltiges styles.zip (z. B. scripts/styles.zip)"
   echo ""
   echo "Optionale Umgebungsvariablen:"
+  echo "  TILEMAKER_WORK_DIR (Arbeitsverzeichnis; Standard map/tiles-germany)"
+  echo "                     noetig bei podman-remote, dessen Server nur"
+  echo "                     Pfade unter /mnt/wsl sieht"
   echo "  CONTAINER_CMD  (docker|podman; sonst wird automatisch gewaehlt)"
   echo "  FORCE_REBUILD=1 (baut neu, aber per tilemaker --merge in die"
   echo "                   vorhandene Datei - fuer einen sauberen Neubau die"
