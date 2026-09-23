@@ -20,13 +20,26 @@ Beide Wege bauen mit **derselben Kette**: `emb_cli` -> Flutter 3.47.5 aus `/home
 Gebaut wird aus dem Worktree `/home/punky/develop/emb-workspace/app/map_local_pi`, damit das Arbeitsverzeichnis unberuehrt bleibt. Es ist ein `git worktree` **desselben** Repos, teilt sich also den Objektspeicher — kein `fetch`, kein zweiter Klon. **Vor dem Bauen auf den zu testenden Stand bringen**, sonst testest du alten Code:
 
 ```bash
-git -C /home/punky/develop/emb-workspace/app/map_local_pi log --oneline -1   # Stand pruefen
-git -C /home/punky/develop/emb-workspace/app/map_local_pi checkout --detach master
+W=/home/punky/develop/emb-workspace/app/map_local_pi
+git -C $W log --oneline -1          # Stand pruefen
+git -C $W status --porcelain        # Reste aus frueheren Laeufen ansehen
+git -C $W reset --hard master       # erst nachdem du die Reste geprueft hast
 ```
+
+**Dieser Schritt ist nicht optional, und einzelne Dateien hineinzukopieren ist keine Abkuerzung.** Genau daran ist schon ein halber Nachmittag verloren gegangen: das X zum Beenden war gebaut, getestet und committet, im Worktree aber wieder auf den Stand davor zurueckgesetzt. Danach wurde nur noch die Style-Datei von Hand hineinkopiert - und jedes weitere Bundle hatte kein X mehr, ohne dass es jemandem auffiel. Was du testest, muss committet und der Worktree darauf gesetzt sein.
+
+`reset --hard` statt `checkout`, weil der Build im Worktree `analysis_options.yaml` und `pubspec.lock` anfasst und ein `checkout` daran scheitert. Sieh dir `status` vorher an: alles ausser diesen beiden Dateien und `libapp.so.release*` gehoert geprueft, bevor du es wegwirfst.
 
 `--detach` ist noetig: `master` ist im Arbeitsverzeichnis ausgecheckt, und zweimal derselbe Branch geht in Git nicht. Ungespeicherte Aenderungen im Arbeitsverzeichnis sind im Worktree **nicht** sichtbar — was nicht committet ist, wird nicht getestet.
 
 Der Build hinterlaesst im Worktree Spuren: `analysis_options.yaml` (Analyzer-Ausschluesse) und `pubspec.lock` stehen danach als geaendert da, dazu liegen `libapp.so.release` und die Obfuscation-Map herum. Das ist normal und gehoert nicht ins Repo zurueck — nicht committen, nicht "aufraeumen" wollen.
+
+### Nach dem Start pruefen, dass der richtige Stand laeuft
+
+Ein Bundle aus altem Quellstand startet fehlerfrei und sieht fast richtig aus — es fehlt nur das, woran du gerade gearbeitet hast. Nimm dir nach dem Start zehn Sekunden fuer eine Gegenprobe, die genau das zeigen wuerde:
+
+- **Titelleiste:** ein `ui_snapshot` muss die Schaltflaechen `Optionen` **und** `Beenden` nennen. Fehlt `Beenden`, laeuft ein Stand vor dem Commit, der es eingefuehrt hat.
+- **Style:** `Style aktiv: N Ebenen` im Log gegen die Ebenenzahl der Datei halten (`python3 -c "import json;print(len(json.load(open('packages/local_map/assets/maps/style_navigation.json'))['layers']))"`). Weichen sie ab, ist eine alte Style-Datei im Bundle.
 
 ## Erst die Kacheln, sonst ist der Lauf wertlos
 

@@ -34,6 +34,10 @@ dev_dependencies:
   # unter map/ zu inspizieren.
   sqlite3: ^3.3.0
 
+  # Nur fuer den Test: setMockInitialValues haelt den Speicherort auf
+  # `custom`, damit die Startseite ohne path_provider hochkommt.
+  shared_preferences: ^2.3.0
+
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
