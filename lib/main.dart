@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:local_map/local_map.dart';
 
 void _logError(String source, Object error, StackTrace? stack) {
@@ -105,6 +107,51 @@ class _MapHomePageState extends State<MapHomePage> {
         _isMapAvailable = true;
         _mbtilesPath = path;
       });
+    }
+  }
+
+  /// Beendet die Anwendung.
+  ///
+  /// Unter DRM/KMS gibt es keinen Fensterrahmen und damit kein X des
+  /// Fenstermanagers. Ohne diesen Weg bleibt nur SSH und `pkill -x`.
+  ///
+  /// [SystemNavigator.pop] zuerst, weil ein Desktop-Embedder das Fenster
+  /// damit regulär schließt. Der ivi-homescreen-Embedder kennt auf dem Kanal
+  /// `flutter/platform` nur die Zwischenablage, dort bleibt der Aufruf also
+  /// wirkungslos — deshalb danach der harte Ausstieg. Die MBTiles sind
+  /// schreibgeschützt geöffnet, es geht dabei nichts verloren.
+  Future<void> _quit() async {
+    await SystemNavigator.pop();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    exit(0);
+  }
+
+  /// Fragt vor dem Beenden nach.
+  ///
+  /// Auf dem Zielgerät hängt die App im Vollbild ohne Rahmen: ein
+  /// versehentlicher Treffer auf das X würde den Bildschirm schwarz
+  /// zurücklassen, und zurück käme man nur über SSH.
+  Future<void> _confirmQuit() async {
+    final shouldQuit = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Beenden'),
+        content: const Text('Die Anwendung wirklich schließen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Beenden'),
+          ),
+        ],
+      ),
+    );
+
+    if ((shouldQuit ?? false) && mounted) {
+      await _quit();
     }
   }
 
@@ -245,19 +292,40 @@ class _MapHomePageState extends State<MapHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Offline-Karte Hessen'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: _showMenu,
-            tooltip: 'Optionen',
+    // Strg+Q zusätzlich zum X: auf dem Zielgerät ist die Zeigereingabe ein
+    // Touchpad an einer Funktastatur, da ist ein Tastenkürzel oft schneller
+    // als das Zielen auf ein 40-px-Feld.
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.keyQ, control: true):
+            _confirmQuit,
+      },
+      child: Focus(
+        autofocus: true,
+        child: Scaffold(
+          appBar: AppBar(
+            title: const Text('Offline-Karte Hessen'),
+            backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+            actions: [
+              // semanticLabel, nicht nur tooltip: ohne Zeiger gibt es keinen
+              // Tooltip, und im Semantikbaum stehen die Schaltflaechen sonst
+              // ohne Namen da - weder ein Screenreader noch die MCP-Bedienung
+              // koennen sie dann auseinanderhalten.
+              IconButton(
+                icon: const Icon(Icons.more_vert, semanticLabel: 'Optionen'),
+                onPressed: _showMenu,
+                tooltip: 'Optionen',
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, semanticLabel: 'Beenden'),
+                onPressed: _confirmQuit,
+                tooltip: 'Beenden (Strg+Q)',
+              ),
+            ],
           ),
-        ],
+          body: _buildBody(),
+        ),
       ),
-      body: _buildBody(),
     );
   }
 

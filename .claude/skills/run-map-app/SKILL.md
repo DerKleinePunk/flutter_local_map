@@ -130,12 +130,16 @@ mcp() { curl -s --unix-socket $SOCK -X POST http://localhost/ \
 
 mcp '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"claude-code","version":"1"}}}'
 mcp '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"ui_snapshot","arguments":{}}}'
-mcp '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ui_tap","arguments":{"id":16}}}'
+mcp '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"ui_tap_at","arguments":{"x":1260,"y":28}}}'
 ```
 
 `ui_snapshot` liefert den Semantikbaum unter `result.content[0].text` als JSON-String (erst `json.loads`, dann `views[].result.nodes` — eine **flache** Knotenliste, nicht verschachtelt). Jeder Knoten bringt `id`, `role`, `label`, `rect` und die erlaubten `actions` mit. Weitere Werkzeuge: `ui_query`, `ui_tap_at`, `ui_set_text`, `ui_scroll_to`, `ui_long_press`.
 
-Die `id` im Beispiel oben ist **nicht stabil** — sie haengt am Aufbau des Baums. Hol dir die Knoten immer frisch aus einem `ui_snapshot` und suche ueber das Label, statt eine Nummer abzuschreiben. Zur Orientierung, wie der Baum dieser App aussieht: der Style-Chip traegt den Dateinamen des aktiven Styles als Label (`style_navigation`), das Modus-Badge `Vektor MBTiles (PBF)`, dazu gibt es `Zoom 11.0`, die Suchfelder `Start suchen...` / `Ziel suchen...` und `GPS Sim laden`.
+**Die `id` ist an eine Generation des Baums gebunden.** Jeder Snapshot nennt seine `generation`; sobald die App neu zeichnet, zaehlt sie hoch und alte Nummern sind ungueltig. `ui_tap` antwortet dann mit `no node matched node_id or identifier` — und wenn du die Antwort nicht liest, sieht das aus, als sei die Schaltflaeche kaputt. Bei dieser Karte zeichnet staendig etwas nach, die Nummern halten also keine zwei Sekunden.
+
+Zuverlaessig ist deshalb: Snapshot holen, Knoten **ueber das Label** suchen, Mittelpunkt aus seinem `rect` rechnen und mit **`ui_tap_at`** auf die Koordinate tippen — alles in einem Durchgang. `ui_tap_at` trifft ueber einen Zeigerklick und braucht keine gueltige id. Die Antwort enthaelt `"dispatched":true,"hit_tested":true` — pruefe das, ein Fehlschlag ist sonst stumm.
+
+Zur Orientierung, wie der Baum dieser App aussieht: die beiden Schaltflaechen oben rechts heissen `Optionen` und `Beenden`, der Style-Chip traegt den Dateinamen des aktiven Styles (`style_navigation`), das Modus-Badge `Vektor MBTiles (PBF)`, dazu `Zoom 11.0`, die Suchfelder `Start suchen...` / `Ziel suchen...` und `GPS Sim laden`.
 
 **Die Labels im Baum hinken den Aktionen hinterher.** Ein `ui_query` direkt nach einem `ui_tap` liefert oft noch den alten Zustand. Lies das Ergebnis einer Aktion **aus dem Log**, nie aus dem Baum.
 
@@ -147,6 +151,14 @@ Die `id` im Beispiel oben ist **nicht stabil** — sie haengt am Aufbau des Baum
 | Welcher Style gilt? | `[MapError] INFO [<asset>]: Style aktiv: N Ebenen` |
 | Karte am richtigen Ort? | **keine** Zeile `[MapError] ERROR [Camera bounds]` |
 | Schrift da? | Beschriftung im Bild; fehlt sie komplett, fehlen Systemschriften |
+
+### Wieder rauskommen
+
+Die Demo-App hat oben rechts ein **X** (`Beenden`, daneben `Optionen`) und das Kuerzel **Strg+Q**, beides mit Rueckfrage. Das ist noetig, weil es unter DRM/KMS keinen Fensterrahmen gibt und der Embedder `SystemNavigator.pop` nicht behandelt — auf `flutter/platform` kennt er nur die Zwischenablage. Die App steigt deshalb selbst per `exit(0)` aus.
+
+Das X sitzt in der Demo-App (`lib/main.dart`), **nicht** im Package `local_map` — eine eingebettete Bibliothek darf den Prozess des Gastgebers nicht beenden.
+
+Von aussen bleibt `pkill -x homescreen` (nie `pkill -f`).
 
 Ein Style-Wechsel sieht richtig so aus — der Chip haengt oben rechts und laeuft im Kreis:
 
