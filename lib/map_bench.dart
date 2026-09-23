@@ -35,8 +35,10 @@ class MapBench {
   static const _sampleInterval = Duration(milliseconds: 100);
 
   /// So lange muss das Bild stillstehen. Deutlich laenger als das
-  /// Einblenden einer Kachel in flutter_map (100 ms).
-  static const _stableFor = Duration(milliseconds: 1500);
+  /// Einblenden einer Kachel in flutter_map (100 ms) und als die Aussetzer,
+  /// mit denen WSLg den Prozess anhaelt - mit 1,5 s galten Ziele nach einem
+  /// einzigen Frame als fertig.
+  static const _stableFor = Duration(seconds: 3);
   static const _timeout = Duration(seconds: 60);
 
   /// Feste Ziele, damit Laeufe vergleichbar sind. Jedes liegt ausserhalb
@@ -69,19 +71,25 @@ class MapBench {
 
     await _waitForCamera();
     final measureFrom = sinceMain.elapsed;
-    final first = await _measure();
+    final first = await _measure(before: null);
     _report('Start (ab main)', first, offset: measureFrom);
 
     var sum = Duration.zero;
     for (final (name, center, zoom) in _steps) {
+      final before = await _snapshotHash();
       mapController.move(center, zoom);
-      final result = await _measure();
+      final result = await _measure(before: before);
       sum += result.total;
       _report(name, result);
     }
     _log('Summe der Ziele: ${sum.inMilliseconds} ms');
 
-    if (_exitWhenDone) exit(0);
+    if (_exitWhenDone) {
+      // print geht ueber die Engine ins Log; ohne Pause verschluckt exit()
+      // die letzten Zeilen.
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      exit(0);
+    }
   }
 
   Future<void> _waitForCamera() async {
@@ -95,11 +103,15 @@ class MapBench {
     }
   }
 
-  Future<_Result> _measure() async {
+  /// Wartet, bis das Bild [_stableFor] lang stillsteht. Solange es noch
+  /// dem Bild vor dem Sprung ([before]) gleicht, zaehlt Stillstand nicht:
+  /// dann hat die Karte den Sprung noch gar nicht gezeichnet.
+  Future<_Result> _measure({required int? before}) async {
     _frames.clear();
     final clock = Stopwatch()..start();
-    int? lastHash;
+    int? lastHash = before;
     var lastChange = Duration.zero;
+    var moved = before == null;
     var timedOut = false;
 
     while (true) {
@@ -108,8 +120,9 @@ class MapBench {
       if (hash != null && hash != lastHash) {
         lastHash = hash;
         lastChange = clock.elapsed;
+        moved = true;
       }
-      if (clock.elapsed - lastChange >= _stableFor) break;
+      if (moved && clock.elapsed - lastChange >= _stableFor) break;
       if (clock.elapsed >= _timeout) {
         timedOut = true;
         break;
