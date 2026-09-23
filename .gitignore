@@ -52,3 +52,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 scripts/node_modules/
+
+# Claude Code: lokale Berechtigungen bleiben pro Entwickler
+.claude/settings.local.json
