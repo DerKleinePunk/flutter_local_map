@@ -37,8 +37,13 @@ class MapBench {
   /// So lange muss das Bild stillstehen. Deutlich laenger als das
   /// Einblenden einer Kachel in flutter_map (100 ms) und als die Aussetzer,
   /// mit denen WSLg den Prozess anhaelt - mit 1,5 s galten Ziele nach einem
-  /// einzigen Frame als fertig.
-  static const _stableFor = Duration(seconds: 3);
+  /// einzigen Frame als fertig. Mit `LOCAL_MAP_BENCH_STABLE_MS` verstellbar,
+  /// um zu pruefen, ob ein Ziel nur langsam oder wirklich fertig ist.
+  static final _stableFor = Duration(
+    milliseconds:
+        int.tryParse(Platform.environment['LOCAL_MAP_BENCH_STABLE_MS'] ?? '') ??
+        3000,
+  );
   static const _timeout = Duration(seconds: 60);
 
   /// Feste Ziele, damit Laeufe vergleichbar sind. Jedes liegt ausserhalb
