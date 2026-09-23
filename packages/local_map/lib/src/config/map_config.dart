@@ -116,6 +116,26 @@ class MapConfig {
   /// `null` = Default von `VectorTileLayer`.
   final VectorTileLayerMode? vectorLayerMode;
 
+  /// Zahl der Kachelreihen, die ausserhalb des sichtbaren Bereichs
+  /// mitgeladen werden (nur Raster-Modus).
+  ///
+  /// Default 0, gemessen auf dem Pi 4 bei 1920x1080: der Pufferring von
+  /// flutter_map (dort Default 1) verdoppelt fast die Kachelzahl, und weil
+  /// executor_lib Auftraege in umgekehrter Reihenfolge abarbeitet, kommt er
+  /// sogar vor der Bildmitte dran. Mit 0 ist die Karte etwa doppelt so
+  /// schnell vollstaendig. Preis: beim Verschieben erscheinen die
+  /// Randkacheln erst, wenn sie ins Bild kommen - fuer fluessigeres Ziehen
+  /// auf schneller Hardware 1 setzen.
+  final int panBuffer;
+
+  /// Aufloesungsfaktor beim Rastern der Kacheln (nur Raster-Modus).
+  ///
+  /// `null` = Pixelverhaeltnis des Bildschirms. vector_map_tiles rastert
+  /// sonst fest mit 2.0; auf dem Pi (Pixelverhaeltnis 1) ist das die
+  /// vierfache Pixelmenge und der vierfache Speicher je Kachelbild, bei z8
+  /// ~200 statt ~45 ms Raster-Zeit pro Frame.
+  final double? rasterTileScale;
+
   /// Standard-Vektorstyles, die dieses Package mitliefert.
   static const List<String> packageVectorStyleAssets = [
     'packages/local_map/assets/maps/style.json',
@@ -150,8 +170,11 @@ class MapConfig {
     this.textCacheMaxSize,
     this.vectorConcurrency,
     this.vectorLayerMode,
-  }) : valhallaBaseUri =
-           valhallaBaseUri ?? Uri.parse('http://127.0.0.1:8002');
+    this.panBuffer = 0,
+    this.rasterTileScale,
+  }) : assert(panBuffer >= 0),
+       assert(rasterTileScale == null || rasterTileScale > 0),
+       valhallaBaseUri = valhallaBaseUri ?? Uri.parse('http://127.0.0.1:8002');
 
   /// Bounding Box von Hessen.
   static LatLngBounds get hessenBounds => LatLngBounds(
@@ -189,6 +212,8 @@ class MapConfig {
     int? textCacheMaxSize,
     int? vectorConcurrency,
     VectorTileLayerMode? vectorLayerMode,
+    int? panBuffer,
+    double? rasterTileScale,
   }) {
     return MapConfig(
       center: center ?? this.center,
@@ -217,6 +242,8 @@ class MapConfig {
       textCacheMaxSize: textCacheMaxSize ?? this.textCacheMaxSize,
       vectorConcurrency: vectorConcurrency ?? this.vectorConcurrency,
       vectorLayerMode: vectorLayerMode ?? this.vectorLayerMode,
+      panBuffer: panBuffer ?? this.panBuffer,
+      rasterTileScale: rasterTileScale ?? this.rasterTileScale,
     );
   }
 }

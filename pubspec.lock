@@ -726,12 +726,13 @@ packages:
     source: hosted
     version: "4.6.0"
   vector_map_tiles:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: vector_map_tiles
-      sha256: "42dce00e0f69352663f4c9c78fe5cc900704f6dd46019640ebda0d84cc14ce68"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: local_map_pi
+      resolved-ref: "386755949ddf5ca463d2ed361f34d210d057ff17"
+      url: "https://github.com/DerKleinePunk/flutter-vector-map-tiles"
+    source: git
     version: "9.0.0-beta.13"
   vector_map_tiles_mbtiles:
     dependency: "direct overridden"

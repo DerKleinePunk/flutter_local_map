@@ -1047,6 +1047,10 @@ class _MapViewState extends State<MapView> {
             concurrency:
                 _config.vectorConcurrency ?? VectorTileLayer.defaultConcurrency,
             layerMode: _config.vectorLayerMode ?? VectorTileLayerMode.raster,
+            panBuffer: _config.panBuffer,
+            rasterTileScale:
+                _config.rasterTileScale ??
+                MediaQuery.devicePixelRatioOf(context),
           )
         else
           TileLayer(

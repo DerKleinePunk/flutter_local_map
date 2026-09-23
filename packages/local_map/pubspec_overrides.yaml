@@ -3,6 +3,12 @@
 # Konsumierende Projekte muessen dieselben Overrides in ihre eigene
 # pubspec.yaml eintragen - siehe README.md.
 dependency_overrides:
+  # Fork mit einstellbarem panBuffer und rasterTileScale, siehe
+  # MapConfig.panBuffer / MapConfig.rasterTileScale.
+  vector_map_tiles:
+    git:
+      url: https://github.com/DerKleinePunk/flutter-vector-map-tiles
+      ref: local_map_pi
   flutter_map_mbtiles:
     git:
       url: https://github.com/DerKleinePunk/flutter_map_plugins

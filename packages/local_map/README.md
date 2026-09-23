@@ -32,13 +32,17 @@ dependencies:
 
 ### Pflicht in beiden Varianten: dependency_overrides
 
-`local_map` benötigt zwei geforkte Abhängigkeiten. `dependency_overrides`
+`local_map` benötigt drei geforkte Abhängigkeiten. `dependency_overrides`
 werden von pub **nur im Root-Package** ausgewertet und **nicht** transitiv
 vererbt — ohne die folgenden Zeilen scheitert `flutter pub get` im
 konsumierenden Projekt an Versionskonflikten:
 
 ```yaml
 dependency_overrides:
+  vector_map_tiles:
+    git:
+      url: https://github.com/DerKleinePunk/flutter-vector-map-tiles
+      ref: local_map_pi
   flutter_map_mbtiles:
     git:
       url: https://github.com/DerKleinePunk/flutter_map_plugins
@@ -51,9 +55,14 @@ dependency_overrides:
       path: vector_map_tiles_mbtiles
 ```
 
-Noetig sind die beiden wegen `mbtiles`: die pub.dev-Versionen haengen an
-`^0.4.0`, dieses Package nutzt `^0.5.0`. `vector_map_tiles` selbst kommt seit
-9.0.0-beta.13 direkt von pub.dev und braucht **kein** Override mehr.
+Die beiden aus `flutter_map_plugins` sind wegen `mbtiles` noetig: die
+pub.dev-Versionen haengen an `^0.4.0`, dieses Package nutzt `^0.5.0`.
+
+`vector_map_tiles` kommt aus einem Fork von 9.0.0-beta.13 (Branch
+`local_map_pi`), der `panBuffer` und `rasterTileScale` einstellbar macht.
+`MapView` uebergibt beides aus `MapConfig`; ohne den Fork kompiliert
+`local_map` nicht. Beide Werte sind auf dem Pi gemessen, siehe
+`MapConfig.panBuffer` und `MapConfig.rasterTileScale`.
 
 ## Verwenden
 
