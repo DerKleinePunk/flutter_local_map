@@ -27,11 +27,12 @@ WATER_ZIP="water-polygons-split-4326.zip"
 COASTLINE_DIR="coastline"
 
 show_usage() {
-  echo "Nutzung: ./tilemaker.sh [vogelsberg|braunschweig] [raster|--raster]"
+  echo "Nutzung: ./tilemaker.sh [vogelsberg|braunschweig|hessen] [raster|--raster]"
   echo ""
   echo "  ohne Parameter:    Germany Vector-MBTiles"
   echo "  vogelsberg:        Testgebiet Fulda/Vogelsberg (BBox)"
   echo "  braunschweig:      Braunschweig mit Umland (BBox)"
+  echo "  hessen:            Hessen (BBox)"
   echo "  raster|--raster:   zusaetzlich Raster-MBTiles aus Vektor-MBTiles erzeugen"
   echo "                     benoetigt gueltiges styles.zip (z. B. scripts/styles.zip)"
   echo ""
@@ -53,6 +54,10 @@ VOGELSBERG_BBOX="8.9,50.22,9.9,50.85"
 # Braunschweig mit Umland: Wolfsburg, Wolfenbuettel, Salzgitter und Peine sind mit enthalten
 BRAUNSCHWEIG_BBOX="10.28,52.12,10.78,52.42"
 
+# Hessen: uebernommen aus den bounds von hessen_extract.mbtiles, damit der
+# gebaute Ausschnitt deckungsgleich mit dem bisherigen bleibt.
+HESSEN_BBOX="7.7726,49.3963,10.2358,51.6569"
+
 BBOX_ARG=()
 GENERATE_RASTER=0
 REGION="germany"
@@ -64,6 +69,9 @@ for arg in "$@"; do
       ;;
     braunschweig)
       REGION="braunschweig"
+      ;;
+    hessen)
+      REGION="hessen"
       ;;
     raster|--raster)
       GENERATE_RASTER=1
@@ -90,6 +98,11 @@ case "$REGION" in
     echo "[bbox] Braunschweig mit Umland: $BRAUNSCHWEIG_BBOX"
     BBOX_ARG+=(--bbox "$BRAUNSCHWEIG_BBOX")
     OUTPUT_MBTILES="braunschweig.mbtiles"
+    ;;
+  hessen)
+    echo "[bbox] Hessen: $HESSEN_BBOX"
+    BBOX_ARG+=(--bbox "$HESSEN_BBOX")
+    OUTPUT_MBTILES="hessen.mbtiles"
     ;;
   *)
     OUTPUT_MBTILES="germany.mbtiles"
