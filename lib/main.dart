@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_map/local_map.dart';
 
+import 'map_bench.dart';
+
 void _logError(String source, Object error, StackTrace? stack) {
   final timestamp = DateTime.now().toIso8601String();
   // ignore: avoid_print
@@ -15,6 +17,12 @@ void _logError(String source, Object error, StackTrace? stack) {
     print(stack);
   }
 }
+
+/// Laeuft ab dem ersten Befehl, damit der Messlauf die Startzeit kennt.
+final _sinceMain = Stopwatch()..start();
+
+/// Nur gesetzt, wenn `LOCAL_MAP_BENCH` in der Umgebung steht.
+final _bench = MapBench.fromEnvironment();
 
 void main() {
   runZonedGuarded(
@@ -342,7 +350,17 @@ class _MapHomePageState extends State<MapHomePage> {
       );
     }
 
+    final bench = _bench;
+    if (bench != null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => bench.start(_sinceMain),
+      );
+    }
+
     // Ohne config: greift MapConfig.defaults aus LocalMap.ensureInitialized().
-    return MapView(mbtilesPath: _mbtilesPath);
+    return wrapForBench(
+      bench,
+      MapView(mbtilesPath: _mbtilesPath, mapController: bench?.mapController),
+    );
   }
 }
