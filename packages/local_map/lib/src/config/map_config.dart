@@ -116,6 +116,13 @@ class MapConfig {
   /// `null` = Default von `VectorTileLayer`.
   final VectorTileLayerMode? vectorLayerMode;
 
+  /// Zoomstufe nach der Auswahl eines Suchtreffers.
+  ///
+  /// Default 15: nah genug, um am Ziel Strassen und Hausnummern zu lesen.
+  /// `null` = die Zoomstufe, die der Geocoder zum Treffer liefert (Stadt z7,
+  /// Dorf z10). Wird auf den Zoombereich der Kacheln begrenzt.
+  final double? searchResultZoom;
+
   /// Zahl der Kachelreihen, die ausserhalb des sichtbaren Bereichs
   /// mitgeladen werden (nur Raster-Modus).
   ///
@@ -172,6 +179,7 @@ class MapConfig {
     this.vectorLayerMode,
     this.panBuffer = 0,
     this.rasterTileScale,
+    this.searchResultZoom = 15,
   }) : assert(panBuffer >= 0),
        assert(rasterTileScale == null || rasterTileScale > 0),
        valhallaBaseUri = valhallaBaseUri ?? Uri.parse('http://127.0.0.1:8002');
@@ -214,6 +222,7 @@ class MapConfig {
     VectorTileLayerMode? vectorLayerMode,
     int? panBuffer,
     double? rasterTileScale,
+    double? searchResultZoom,
   }) {
     return MapConfig(
       center: center ?? this.center,
@@ -244,6 +253,7 @@ class MapConfig {
       vectorLayerMode: vectorLayerMode ?? this.vectorLayerMode,
       panBuffer: panBuffer ?? this.panBuffer,
       rasterTileScale: rasterTileScale ?? this.rasterTileScale,
+      searchResultZoom: searchResultZoom ?? this.searchResultZoom,
     );
   }
 }

@@ -188,4 +188,31 @@ void main() {
       );
     });
   });
+
+  group('searchResultZoom', () {
+    test('fester Wert schlaegt den Zoom des Treffers', () {
+      expect(
+        searchResultZoom(configured: 15, fromResult: 7, min: 4, max: 17),
+        15,
+      );
+    });
+
+    test('ohne festen Wert gilt der Zoom des Treffers', () {
+      expect(
+        searchResultZoom(configured: null, fromResult: 10, min: 4, max: 17),
+        10,
+      );
+    });
+
+    test('bleibt im Zoombereich der Kacheln', () {
+      expect(
+        searchResultZoom(configured: 15, fromResult: 7, min: 4, max: 14),
+        14,
+      );
+      expect(
+        searchResultZoom(configured: null, fromResult: 3, min: 4, max: 17),
+        4,
+      );
+    });
+  });
 }

@@ -118,6 +118,21 @@ double effectiveMinZoom({
   return math.min(fromTiles, max);
 }
 
+/// Zoomstufe, auf die die Karte nach der Auswahl eines Suchtreffers springt.
+///
+/// [configured] ist der feste Wert aus der Konfiguration; `null` nimmt
+/// [fromResult], die Zoomstufe, die der Geocoder zum Treffer liefert. Die ist
+/// fuer eine Navigation zu grob - eine Stadt kommt mit z7, ein Dorf mit z10.
+/// Das Ergebnis bleibt zwischen [min] und [max], also innerhalb dessen, was
+/// die Kacheln hergeben.
+double searchResultZoom({
+  required double? configured,
+  required int fromResult,
+  required double min,
+  required double max,
+}) =>
+    (configured ?? fromResult.toDouble()).clamp(min, max);
+
 /// Zoomstufe nach einem Druck auf die Zoomknoepfe.
 ///
 /// [direction] ist +1 zum Hinein- und -1 zum Herauszoomen. Das Ergebnis bleibt

@@ -931,6 +931,21 @@ class _MapViewState extends State<MapView> {
     super.dispose();
   }
 
+  /// Springt auf einen Suchtreffer, mit der Zoomstufe aus
+  /// [MapConfig.searchResultZoom] statt der groben aus dem Geocoder.
+  void _moveToSearchResult(MapController controller, GeocoderResult result) {
+    controller.moveAndRotate(
+      result.location,
+      searchResultZoom(
+        configured: _config.searchResultZoom,
+        fromResult: result.zoom,
+        min: _activeMinZoom,
+        max: _activeMaxZoom,
+      ),
+      0.0,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -1193,6 +1208,7 @@ class _MapViewState extends State<MapView> {
                 initialZoom: _currentZoom,
                 hintText: 'Start suchen...',
                 prefixIcon: Icons.trip_origin,
+                moveToResult: _moveToSearchResult,
                 onClearSearch: () {
                   if (!mounted) {
                     return;
@@ -1219,6 +1235,7 @@ class _MapViewState extends State<MapView> {
                 initialZoom: _currentZoom,
                 hintText: 'Ziel suchen...',
                 prefixIcon: Icons.flag,
+                moveToResult: _moveToSearchResult,
                 onClearSearch: () {
                   if (!mounted) {
                     return;
