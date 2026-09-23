@@ -36,6 +36,14 @@ show_usage() {
   echo "  raster|--raster:   zusaetzlich Raster-MBTiles aus Vektor-MBTiles erzeugen"
   echo "                     benoetigt gueltiges styles.zip (z. B. scripts/styles.zip)"
   echo ""
+  echo "Optionale Umgebungsvariablen:"
+  echo "  CONTAINER_CMD  (docker|podman; sonst wird automatisch gewaehlt)"
+  echo "  FORCE_REBUILD=1 (baut neu, aber per tilemaker --merge in die"
+  echo "                   vorhandene Datei - fuer einen sauberen Neubau die"
+  echo "                   Zieldatei stattdessen vorher wegschieben)"
+  echo "  SKIP_PBF_MD5=1 (nur wenn Geofabriks Pruefsumme nachweislich einen"
+  echo "                  aelteren Tagesstand beschreibt als die .pbf)"
+  echo ""
   echo "Optionale Umgebungsvariablen fuer Raster-Schritt:"
   echo "  RASTER_MAXZOOM (default: 17)"
   echo "  RASTER_WORKERS (default: 8)"
@@ -87,6 +95,37 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+# Container-Laufzeit: docker oder podman, je nachdem was laeuft.
+#
+# `command -v docker` reicht als Pruefung nicht: unter WSL zeigt das oft auf
+# die Windows-Installation, und ohne aktivierte WSL-Integration meldet sie
+# nur "The command 'docker' could not be found in this WSL 2 distro".
+# Deshalb wird docker zusaetzlich mit `docker info` angesprochen.
+#
+# Ueberschreibbar per CONTAINER_CMD=podman ./tilemaker.sh
+CONTAINER_CMD="${CONTAINER_CMD:-}"
+if [ -z "$CONTAINER_CMD" ]; then
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    CONTAINER_CMD="docker"
+  elif command -v podman >/dev/null 2>&1; then
+    CONTAINER_CMD="podman"
+  else
+    echo "[error] Weder docker noch podman ist erreichbar."
+    echo "        docker: WSL-Integration in Docker Desktop einschalten"
+    echo "                (Settings -> Resources -> WSL Integration)"
+    echo "        podman: sudo apt install podman"
+    exit 1
+  fi
+fi
+echo "[container] Laufzeit: $CONTAINER_CMD"
+
+# -it nur wenn ein Terminal dranhaengt, sonst scheitert der Lauf in einer
+# Pipeline oder im Hintergrund an "the input device is not a TTY".
+TTY_ARG=()
+if [ -t 0 ]; then
+  TTY_ARG=(-it)
+fi
 
 case "$REGION" in
   vogelsberg)
@@ -141,17 +180,40 @@ _check_pbf_md5() {
   fi
 }
 
-if [ -f "$PBF_FILE" ]; then
+# Laedt nach "$PBF_FILE.part" und schiebt erst nach bestandener Pruefung
+# darueber. Ein Fehlschlag kostet so nie die vorhandene Datei - bei 4,6 GB
+# ist das der Unterschied zwischen "nochmal probieren" und "nochmal laden".
+_download_pbf() {
+  echo "[download] Lade $PBF_FILE herunter"
+  wget -O "$PBF_FILE.part" "$PBF_URL"
+  mv -f "$PBF_FILE.part" "$PBF_FILE"
+}
+
+if [ "${SKIP_PBF_MD5:-0}" = "1" ]; then
+  # Geofabrik veroeffentlicht die .md5 gelegentlich spaeter als die .pbf:
+  # dann beschreibt die Pruefsumme einen aelteren Tagesstand, und die
+  # Pruefung schlaegt fehl, obwohl die Datei vollstaendig ist. Erkennbar
+  # daran, dass die Dateigroesse exakt dem Content-Length des Servers
+  # entspricht und die .md5 auf einen anderen Dateinamen zeigt.
+  echo "[md5] UEBERSPRUNGEN (SKIP_PBF_MD5=1) - Integritaet ist ungeprueft"
+  if [ ! -f "$PBF_FILE" ]; then
+    _download_pbf
+  fi
+elif [ -f "$PBF_FILE" ]; then
   echo "[check] $PBF_FILE gefunden, prüfe Prüfsumme..."
   if ! _check_pbf_md5; then
-    echo "[download] Datei beschädigt oder veraltet – lade $PBF_FILE neu herunter"
-    rm -f "$PBF_FILE"
-    wget -O "$PBF_FILE" "$PBF_URL"
-    _check_pbf_md5 || { echo "[error] MD5-Prüfung nach Neudownload fehlgeschlagen"; exit 1; }
+    echo "[download] Prüfsumme passt nicht – lade $PBF_FILE erneut"
+    _download_pbf
+    _check_pbf_md5 || {
+      echo "[error] MD5-Prüfung nach Neudownload fehlgeschlagen"
+      echo "        Stimmt die Dateigroesse mit dem Server ueberein und nennt"
+      echo "        die .md5 einen anderen Dateinamen, hinkt Geofabriks"
+      echo "        Pruefsumme nur hinterher. Dann: SKIP_PBF_MD5=1 $0 $*"
+      exit 1
+    }
   fi
 else
-  echo "[download] Lade $PBF_FILE herunter"
-  wget -O "$PBF_FILE" "$PBF_URL"
+  _download_pbf
   _check_pbf_md5 || { echo "[error] MD5-Prüfung nach Download fehlgeschlagen"; exit 1; }
 fi
 
@@ -242,7 +304,7 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
   # Kann per Env-Variable TILEMAKER_THREADS ueberschrieben werden.
   TILEMAKER_THREADS="${TILEMAKER_THREADS:-0}"
 
-  docker run -it --rm --pull always \
+  "$CONTAINER_CMD" run "${TTY_ARG[@]}" --rm --pull always \
     -w /data \
     -v "$WORK_DIR:/data" \
     -v "$PROJECT_ROOT:/workspace" \
