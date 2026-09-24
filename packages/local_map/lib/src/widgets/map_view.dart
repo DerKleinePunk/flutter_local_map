@@ -34,6 +34,12 @@ class MapLayerStyle {
   final Color? destinationColor;
   final Color? highlightColor;
 
+  /// Fläche unter den Kacheln, sichtbar bis sie geladen sind. Ohne Angabe
+  /// malt flutter_map sein helles Grau - bei einem dunklen Stil blitzt die
+  /// Karte dann beim Öffnen hell auf. Passend zum `background`-Layer des
+  /// Stils wählen.
+  final Color? backgroundColor;
+
   const MapLayerStyle({
     this.routeColor,
     this.routeWidth = 5,
@@ -42,6 +48,7 @@ class MapLayerStyle {
     this.startColor,
     this.destinationColor,
     this.highlightColor,
+    this.backgroundColor,
   });
 }
 
@@ -970,6 +977,8 @@ class _MapViewState extends State<MapView>
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
+        backgroundColor:
+            widget.layerStyle.backgroundColor ?? const Color(0xFFE0E0E0),
         initialCenter: _initialCenter,
         initialZoom: _currentZoom,
         minZoom: _activeMinZoom,
