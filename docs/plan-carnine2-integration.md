@@ -2,6 +2,18 @@
 
 Stand: 2026-09-24. Grundlage ist eine Bestandsaufnahme beider Repos (flutter_local_map bei `eef48b5`, carnine2 im aktuellen Stand).
 
+## Stand (2026-09-24, 08:00)
+
+- **Phase 0** (Carnine2 auf emb_cli): läuft auf carnine-pc, Branch `feature/emb-cli` in carnine2 (Carnine2-Sitzung).
+- **Phase 1** (Lib entkoppeln): im Kern fertig. Offen: deutsche Fehlertexte in `MapView`, Hessen-Defaults, Versions-Tag.
+- **Phase 2** (Navigationsmodus): fertig. Drehen nach Kurs, Fahrzeug unten, Überblendung, `RouteProgress`.
+  Dazu Map-Matching (`routeAlongTrace`), das Hin- und Rückfahrten an Selbstüberlappungen teilt.
+- **Phase 3** (Backend): Vertrag steht (ADR-021, `NavigationService`), Umsetzung läuft (Carnine2-Sitzung).
+  Valhalla 3.9.0 ist nativ für trixie arm64 gebaut und läuft auf jeep-pi als systemd-Dienst.
+  Das Paket liegt für carnine-pc bereit.
+- **Phase 4** (Kartenseite): carnine2 `feature/map-page` @ `21570f6`, wartet auf Merge. Noch nicht auf einem Pi gelaufen.
+- **Phase 5**: offen.
+
 ## Ziel
 
 Die Karte aus `packages/local_map` läuft als Kartenseite in Carnine2 – im Carnine2-Design, mit Routing aus dem Rust-Backend statt aus einem separaten Valhalla-Webserver, mit einem Navigationsmodus, der die Karte in Fahrtrichtung dreht, und innerhalb von 4 GB RAM auf dem Pi 4.
