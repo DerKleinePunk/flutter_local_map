@@ -2,6 +2,9 @@ import 'package:flutter/foundation.dart';
 
 /// Kategorisiert Fehler im Offline-Kartenbetrieb für bessere Fehlerbehandlung und Logging.
 enum MapErrorCategory {
+  /// Der Karte wurde keine MBTiles-Datei übergeben
+  noMapData,
+
   /// Asset (Style JSON, Sprites, Glyphs) nicht gefunden
   assetMissing,
   
@@ -31,6 +34,9 @@ enum MapErrorCategory {
 }
 
 /// Strukturierter Fehler mit Kategorie, nutzerfreundlicher und technischer Meldung.
+///
+/// [userMessage] ist englisch. Wer die Meldung übersetzt anzeigen will, wählt
+/// den Text anhand von [category], z. B. im `errorBuilder` von `MapView`.
 class MapError {
   final MapErrorCategory category;
   final String userMessage;
@@ -84,7 +90,7 @@ class MapErrorHandler {
 
     // Asset Fehler
     if (errorStr.contains('asset') && errorStr.contains('not found')) {
-      final msg = 'Asset nicht gefunden$contextStr. Überprüfen Sie die Datei im assets/maps Verzeichnis.';
+      final msg = 'Map asset not found$contextStr. Check the files in assets/maps.';
       _logError(msg, error, stackTrace);
       return MapError(
         category: MapErrorCategory.assetMissing,
@@ -97,7 +103,7 @@ class MapErrorHandler {
 
     // JSON Parse Fehler
     if (errorStr.contains('json') || errorStr.contains('decode')) {
-      final msg = 'Style-JSON ist ungültig$contextStr. JSON-Syntax prüfen.';
+      final msg = 'Map style JSON is invalid$contextStr.';
       _logError(msg, error, stackTrace);
       return MapError(
         category: MapErrorCategory.jsonInvalid,
@@ -110,7 +116,7 @@ class MapErrorHandler {
 
     // MBTiles nicht vorhanden
     if (errorStr.contains('file') && errorStr.contains('not') && errorStr.contains('exist')) {
-      final msg = 'MBTiles-Datei existiert nicht$contextStr.';
+      final msg = 'Map file does not exist$contextStr.';
       _logError(msg, error, stackTrace);
       return MapError(
         category: MapErrorCategory.mbtilesMissing,
@@ -123,7 +129,7 @@ class MapErrorHandler {
 
     // SQLite Fehler
     if (errorStr.contains('sqlite') || errorStr.contains('database')) {
-      final msg = 'Fehler beim Lesen der Kartendatenbank$contextStr. Datei beschädigt?';
+      final msg = 'Could not read the map file$contextStr. Is it damaged?';
       _logError(msg, error, stackTrace);
       return MapError(
         category: MapErrorCategory.sqliteError,
@@ -136,7 +142,7 @@ class MapErrorHandler {
 
     // Style-spezifische Fehler
     if (errorStr.contains('source') && errorStr.contains('tile')) {
-      final msg = 'Style hat keine oder ungültige Tile-Quellen$contextStr.';
+      final msg = 'Map style has no valid tile source$contextStr.';
       _logError(msg, error, stackTrace);
       return MapError(
         category: MapErrorCategory.styleMissingSource,
@@ -148,7 +154,7 @@ class MapErrorHandler {
     }
 
     if (errorStr.contains('layer') && errorStr.contains('incompatible')) {
-      final msg = 'Style-Layer nicht mit Kartendaten kompatibel$contextStr.';
+      final msg = 'Map style does not match the map data$contextStr.';
       _logError(msg, error, stackTrace);
       return MapError(
         category: MapErrorCategory.styleLayerIncompatible,
@@ -160,7 +166,7 @@ class MapErrorHandler {
     }
 
     if (errorStr.contains('theme')) {
-      final msg = 'Kartenstil kann nicht verarbeitet werden$contextStr.';
+      final msg = 'Map style cannot be processed$contextStr.';
       _logError(msg, error, stackTrace);
       return MapError(
         category: MapErrorCategory.themeParseError,
@@ -172,7 +178,7 @@ class MapErrorHandler {
     }
 
     // Default: unbekannter Fehler
-    final msg = 'Kartenfehler$contextStr. Versuchen Sie, die App neu zu starten.';
+    final msg = 'Map error$contextStr. Try restarting the app.';
     _logError(msg, error, stackTrace);
     return MapError(
       category: MapErrorCategory.unknown,
@@ -188,8 +194,8 @@ class MapErrorHandler {
     String format, {
     String? mbtilesPath,
   }) {
-    final msg = 'Kartendatenformat "$format" wird nicht unterstützt. '
-        'Erwartet: png, jpg, jpeg, webp (Raster) oder pbf (Vektor).';
+    final msg = 'Map data format "$format" is not supported. '
+        'Expected png, jpg, jpeg, webp (raster) or pbf (vector).';
     _logError(msg, null, null, 'File: $mbtilesPath');
     return MapError(
       category: MapErrorCategory.mbtilesFormatUnsupported,

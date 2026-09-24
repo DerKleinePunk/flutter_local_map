@@ -5,20 +5,10 @@ void main() {
   group('MapErrorHandler', () {
     test('classifies asset missing errors', () {
       final error = Exception('asset not found: assets/maps/style.json');
-      final classified = MapErrorHandler.classify(
-        error,
-        null,
-        context: 'test',
-      );
+      final classified = MapErrorHandler.classify(error, null, context: 'test');
 
-      expect(
-        classified.category,
-        equals(MapErrorCategory.assetMissing),
-      );
-      expect(
-        classified.userMessage,
-        contains('Asset nicht gefunden'),
-      );
+      expect(classified.category, equals(MapErrorCategory.assetMissing));
+      expect(classified.userMessage, contains('asset not found'));
     });
 
     test('classifies json decode errors', () {
@@ -29,14 +19,8 @@ void main() {
         context: 'style.json',
       );
 
-      expect(
-        classified.category,
-        equals(MapErrorCategory.jsonInvalid),
-      );
-      expect(
-        classified.userMessage,
-        contains('ungültig'),
-      );
+      expect(classified.category, equals(MapErrorCategory.jsonInvalid));
+      expect(classified.userMessage, contains('invalid'));
     });
 
     test('classifies unsupported format correctly', () {
@@ -45,14 +29,8 @@ void main() {
         mbtilesPath: '/path/to/map.mbtiles',
       );
 
-      expect(
-        error.category,
-        equals(MapErrorCategory.mbtilesFormatUnsupported),
-      );
-      expect(
-        error.userMessage,
-        contains('tiff'),
-      );
+      expect(error.category, equals(MapErrorCategory.mbtilesFormatUnsupported));
+      expect(error.userMessage, contains('tiff'));
     });
 
     test('MbTilesException stores category information', () {

@@ -37,8 +37,9 @@ enum MapStorageLocation {
 }
 
 class MapConfig {
-  /// Kartenmittelpunkt beim Start.
-  final LatLng center;
+  /// Kartenmittelpunkt beim Start. `null` = Mitte der Kacheln laut
+  /// MBTiles-Metadaten (`bounds`).
+  final LatLng? center;
 
   /// Optionale Begrenzung der Kamera. `null` bedeutet: keine Begrenzung.
   final LatLngBounds? cameraBounds;
@@ -150,13 +151,13 @@ class MapConfig {
     'packages/local_map/assets/maps/style_navigation.json',
   ];
 
-  static const List<String> _defaultGpsTourFilePaths = [
+  static const List<String> _demoGpsTourFilePaths = [
     'scripts/gpstest/GPS-Adnan-Tour.txt',
     'scripts/GpsTest/GPS-Adnan-Tour.txt',
   ];
 
   MapConfig({
-    this.center = const LatLng(50.6521, 9.1624),
+    this.center,
     this.cameraBounds,
     this.minZoom = 10,
     this.maxZoom = 14,
@@ -170,7 +171,7 @@ class MapConfig {
     this.vectorStyleAssets = packageVectorStyleAssets,
     this.initialVectorStyleIndex = 2,
     Uri? valhallaBaseUri,
-    this.gpsTourFilePaths = _defaultGpsTourFilePaths,
+    this.gpsTourFilePaths = const [],
     this.rasterUrlTemplate = 'mbtiles://local',
     this.memoryTileCacheMaxSize,
     this.memoryTileDataCacheMaxSize,
@@ -190,12 +191,17 @@ class MapConfig {
     const LatLng(51.6569, 10.2358), // Nord-Ost
   );
 
-  /// Das urspruengliche Setup dieses Projekts: Hessen inkl. Kamera-Begrenzung.
-  static MapConfig get hessen => MapConfig(cameraBounds: hessenBounds);
+  /// Das urspruengliche Setup der Demo-App: Hessen inkl. Kamera-Begrenzung
+  /// und der mitgelieferten GPS-Tour.
+  static MapConfig get hessen => MapConfig(
+    center: const LatLng(50.6521, 9.1624),
+    cameraBounds: hessenBounds,
+    gpsTourFilePaths: _demoGpsTourFilePaths,
+  );
 
   /// Wird verwendet, wenn einem Widget oder Service keine Config uebergeben
   /// wird. Einmalig beim App-Start setzen, z.B. in `main()`.
-  static MapConfig defaults = hessen;
+  static MapConfig defaults = MapConfig();
 
   MapConfig copyWith({
     LatLng? center,

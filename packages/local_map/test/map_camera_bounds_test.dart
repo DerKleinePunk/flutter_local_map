@@ -74,6 +74,20 @@ void main() {
         equals(alsfeld),
       );
     });
+
+    test('ohne konfigurierte Position startet die Karte in der Mitte', () {
+      final result = centerWithinTiles(configured: null, bounds: braunschweig);
+
+      expect(result.latitude, closeTo(52.27, 0.01));
+      expect(result.longitude, closeTo(10.53, 0.01));
+    });
+
+    test('ohne Position und ohne bounds bleibt nur der Rueckfall', () {
+      expect(
+        centerWithinTiles(configured: null, bounds: null),
+        equals(fallbackCenter),
+      );
+    });
   });
 
   group('effectiveCameraBounds', () {
@@ -101,10 +115,7 @@ void main() {
     });
 
     test('ohne beides bleibt die Kamera frei', () {
-      expect(
-        effectiveCameraBounds(configured: null, tiles: null),
-        isNull,
-      );
+      expect(effectiveCameraBounds(configured: null, tiles: null), isNull);
     });
   });
 

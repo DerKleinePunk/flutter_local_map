@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0
+
+- `MapView.errorBuilder`: Fehler an Stelle der Karte selbst darstellen und
+  anhand von `MapError.category` übersetzen. Neue Kategorie `noMapData`.
+- `MapError.userMessage` ist jetzt englisch (vorher deutsch).
+- `MapConfig.center` ist optional; ohne Angabe startet die Karte in der Mitte
+  der Kacheln. `MapConfig.defaults` ist ortsneutral, `gpsTourFilePaths` ist
+  standardmäßig leer. Das bisherige Verhalten liefert `MapConfig.hessen`.
+
 ## 0.2.0
 
 Die Karte bezieht Routing, Position und Suche jetzt über Schnittstellen und

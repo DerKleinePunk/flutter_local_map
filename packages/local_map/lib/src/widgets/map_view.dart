@@ -83,6 +83,11 @@ class MapView extends StatefulWidget {
   /// Meldung ankommt. [Duration.zero] springt ohne Überblendung.
   final Duration followAnimation;
 
+  /// Zeigt einen Fehler an Stelle der Karte, etwa fehlende oder unlesbare
+  /// Kartendaten. Ohne Angabe erscheint [MapError.userMessage] (englisch).
+  /// Übersetzt wird anhand von [MapError.category].
+  final Widget Function(BuildContext context, MapError error)? errorBuilder;
+
   const MapView({
     super.key,
     this.mbtilesPath,
@@ -91,6 +96,7 @@ class MapView extends StatefulWidget {
     this.layerStyle = const MapLayerStyle(),
     this.navigationAnchor = 0.72,
     this.followAnimation = const Duration(milliseconds: 900),
+    this.errorBuilder,
   }) : assert(navigationAnchor >= 0.5 && navigationAnchor < 1);
 
   @override
@@ -140,7 +146,7 @@ class _MapViewState extends State<MapView>
   late int _selectedVectorStyleAssetIndex;
   String? _activeVectorStyleAssetPath;
   bool _isLoading = true;
-  String? _errorMessage;
+  MapError? _error;
 
   /// Überblendung zwischen zwei Positionsmeldungen. [_shown] ist, was der
   /// Pfeil gerade zeigt; die Kamera folgt ihm, solange der Folgemodus an ist.
@@ -167,7 +173,7 @@ class _MapViewState extends State<MapView>
     _activeMinZoom = _config.minZoom;
     _activeMaxZoom = _config.maxZoom;
     _currentZoom = _config.initialZoom;
-    _initialCenter = _config.center;
+    _initialCenter = _config.center ?? fallbackCenter;
     _activeCameraBounds = _config.cameraBounds;
     _selectedVectorStyleAssetIndex = _localVectorStyleAssets.isEmpty
         ? 0
@@ -211,7 +217,11 @@ class _MapViewState extends State<MapView>
 
       setState(() {
         _isLoading = false;
-        _errorMessage = 'Keine Kartendaten verfügbar';
+        _error = MapError(
+          category: MapErrorCategory.noMapData,
+          userMessage: 'No map data available',
+          technicalMessage: 'MapView.mbtilesPath is null',
+        );
       });
       return;
     }
@@ -304,7 +314,7 @@ class _MapViewState extends State<MapView>
           _initialCenter = initialCenter;
           _activeCameraBounds = cameraBounds;
           _isLoading = false;
-          _errorMessage = null;
+          _error = null;
         });
         return;
       }
@@ -320,7 +330,7 @@ class _MapViewState extends State<MapView>
 
         setState(() {
           _isLoading = false;
-          _errorMessage = error.userMessage;
+          _error = error;
         });
         MapErrorHandler.logError(
           error.technicalMessage,
@@ -349,7 +359,7 @@ class _MapViewState extends State<MapView>
         _initialCenter = initialCenter;
         _activeCameraBounds = cameraBounds;
         _isLoading = false;
-        _errorMessage = null;
+        _error = null;
       });
     } catch (e, stackTrace) {
       // Token check even in error path
@@ -371,7 +381,7 @@ class _MapViewState extends State<MapView>
 
       setState(() {
         _isLoading = false;
-        _errorMessage = mapError.userMessage;
+        _error = mapError;
       });
       MapErrorHandler.logError(
         mapError.technicalMessage,
@@ -544,7 +554,7 @@ class _MapViewState extends State<MapView>
 
     setState(() {
       _isLoading = true;
-      _errorMessage = null;
+      _error = null;
     });
 
     await _initializeTileProvider();
@@ -787,7 +797,7 @@ class _MapViewState extends State<MapView>
     if (oldWidget.mbtilesPath != widget.mbtilesPath) {
       setState(() {
         _isLoading = true;
-        _errorMessage = null;
+        _error = null;
       });
       _initializeTileProvider();
     }
@@ -942,7 +952,12 @@ class _MapViewState extends State<MapView>
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_errorMessage != null) {
+    final error = _error;
+    if (error != null) {
+      final builder = widget.errorBuilder;
+      if (builder != null) {
+        return builder(context, error);
+      }
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -956,7 +971,7 @@ class _MapViewState extends State<MapView>
               ),
               const SizedBox(height: 16),
               Text(
-                _errorMessage!,
+                error.userMessage,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium,
               ),

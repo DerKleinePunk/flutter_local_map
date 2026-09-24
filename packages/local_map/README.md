@@ -155,11 +155,27 @@ selbst liefert (etwa aus einem eigenen Backend), implementiert:
 Meldungen der Karte lassen sich mit `MapErrorHandler.sink = …` in das eigene
 Logging umleiten.
 
+Kann die Karte nichts zeigen (keine oder unlesbare MBTiles, unpassender Stil),
+erscheint an ihrer Stelle `MapError.userMessage` — englisch. Übersetzt wird
+über `errorBuilder` anhand der Kategorie:
+
+```dart
+MapView(
+  mbtilesPath: path,
+  errorBuilder: (context, error) => Center(
+    child: Text(switch (error.category) {
+      MapErrorCategory.noMapData => 'Keine Kartendaten vorhanden',
+      _ => 'Karte kann nicht angezeigt werden',
+    }),
+  ),
+)
+```
+
 ## MapConfig
 
 | Feld | Default | Bedeutung |
 | --- | --- | --- |
-| `center` | `50.6521, 9.1624` | Kartenmittelpunkt beim Start |
+| `center` | `null` | Kartenmittelpunkt beim Start; `null` = Mitte der Kacheln laut MBTiles-Metadaten |
 | `cameraBounds` | `null` | Kamera-Begrenzung; `null` = unbegrenzt |
 | `minZoom` / `maxZoom` / `initialZoom` | `10` / `14` / `11` | Zoom-Grenzen. MBTiles-Metadaten haben für min/max Vorrang |
 | `mbtilesFilename` | `germany.mbtiles` | Dateiname, den `MapDownloader` erwartet |
@@ -169,11 +185,12 @@ Logging umleiten.
 | `vectorStyleAssets` | 3 Package-Styles | Vektorstyles, der Reihe nach probiert |
 | `initialVectorStyleIndex` | `2` | Welcher Style zuerst geladen wird |
 | `valhallaBaseUri` | `http://127.0.0.1:8002` | Endpunkt des lokalen Routers |
-| `gpsTourFilePaths` | `scripts/gpstest/…` | NMEA-Tourdatei für den GPS-Simulator |
+| `gpsTourFilePaths` | leer | NMEA-Tourdatei für den GPS-Simulator |
 | `rasterUrlTemplate` | `mbtiles://local` | Pflichtfeld des Raster-`TileLayer` |
 
-`MapConfig.hessen` liefert das ursprüngliche Setup dieses Repos inklusive
-Kamera-Begrenzung auf Hessen.
+`MapConfig.defaults` ist ein `MapConfig()` ohne Ortsbezug. `MapConfig.hessen`
+liefert das Setup der Demo-App: Start bei Alsfeld, Kamera-Begrenzung auf
+Hessen und die mitgelieferte GPS-Tour.
 
 ## Eigene Vektorstyles
 
@@ -252,7 +269,7 @@ heraus. Auf einem Ziel ohne angeschlossenes Zeigergerät — etwa bei der
 Inbetriebnahme, solange der Touchscreen fehlt — ist das die einzige
 Möglichkeit, die Karte zu bewegen.
 
-Die Startposition aus [`MapConfig.center`](lib/src/config/map_config.dart) muss
+Eine Startposition aus [`MapConfig.center`](lib/src/config/map_config.dart) muss
 in den `bounds` der verwendeten MBTiles liegen. Tut sie das nicht, rückt das
 Package die Kamera in die Mitte der vorhandenen Kacheln und protokolliert das
 mit `[MapError] ERROR [Camera bounds]: ...` — diese Zeile erscheint auch im

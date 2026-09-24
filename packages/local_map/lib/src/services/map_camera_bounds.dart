@@ -5,6 +5,10 @@ import 'package:latlong2/latlong.dart';
 
 import 'map_error_handler.dart';
 
+/// Start, wenn weder eine Position konfiguriert ist noch die MBTiles ihre
+/// Grenzen angeben.
+const LatLng fallbackCenter = LatLng(0, 0);
+
 /// Liest den `bounds`-Eintrag der MBTiles-Metadaten: "west,sued,ost,nord"
 /// in WGS84.
 ///
@@ -46,10 +50,16 @@ LatLngBounds? parseMbtilesBounds(String raw) {
 /// schon zweimal als Renderfehler missgedeutet. Statt dessen ruecken wir die
 /// Kamera in die Mitte der vorhandenen Kacheln und schreiben eine Zeile ins
 /// Log, die auch im Release sichtbar ist.
+///
+/// Ohne [configured] ist die Mitte der Kacheln der Start; fehlen auch die
+/// Kachelgrenzen, bleibt nur [fallbackCenter].
 LatLng centerWithinTiles({
-  required LatLng configured,
+  required LatLng? configured,
   required LatLngBounds? bounds,
 }) {
+  if (configured == null) {
+    return bounds?.center ?? fallbackCenter;
+  }
   if (bounds == null || bounds.contains(configured)) {
     return configured;
   }
@@ -75,8 +85,7 @@ LatLng centerWithinTiles({
 LatLngBounds? effectiveCameraBounds({
   required LatLngBounds? configured,
   required LatLngBounds? tiles,
-}) =>
-    configured ?? tiles;
+}) => configured ?? tiles;
 
 /// Kleinste Zoomstufe, bei der die Kacheln noch etwa eine Kachelbreite
 /// (256 px) auf dem Schirm einnehmen.
@@ -130,8 +139,7 @@ double searchResultZoom({
   required int fromResult,
   required double min,
   required double max,
-}) =>
-    (configured ?? fromResult.toDouble()).clamp(min, max);
+}) => (configured ?? fromResult.toDouble()).clamp(min, max);
 
 /// Zoomstufe nach einem Druck auf die Zoomknoepfe.
 ///
@@ -143,5 +151,4 @@ double steppedZoom({
   required int direction,
   required double min,
   required double max,
-}) =>
-    (current + direction).clamp(min, max);
+}) => (current + direction).clamp(min, max);
