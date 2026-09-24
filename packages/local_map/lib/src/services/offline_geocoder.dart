@@ -37,20 +37,21 @@ class OfflineGeocoder implements PlaceSearch {
 
   OfflineGeocoder();
 
-  /// Mit [near] werden je Typ mehr Kandidaten geholt und nach Entfernung
-  /// sortiert; die Rangfolge der Typen bleibt.
+  /// Die Rangfolge der Typen bleibt. Innerhalb eines Typs kommen Namen, die
+  /// genau der Eingabe entsprechen, vor denen, die nur so anfangen ("Fulda"
+  /// vor "Fulda-Galerie"). Mit [near] wird danach jeweils nach Entfernung
+  /// sortiert.
   @override
   Future<List<GeocoderResult>> searchPlaces(
     String query, {
     int limit = 15,
     LatLng? near,
   }) async {
-    if (near == null) {
-      return searchPrioritized(query, limit: limit);
-    }
-    // FTS liefert Treffer ohne Ortsbezug. Mehr holen, damit die nahen
-    // ueberhaupt dabei sind, dann je Typ nach Entfernung ordnen.
-    final candidates = await searchPrioritized(query, limit: limit * 10);
+    // FTS liefert Treffer ohne Ortsbezug und ohne Rangfolge. Mehr holen,
+    // damit der genaue und die nahen Treffer ueberhaupt dabei sind.
+    final trimmed = query.trim();
+    final candidates = await searchPrioritized(trimmed, limit: limit * 10);
+    final wanted = trimmed.toLowerCase();
     const distance = Distance();
     final byType = <String, List<GeocoderResult>>{};
     for (final r in candidates) {
@@ -58,11 +59,19 @@ class OfflineGeocoder implements PlaceSearch {
     }
     final ordered = <GeocoderResult>[];
     for (final group in byType.values) {
-      group.sort(
-        (a, b) =>
-            distance(near, a.location).compareTo(distance(near, b.location)),
-      );
-      ordered.addAll(group);
+      final exact = group.where((r) => r.name.toLowerCase() == wanted).toList();
+      final rest = group.where((r) => r.name.toLowerCase() != wanted).toList();
+      for (final part in [exact, rest]) {
+        if (near != null) {
+          part.sort(
+            (a, b) => distance(
+              near,
+              a.location,
+            ).compareTo(distance(near, b.location)),
+          );
+        }
+        ordered.addAll(part);
+      }
     }
     return ordered.take(limit).toList();
   }

@@ -27,6 +27,8 @@ String _createNamesDb(Directory dir) {
     [2, 'Hauptstraße', 50.75, 9.27, 15, 'transportation_name', 'Alsfeld'],
     [3, 'Hauptstraße', 50.11, 8.68, 15, 'transportation_name', 'Frankfurt'],
     [4, 'Hauptbahnhof', 50.10, 8.66, 14, 'poi', 'Frankfurt'],
+    [5, 'Fulda-Galerie', 50.74, 9.26, 14, 'place', 'suburb'],
+    [6, 'Fulda', 50.55, 9.68, 12, 'place', 'town'],
   ]) {
     insert.execute(row);
   }
@@ -78,6 +80,23 @@ void main() {
       expect(streets, ['Alsfeld', 'Kassel', 'Frankfurt']);
     },
   );
+
+  test(
+    'genauer Name vor Praefix-Treffer, auch wenn dieser naeher ist',
+    () async {
+      // Bei Alsfeld, Fulda-Galerie liegt direkt daneben.
+      final results = await geocoder.searchPlaces(
+        'fulda',
+        near: const LatLng(50.74, 9.25),
+      );
+      expect(results.map((r) => r.name), ['Fulda', 'Fulda-Galerie']);
+    },
+  );
+
+  test('genauer Name zuerst auch ohne near', () async {
+    final results = await geocoder.searchPlaces('Fulda ');
+    expect(results.first.name, 'Fulda');
+  });
 
   test('limit gilt auch mit near', () async {
     final results = await geocoder.searchPlaces(
