@@ -1,18 +1,34 @@
 # Plan: local_map in Carnine2
 
-Stand: 2026-09-24. Grundlage ist eine Bestandsaufnahme beider Repos (flutter_local_map bei `eef48b5`, carnine2 im aktuellen Stand).
+Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_local_map bei `eef48b5`). Die Abschnitte ab „Ziel“ beschreiben den Ausgangsplan; den aktuellen Stand zeigt der Abschnitt „Stand“.
 
-## Stand (2026-09-24, 08:00)
+## Stand (2026-09-24, 09:15)
 
-- **Phase 0** (Carnine2 auf emb_cli): läuft auf carnine-pc, Branch `feature/emb-cli` in carnine2 (Carnine2-Sitzung).
-- **Phase 1** (Lib entkoppeln): im Kern fertig. Offen: deutsche Fehlertexte in `MapView`, Hessen-Defaults, Versions-Tag.
-- **Phase 2** (Navigationsmodus): fertig. Drehen nach Kurs, Fahrzeug unten, Überblendung, `RouteProgress`.
-  Dazu Map-Matching (`routeAlongTrace`), das Hin- und Rückfahrten an Selbstüberlappungen teilt.
-- **Phase 3** (Backend): Vertrag steht (ADR-021, `NavigationService`), Umsetzung läuft (Carnine2-Sitzung).
-  Valhalla 3.9.0 ist nativ für trixie arm64 gebaut und läuft auf jeep-pi als systemd-Dienst.
-  Das Paket liegt für carnine-pc bereit.
-- **Phase 4** (Kartenseite): carnine2 `feature/map-page` @ `21570f6`, wartet auf Merge. Noch nicht auf einem Pi gelaufen.
-- **Phase 5**: offen.
+**Die Karte läuft in Carnine2**, auf beiden Pis: auf carnine-pc (Carnine2-Sitzung, Debos-Image) und auf jeep-pi
+(normales Debian, Backend dort nativ gebaut). Gegenüber dem Zeitplan unten sind wir damit rund vier Wochen voraus.
+
+- **Phase 0** (emb_cli): fertig. `feature/emb-cli` ist der Integrationszweig in carnine2.
+- **Phase 1** (Lib entkoppeln): fertig. Seit `local_map-v0.3.0` keine festen deutschen Texte in `MapView`
+  (`errorBuilder`, `MapError.category`) und keine Hessen-Vorgaben mehr (`MapConfig.center` optional, Start in
+  der Mitte der Kacheln; das alte Setup heißt `MapConfig.hessen`). Rest: `search_bar.dart` und
+  `download_overlay.dart` haben noch deutsche Texte – beide nutzt carnine2 nicht.
+- **Phase 2** (Navigationsmodus): fertig und auf dem Panel abgenommen (Route auf der gefahrenen Strecke,
+  flüssig mit Drehung auf Zoom 16).
+- **Phase 3** (Backend): alle fünf RPCs des `NavigationService` (ADR-021) umgesetzt und gegen echtes
+  Valhalla bestätigt. `GetReplayRoute` liefert die ganze Adnan-Tour (45,2 km, 20 Manöver). Valhalla 3.9.0
+  läuft auf beiden Pis als systemd-Dienst.
+- **Phase 4** (Kartenseite): läuft. Navigationsmodus-Umschaltung abgenommen. carnine2 bindet die Lib über
+  eine **feste Marke** ein (`ref: local_map-v0.3.0`), nicht mehr über `master`; `scripts/styles.zip` liegt
+  nicht mehr im Baum, `pub get` braucht kein `GIT_LFS_SKIP_SMUDGE` mehr.
+  Offen (Carnine2-Sitzung): Stil zu dunkel, man sieht nur Straßen (carnine2 #28);
+  `MapLayerStyle.backgroundColor` setzen (heller Blitz beim Öffnen); Suche „genauer Name vor
+  Präfix-Treffer“ im Backend nachziehen (Lib seit `1da5f2b`); `feature/map-page` @ `5b37b3b` mergen.
+- **Phase 5**: begonnen. Karte und Musik laufen auf carnine-pc gleichzeitig (homescreen ca. 90 % eines
+  Kerns), der Dauertest zum Einfrieren läuft. Offen: GPS-Maus im Auto, eigene Messetour, Speichermessung
+  gegen 4 GB.
+
+**Regel für Lib-Änderungen:** Jede Änderung, die carnine2 braucht, bekommt eine neue Marke
+`local_map-vX.Y.Z` mit Eintrag in `packages/local_map/CHANGELOG.md`. carnine2 wechselt die Marke bewusst.
 
 ## Ziel
 
@@ -63,9 +79,7 @@ Getroffen am 2026-09-24:
 
 - **Ortssuche im Backend** (rusqlite mit FTS5 auf `germany_names.db`). Kacheln liest die Karte weiter direkt aus der MBTiles-Datei – alles andere wäre für das Rendern zu langsam. Die Lib bekommt für die Suche nur eine Schnittstelle; `OfflineGeocoder` bleibt als Implementierung für die Demo-App.
 
-Noch offen:
-
-1. **ADR in Carnine2** für den `NavigationService`, die Ausnahme „Kacheln liest das Frontend direkt“ und den Wechsel des Embedders.
+Erledigt: ADR-021 in carnine2 legt den `NavigationService` fest. Ob die Ausnahme „Kacheln liest das Frontend direkt“ und der Wechsel des Embedders dort mit abgedeckt sind, klärt die Carnine2-Sitzung.
 
 ## Messe am 6. November 2026
 
@@ -83,7 +97,7 @@ Bis dahin bleiben gut sechs Wochen. Das reicht nicht für alles in diesem Plan, 
 
 - **Valhalla zunächst als nativer Dienst** (`valhalla_service`, systemd, kein Container) – aber nur das Backend spricht mit ihm. Der gRPC-`NavigationService` ist von Anfang an der endgültige Vertrag; das Frontend merkt später nicht, wenn das Backend auf eingebundenes `libvalhalla` wechselt. So hängt der Messetermin nicht an den C++-Bindings, die das größte technische Risiko im Plan sind.
 - Keine Off-Route-Erkennung und Neuberechnung, keine Sprachansagen, keine Via-Punkte, kein 3D.
-- Texte zunächst Deutsch und Englisch; die übrigen 13 Sprachen nach der Messe.
+- ~~Texte zunächst Deutsch und Englisch~~ – die Kartenseite hat alle 15 Sprachen.
 
 **Grober Zeitplan:**
 
@@ -165,6 +179,6 @@ Es gibt genau eine Aufzeichnung: `scripts/GpsTest/GPS-Adnan-Tour.txt`.
 - 3093 Fixes im 1-Hz-Takt, 51 min, 45 km, bis 114 km/h, liegt vollständig in Hessen (50,27–50,41 N, 9,36–9,44 O).
 - **Kurs und Geschwindigkeit stehen drin** (Kursfeld in 3010 von 3093 RMC-Sätzen). Für den drehenden Navigationsmodus reicht die Datei also ohne Nachrechnen.
 - Eine Rundfahrt: Start und Ende am selben Ort, Wendepunkt 15 km Luftlinie südlich nach etwa der Hälfte. Rund 5 min davon Stand (unter 3 km/h) – dort muss der Kurs eingefroren werden, sonst dreht die Karte im Stand wild.
-- Für die Demo passt die Route nur, wenn Valhalla dieselbe Strecke wählt wie die Aufzeichnung. Ziel daher auf den Wendepunkt legen und vorab prüfen, ob die berechnete Route der gefahrenen Hinfahrt folgt. Sonst läuft der Positionspfeil neben der Route her, und die Abbiegekarte passt nicht.
+- ~~Für die Demo passt die Route nur, wenn Valhalla dieselbe Strecke wählt wie die Aufzeichnung.~~ Gelöst: Die Route entsteht per Map-Matching aus der Tour selbst (`/trace_route`, in der Lib `routeAlongTrace`, im Backend `GetReplayRoute`). Weil Valhalla eine Spur, die dieselbe Straße zurückfährt, nur halb matcht, wird sie an Selbstüberlappungen geteilt (25 m / 300 m) und wieder zusammengesetzt. Die Route liegt damit genau auf der gefahrenen Strecke.
 
 Empfehlung: Mit der GPS-Maus, sobald das Backend sie liest, **eine eigene Messetour aufzeichnen** – kurz (10–15 min, damit sie auf dem Stand oft durchläuft), mit ein paar deutlichen Abbiegungen und genau der Route, die Valhalla für das Demo-Ziel berechnet. Das ist zugleich der erste **Hardwaretest mit dem Pi im Auto**: Stromversorgung im Bordnetz, GPS-Maus am USB, NMEA-Einleser, Panel bei Tageslicht. Die Adnan-Tour bleibt Rückfallebene.
