@@ -4,11 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:local_map/local_map.dart';
 
 class _FakeRouting implements RoutingProvider {
-  final requests = <(LatLng, LatLng)>[];
+  final requests = <(LatLng?, LatLng)>[];
   final pending = <Completer<RoutingResult>>[];
 
   @override
-  Future<RoutingResult> route({required LatLng start, required LatLng end}) {
+  Future<RoutingResult> route({LatLng? start, required LatLng end}) {
     requests.add((start, end));
     final c = Completer<RoutingResult>();
     pending.add(c);
@@ -44,13 +44,13 @@ RoutingResult _result(double km) => RoutingResult(
 );
 
 void main() {
-  test('Route erst mit Start und Ziel, Punkte fuer die Karte', () async {
+  test('Route mit Start und Ziel, Punkte fuer die Karte', () async {
     final routing = _FakeRouting();
     final map = LocalMapController(routingProvider: routing);
     addTearDown(map.dispose);
 
     await map.setStart(_place('Alsfeld', 50.75, 9.27));
-    expect(routing.requests, isEmpty);
+    expect(routing.requests, isEmpty, reason: 'ohne Ziel keine Anfrage');
     expect(map.route, isNull);
 
     final done = map.setDestination(_place('Fulda', 50.55, 9.68));
@@ -226,4 +226,28 @@ void main() {
       expect(map.route, isNull);
     },
   );
+
+  test('ohne Start faehrt die Route von der eigenen Position los', () async {
+    final routing = _FakeRouting();
+    final source = _FakePositions();
+    final map = LocalMapController(
+      routingProvider: routing,
+      positionSource: source,
+    );
+    addTearDown(map.dispose);
+
+    // Noch keine Position: der Anbieter bekommt keinen Start und entscheidet.
+    final first = map.setDestination(_place('Fulda', 50.55, 9.68));
+    expect(routing.requests.single.$1, isNull);
+    routing.pending.single.complete(_result(40));
+    await first;
+
+    source.controller.add(const PositionFix(position: LatLng(50.7, 9.2)));
+    await Future<void>.delayed(Duration.zero);
+    final second = map.setDestination(_place('Fulda', 50.55, 9.68));
+    expect(routing.requests.last.$1, const LatLng(50.7, 9.2));
+    routing.pending.last.complete(_result(41));
+    await second;
+    expect(map.route?.distanceMeters, 41000);
+  });
 }

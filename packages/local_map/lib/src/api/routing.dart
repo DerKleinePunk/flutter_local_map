@@ -73,8 +73,12 @@ class RoutingException implements Exception {
 abstract interface class RoutingProvider {
   /// Berechnet eine Route von [start] nach [end].
   ///
+  /// Ohne [start] fährt die Route von der aktuellen Position los - woher die
+  /// kommt, weiß der Anbieter (ein Backend kennt seinen GPS-Fix). Ein
+  /// Anbieter ohne eigene Position wirft dann [RoutingException].
+  ///
   /// Wirft [RoutingException], wenn keine Route zustande kommt.
-  Future<RoutingResult> route({required LatLng start, required LatLng end});
+  Future<RoutingResult> route({LatLng? start, required LatLng end});
 
   /// Ob der Anbieter gerade Anfragen annimmt.
   Future<bool> isAvailable();

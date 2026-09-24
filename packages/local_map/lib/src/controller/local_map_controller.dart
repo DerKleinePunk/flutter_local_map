@@ -152,7 +152,8 @@ class LocalMapController extends ChangeNotifier {
     return _updateRoute();
   }
 
-  /// Setzt das Ziel und berechnet die Route neu.
+  /// Setzt das Ziel und berechnet die Route neu. Ohne [start] beginnt die
+  /// Route an der eigenen Position.
   Future<void> setDestination(GeocoderResult? place) {
     _destination = place;
     return _updateRoute();
@@ -219,7 +220,11 @@ class LocalMapController extends ChangeNotifier {
     final destination = _destination;
     final provider = routingProvider;
 
-    if (start == null || destination == null || provider == null) {
+    // Ohne Startpunkt geht es von der eigenen Position los. Kennt die Karte
+    // noch keine, entscheidet der Anbieter (ein Backend hat seinen Fix).
+    final origin = start?.location ?? _position?.position;
+
+    if (destination == null || provider == null) {
       _setRoute(null);
       _isRouting = false;
       _notify();
@@ -232,7 +237,7 @@ class LocalMapController extends ChangeNotifier {
 
     try {
       final result = await provider.route(
-        start: start.location,
+        start: origin,
         end: destination.location,
       );
       // Eine neuere Anfrage läuft schon - ihr Ergebnis gilt, nicht dieses.

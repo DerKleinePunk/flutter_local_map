@@ -33,11 +33,16 @@ class ValhallaRoutingService implements RoutingProvider {
 
   @override
   Future<RoutingResult> route({
-    required LatLng start,
+    LatLng? start,
     required LatLng end,
     String costing = 'auto',
     String units = 'kilometers',
   }) async {
+    if (start == null) {
+      throw const RoutingException(
+        'Kein Startpunkt: Valhalla kennt die eigene Position nicht.',
+      );
+    }
     final requestBody = {
       'locations': [
         {'lat': start.latitude, 'lon': start.longitude},
