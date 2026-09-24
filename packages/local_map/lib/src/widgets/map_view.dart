@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,34 +12,71 @@ import 'package:sqlite3/sqlite3.dart' as sqlite;
 import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
+import '../api/position.dart';
 import '../config/map_config.dart';
-import '../services/gps_nmea_simulator_service.dart';
+import '../controller/local_map_controller.dart';
 import '../services/map_camera_bounds.dart';
 import '../services/map_error_handler.dart';
 import '../services/offline_geocoder.dart';
-import '../services/valhalla_routing_service.dart';
-import 'search_bar.dart';
 
-/// Widget zur Darstellung der Karte mit MBTiles
+/// Farben und Maße der Ebenen, die [MapView] über die Kacheln legt.
+///
+/// Ohne Angabe kommen die Farben aus dem [ColorScheme] des Themes.
+@immutable
+class MapLayerStyle {
+  final Color? routeColor;
+  final double routeWidth;
+  final Color? positionColor;
+  final Color? onPositionColor;
+  final Color? startColor;
+  final Color? destinationColor;
+  final Color? highlightColor;
+
+  const MapLayerStyle({
+    this.routeColor,
+    this.routeWidth = 5,
+    this.positionColor,
+    this.onPositionColor,
+    this.startColor,
+    this.destinationColor,
+    this.highlightColor,
+  });
+}
+
+/// Die Karte: Kacheln aus einer MBTiles-Datei und darüber, was der
+/// [LocalMapController] vorgibt - Route, Start und Ziel, ein hervorgehobener
+/// Ort und die eigene Position.
+///
+/// Bedienelemente bringt die Karte nicht mit. Suchfelder, Zoomknöpfe und
+/// Anzeigen legt der Gastgeber selbst darüber und steuert die Karte über den
+/// Controller.
 class MapView extends StatefulWidget {
   /// Pfad zur MBTiles-Datei (Raster oder Vektor/pbf).
   final String? mbtilesPath;
 
-  /// Zoom-Grenzen, Kartenmittelpunkt, Vektorstyles, Valhalla-Endpunkt usw.
+  /// Zoom-Grenzen, Kartenmittelpunkt, Vektorstyles usw.
   /// Ohne Angabe wird [MapConfig.defaults] verwendet.
   final MapConfig? config;
 
-  /// Optionaler externer Controller, um die Kamera von aussen zu steuern.
-  /// Ohne Angabe verwaltet [MapView] einen eigenen Controller.
-  final MapController? mapController;
+  /// Zustand und Befehle. Ohne Angabe legt die Karte einen eigenen an und
+  /// zeigt dann nur die Kacheln.
+  final LocalMapController? controller;
 
-  const MapView({super.key, this.mbtilesPath, this.config, this.mapController});
+  final MapLayerStyle layerStyle;
+
+  const MapView({
+    super.key,
+    this.mbtilesPath,
+    this.config,
+    this.controller,
+    this.layerStyle = const MapLayerStyle(),
+  });
 
   @override
   State<MapView> createState() => _MapViewState();
 }
 
-class _MapViewState extends State<MapView> {
+class _MapViewState extends State<MapView> implements LocalMapViewHandle {
   static const Set<String> _knownVectorSourceAliases = {
     'openmaptiles',
     'versatiles-shortbread',
@@ -46,25 +84,21 @@ class _MapViewState extends State<MapView> {
   };
 
   /// Eigener Controller, nur angelegt wenn keiner uebergeben wurde.
-  MapController? _ownedMapController;
-  MapController get _mapController =>
-      widget.mapController ?? (_ownedMapController ??= MapController());
+  LocalMapController? _ownedController;
+  LocalMapController get _controller =>
+      widget.controller ?? (_ownedController ??= LocalMapController());
+  MapController get _mapController => _controller.mapController;
 
-  final OfflineGeocoder _geocoder = OfflineGeocoder();
-  final GpsNmeaSimulatorService _gpsSimulator = GpsNmeaSimulatorService();
+  /// Erst nach dem ersten Frame von FlutterMap darf die Kamera bewegt
+  /// werden; vorher wirft der MapController.
+  bool _mapReady = false;
 
   /// Aktive Konfiguration, in [initState] aus dem Widget uebernommen.
   late MapConfig _config;
-  late final ValhallaRoutingService _routingService;
-  StreamSubscription<SimulatedGpsFix>? _gpsFixSubscription;
 
   /// Token to track initialization requests and prevent race conditions.
   /// Incremented each time _initializeTileProvider is called.
   int _initializationToken = 0;
-
-  /// ValueNotifier for zoom level to decouple badge updates from map rebuilds.
-  /// This allows the zoom badge to update independently without triggering full map redraws.
-  late final ValueNotifier<double> _zoomNotifier;
 
   MbTilesTileProvider? _rasterTileProvider;
   MbTiles? _vectorMbTiles;
@@ -82,20 +116,6 @@ class _MapViewState extends State<MapView> {
   late double _currentZoom;
   late int _selectedVectorStyleAssetIndex;
   String? _activeVectorStyleAssetPath;
-  GeocoderResult? _selectedSearchResult;
-  GeocoderResult? _routeStart;
-  GeocoderResult? _routeEnd;
-  List<LatLng> _routePolyline = const <LatLng>[];
-  bool _isRouting = false;
-  bool _isRoutingAvailable = false;
-  String? _routingMessage;
-  LatLng? _gpsSimPosition;
-  bool _isGpsSimRunning = false;
-  bool _followSimulatedGps = true;
-  int _gpsLoadedFixes = 0;
-  String? _gpsSimMessage;
-  double? _routeDistanceMeters;
-  int? _routeDurationSeconds;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -110,7 +130,6 @@ class _MapViewState extends State<MapView> {
   void initState() {
     super.initState();
     _config = widget.config ?? MapConfig.defaults;
-    _routingService = ValhallaRoutingService(baseUri: _config.valhallaBaseUri);
     _activeMinZoom = _config.minZoom;
     _activeMaxZoom = _config.maxZoom;
     _currentZoom = _config.initialZoom;
@@ -119,212 +138,22 @@ class _MapViewState extends State<MapView> {
     _selectedVectorStyleAssetIndex = _localVectorStyleAssets.isEmpty
         ? 0
         : _config.initialVectorStyleIndex % _localVectorStyleAssets.length;
-    _zoomNotifier = ValueNotifier<double>(_currentZoom);
+    _controller.attachView(this);
     _initializeTileProvider();
-    _initializeGeocoder();
-    _checkRoutingAvailability();
-    _gpsFixSubscription = _gpsSimulator.fixes.listen(_onSimulatedGpsFix);
   }
 
-  Future<void> _initializeGpsSimulator() async {
-    try {
-      final loaded = await _gpsSimulator.loadDefaultTourFile(
-        candidatePaths: _config.gpsTourFilePaths,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _gpsLoadedFixes = loaded;
-        _gpsSimMessage = null;
-      });
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _gpsLoadedFixes = 0;
-        _gpsSimMessage = e.toString();
-      });
-    }
-  }
-
-  void _onSimulatedGpsFix(SimulatedGpsFix fix) {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _gpsSimPosition = fix.position;
-    });
-
-    if (_followSimulatedGps) {
-      _mapController.move(fix.position, _currentZoom);
-    }
-  }
-
-  Future<void> _toggleGpsSimulation() async {
-    if (_isGpsSimRunning) {
-      _gpsSimulator.stop();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isGpsSimRunning = false;
-      });
-      return;
-    }
-
-    if (!_gpsSimulator.hasData) {
-      await _initializeGpsSimulator();
-      if (!_gpsSimulator.hasData) {
-        return;
-      }
-    }
-
-    try {
-      // Im Takt der Aufzeichnung (1 Hz). Der fruehere feste 5-s-Takt liess
-      // die Karte springen und spielte eine 51-min-Tour in gut vier Stunden.
-      _gpsSimulator.start(loop: true);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isGpsSimRunning = true;
-        _gpsSimMessage = null;
-      });
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isGpsSimRunning = false;
-        _gpsSimMessage = e.toString();
-      });
-    }
-  }
-
-  Future<void> _checkRoutingAvailability() async {
-    final available = await _routingService.isAvailable();
-    if (!mounted) {
-      return;
-    }
-    setState(() {
-      _isRoutingAvailable = available;
-      _routingMessage = available
-          ? null
-          : 'Valhalla nicht erreichbar (${_config.valhallaBaseUri.authority}).';
-    });
-  }
-
-  Future<void> _tryBuildRoute() async {
-    if (_routeStart == null || _routeEnd == null) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _routePolyline = const <LatLng>[];
-        _routeDistanceMeters = null;
-        _routeDurationSeconds = null;
-      });
-      return;
-    }
-
-    setState(() {
-      _isRouting = true;
-      _routingMessage = null;
-    });
-
-    try {
-      final result = await _routingService.route(
-        start: _routeStart!.location,
-        end: _routeEnd!.location,
-      );
-
-      if (!mounted) {
-        return;
-      }
-
-      setState(() {
-        _isRoutingAvailable = true;
-        _routePolyline = result.geometry
-            .map((point) => point.toLatLng())
-            .toList();
-        _routeDistanceMeters = result.distanceMeters;
-        _routeDurationSeconds = result.durationSeconds;
-      });
-
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) {
-          return;
-        }
-        _fitCameraToRoute(_routePolyline);
-      });
-    } catch (e) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _isRoutingAvailable = false;
-        _routePolyline = const <LatLng>[];
-        _routeDistanceMeters = null;
-        _routeDurationSeconds = null;
-        _routingMessage = e.toString();
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isRouting = false;
-        });
-      }
-    }
-  }
-
-  void _fitCameraToRoute(List<LatLng> points) {
-    if (points.isEmpty) {
-      return;
-    }
-
-    if (points.length == 1) {
-      _mapController.move(points.first, _activeMaxZoom.clamp(14.0, 16.0));
-      return;
-    }
-
-    final bounds = LatLngBounds.fromPoints(points);
-    _mapController.fitCamera(
-      CameraFit.bounds(
-        bounds: bounds,
-        padding: const EdgeInsets.all(44),
-        maxZoom: _activeMaxZoom,
-      ),
+  /// Gibt den Zustand der Kacheln an den Controller weiter, fuer die
+  /// Anzeigen des Gastgebers.
+  void _publishMapState() {
+    if (!mounted || _isLoading) return;
+    _controller.reportMapState(
+      isVectorMode: _isVectorMode,
+      activeStyleName: _isVectorMode ? _activeVectorStyleLabel() : null,
+      minZoom: _activeMinZoom,
+      maxZoom: _activeMaxZoom,
     );
-  }
-
-  String _formatRouteSummary() {
-    if (_routeDistanceMeters == null || _routeDurationSeconds == null) {
-      return 'Route bereit';
-    }
-
-    final distanceKm = _routeDistanceMeters! / 1000;
-    final durationMin = (_routeDurationSeconds! / 60).round();
-    return '${distanceKm.toStringAsFixed(1)} km • $durationMin min';
-  }
-
-  Future<void> _initializeGeocoder() async {
-    // Try to initialize with vogelsberg names database first
-    final namesDbPath = widget.mbtilesPath?.replaceAll('.mbtiles', '_names.db');
-
-    if (namesDbPath != null &&
-        namesDbPath.isNotEmpty &&
-        File(namesDbPath).existsSync()) {
-      final success = await _geocoder.initialize(namesDbPath);
-      if (success && mounted) {
-        debugPrint('[map] Geocoder initialized with $namesDbPath');
-      } else if (mounted) {
-        debugPrint('[map] Failed to initialize geocoder with $namesDbPath');
-      }
-    } else {
-      debugPrint('[map] Names database not found at $namesDbPath');
+    if (!_mapReady) {
+      _controller.reportZoom(_currentZoom);
     }
   }
 
@@ -910,6 +739,15 @@ class _MapViewState extends State<MapView> {
     if (!identical(oldWidget.config, widget.config)) {
       _config = widget.config ?? MapConfig.defaults;
     }
+    if (!identical(oldWidget.controller, widget.controller)) {
+      (oldWidget.controller ?? _ownedController)?.detachView(this);
+      if (widget.controller != null) {
+        _ownedController?.dispose();
+        _ownedController = null;
+      }
+      _mapReady = false;
+      _controller.attachView(this);
+    }
     if (oldWidget.mbtilesPath != widget.mbtilesPath) {
       setState(() {
         _isLoading = true;
@@ -921,32 +759,85 @@ class _MapViewState extends State<MapView> {
 
   @override
   void dispose() {
-    _gpsFixSubscription?.cancel();
-    _gpsSimulator.dispose();
+    _controller.detachView(this);
     _disposeTileResources();
     // Nur den selbst angelegten Controller entsorgen - ein uebergebener
     // gehoert dem Aufrufer.
-    _ownedMapController?.dispose();
-    _ownedMapController = null;
-    _geocoder.close();
-    _zoomNotifier.dispose();
+    _ownedController?.dispose();
+    _ownedController = null;
     super.dispose();
   }
 
+  // --- LocalMapViewHandle ----------------------------------------------------
+
   /// Springt auf einen Suchtreffer, mit der Zoomstufe aus
   /// [MapConfig.searchResultZoom] statt der groben aus dem Geocoder.
-  void _moveToSearchResult(MapController controller, GeocoderResult result) {
-    controller.moveAndRotate(
-      result.location,
+  @override
+  void moveToPlace(GeocoderResult place) {
+    if (!_mapReady) return;
+    _mapController.moveAndRotate(
+      place.location,
       searchResultZoom(
         configured: _config.searchResultZoom,
-        fromResult: result.zoom,
+        fromResult: place.zoom,
         min: _activeMinZoom,
         max: _activeMaxZoom,
       ),
       0.0,
     );
   }
+
+  @override
+  void fitRoute(List<LatLng> points) {
+    if (!_mapReady || points.isEmpty) {
+      return;
+    }
+
+    if (points.length == 1) {
+      _mapController.move(points.first, _activeMaxZoom.clamp(14.0, 16.0));
+      return;
+    }
+
+    final bounds = LatLngBounds.fromPoints(points);
+    _mapController.fitCamera(
+      CameraFit.bounds(
+        bounds: bounds,
+        padding: const EdgeInsets.all(44),
+        maxZoom: _activeMaxZoom,
+      ),
+    );
+  }
+
+  /// Zoomt um [direction] Stufen und behaelt dabei die Bildmitte - wie die
+  /// Kneifgeste, deren Brennpunktverankerung bewusst abgeschaltet ist.
+  @override
+  void stepZoom(int direction) {
+    if (!_mapReady) return;
+    final camera = _mapController.camera;
+    final target = steppedZoom(
+      current: camera.zoom,
+      direction: direction,
+      min: _activeMinZoom,
+      max: _activeMaxZoom,
+    );
+    if (target == camera.zoom) {
+      return;
+    }
+    _mapController.move(camera.center, target);
+    _currentZoom = target;
+    _controller.reportZoom(target);
+  }
+
+  @override
+  Future<void> cycleVectorStyle() => _cycleVectorStyle();
+
+  @override
+  void followPosition(PositionFix fix) {
+    if (!_mapReady) return;
+    _mapController.move(fix.position, _mapController.camera.zoom);
+  }
+
+  // --- Darstellung -----------------------------------------------------------
 
   @override
   Widget build(BuildContext context) {
@@ -961,7 +852,11 @@ class _MapViewState extends State<MapView> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.error_outline, size: 64, color: Colors.red),
+              Icon(
+                Icons.error_outline,
+                size: 64,
+                color: Theme.of(context).colorScheme.error,
+              ),
               const SizedBox(height: 16),
               Text(
                 _errorMessage!,
@@ -974,13 +869,11 @@ class _MapViewState extends State<MapView> {
       );
     }
 
-    return Stack(
-      // expand, damit die Karte die volle Flaeche bekommt: ein Stack misst
-      // sich sonst an seinem nicht positionierten Kind, und FlutterMap wuerde
-      // unter losen Vorgaben nicht mehr fuellen.
-      fit: StackFit.expand,
-      children: [_buildMap(context), ..._buildMapControls(context)],
-    );
+    // Nach dem Frame, weil der Controller seine Zuhoerer benachrichtigt und
+    // die mitten im Aufbau nicht neu bauen duerfen.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _publishMapState());
+
+    return _buildMap(context);
   }
 
   Widget _buildMap(BuildContext context) {
@@ -1020,21 +913,18 @@ class _MapViewState extends State<MapView> {
           // Karte zu bewegen.
           keyboardOptions: KeyboardOptions(enableRFZooming: true),
         ),
-        onTap: (tapPosition, latLng) {
-          if (_selectedSearchResult == null || !mounted) {
-            return;
-          }
-          setState(() {
-            _selectedSearchResult = null;
-          });
+        onMapReady: () {
+          _mapReady = true;
+          _controller.reportZoom(_mapController.camera.zoom);
         },
+        onTap: (tapPosition, latLng) => _controller.clearHighlight(),
         onPositionChanged: (camera, hasGesture) {
           if (!mounted) return;
           if ((camera.zoom - _currentZoom).abs() < 0.01) return;
-          // Update internal state without setState to avoid map rebuild
+          // Kein setState: die Karte baut sich selbst neu, und die Anzeigen
+          // des Gastgebers haengen am Zoom des Controllers.
           _currentZoom = camera.zoom;
-          // Update zoom notifier to trigger badge update
-          _zoomNotifier.value = camera.zoom;
+          _controller.reportZoom(camera.zoom);
         },
         // Begrenzt die Kamera, wenn die Konfiguration Bounds vorgibt
         // Ohne ausdrueckliche Vorgabe halten die Grenzen der MBTiles die
@@ -1045,132 +935,16 @@ class _MapViewState extends State<MapView> {
             : CameraConstraint.containCenter(bounds: _activeCameraBounds!),
       ),
       children: [
-        if (_vectorTileProviders != null && _vectorTheme != null)
-          VectorTileLayer(
-            tileProviders: _vectorTileProviders!,
-            theme: _vectorTheme!,
-            sprites: _vectorSprites,
-            maximumZoom: _activeMaxZoom,
-            // Speicherbudget: ohne Angabe gelten die Defaults der Lib.
-            memoryTileCacheMaxSize:
-                _config.memoryTileCacheMaxSize ??
-                VectorTileLayer.defaultTileCacheMaxSize,
-            memoryTileDataCacheMaxSize:
-                _config.memoryTileDataCacheMaxSize ??
-                VectorTileLayer.defaultTileDataCacheMaxSize,
-            textCacheMaxSize:
-                _config.textCacheMaxSize ??
-                VectorTileLayer.defaultTextCacheMaxSize,
-            concurrency:
-                _config.vectorConcurrency ?? VectorTileLayer.defaultConcurrency,
-            layerMode: _config.vectorLayerMode ?? VectorTileLayerMode.raster,
-            panBuffer: _config.panBuffer,
-            rasterTileScale:
-                _config.rasterTileScale ??
-                MediaQuery.devicePixelRatioOf(context),
-          )
-        else
-          TileLayer(
-            tileProvider: _rasterTileProvider,
-            urlTemplate: _config.rasterUrlTemplate,
-            maxZoom: _activeMaxZoom,
-            // Platzhalter für nicht geladene Tiles
-            errorTileCallback: (tile, error, stackTrace) {
-              debugPrint('Fehler beim Laden von Tile $tile: $error');
-            },
-          ),
-        if (_selectedSearchResult != null)
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: _selectedSearchResult!.location,
-                width: 48,
-                height: 56,
-                alignment: Alignment.topCenter,
-                child: Tooltip(
-                  message: _selectedSearchResult!.name,
-                  child: _PulsingTargetMarker(
-                    color: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        if (_routePolyline.isNotEmpty)
-          PolylineLayer(
-            polylines: [
-              Polyline(
-                points: _routePolyline,
-                strokeWidth: 5,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ],
-          ),
-        if (_routeStart != null || _routeEnd != null)
-          MarkerLayer(
-            markers: [
-              if (_routeStart != null)
-                Marker(
-                  point: _routeStart!.location,
-                  width: 44,
-                  height: 52,
-                  alignment: Alignment.topCenter,
-                  child: Tooltip(
-                    message: 'Start: ${_routeStart!.name}',
-                    child: Icon(
-                      Icons.trip_origin,
-                      size: 28,
-                      color: Colors.green.shade700,
-                    ),
-                  ),
-                ),
-              if (_routeEnd != null)
-                Marker(
-                  point: _routeEnd!.location,
-                  width: 44,
-                  height: 52,
-                  alignment: Alignment.topCenter,
-                  child: Tooltip(
-                    message: 'Ziel: ${_routeEnd!.name}',
-                    child: Icon(
-                      Icons.flag,
-                      size: 30,
-                      color: Colors.red.shade700,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        if (_gpsSimPosition != null)
-          MarkerLayer(
-            markers: [
-              Marker(
-                point: _gpsSimPosition!,
-                width: 42,
-                height: 42,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    shape: BoxShape.circle,
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x44000000),
-                        blurRadius: 8,
-                        offset: Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    Icons.navigation,
-                    size: 20,
-                    color: Theme.of(context).colorScheme.onPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
+        _buildTileLayer(context),
+        // Die Ebenen darueber haengen einzeln am Controller. So baut eine
+        // neue GPS-Position nur den Positionspfeil neu, nicht die Kacheln.
+        _overlay(_buildHighlightLayer),
+        _overlay(_buildRouteLayer),
+        _overlay(_buildEndpointLayer),
+        _overlay(_buildPositionLayer),
         // Quellenangabe. Sie liegt links unten, damit die Bedienelemente
-        // rechts sie nicht verdecken koennen - sie muss sichtbar bleiben.
+        // des Gastgebers rechts sie nicht verdecken - sie muss sichtbar
+        // bleiben.
         RichAttributionWidget(
           alignment: AttributionAlignment.bottomLeft,
           attributions: [
@@ -1186,367 +960,166 @@ class _MapViewState extends State<MapView> {
     );
   }
 
-  /// Bedienelemente ueber der Karte.
-  ///
-  /// Sie liegen bewusst **nicht** in `FlutterMap(children:)`. Dort sind sie
-  /// Kartenebenen, und ein Tipp konkurriert mit der Gestenerkennung der Karte:
-  /// auf einem Touchscreen wackelt der Finger immer ein paar Pixel, die
-  /// Skaliergeste gewinnt den Wettstreit, und der Knopf bekommt nichts ab. Als
-  /// Geschwister ueber der Karte faengt der oberste Treffer das Ereignis ab,
-  /// bevor die Karte es ueberhaupt sieht.
-  List<Widget> _buildMapControls(BuildContext context) {
-    return [
-      // Search Bar
-      if (_geocoder.isInitialized)
-        Positioned(
-          top: 12,
-          left: 200,
-          right: 200,
-          child: Column(
-            children: [
-              PlaceSearchBar(
-                mapController: _mapController,
-                geocoder: _geocoder,
-                initialZoom: _currentZoom,
-                hintText: 'Start suchen...',
-                prefixIcon: Icons.trip_origin,
-                moveToResult: _moveToSearchResult,
-                onClearSearch: () {
-                  if (!mounted) {
-                    return;
-                  }
-                  setState(() {
-                    _routeStart = null;
-                  });
-                  _tryBuildRoute();
-                },
-                onPlaceSelected: (result) {
-                  if (!mounted) {
-                    return;
-                  }
-                  setState(() {
-                    _selectedSearchResult = result;
-                    _routeStart = result;
-                  });
-                  _tryBuildRoute();
-                },
-              ),
-              PlaceSearchBar(
-                mapController: _mapController,
-                geocoder: _geocoder,
-                initialZoom: _currentZoom,
-                hintText: 'Ziel suchen...',
-                prefixIcon: Icons.flag,
-                moveToResult: _moveToSearchResult,
-                onClearSearch: () {
-                  if (!mounted) {
-                    return;
-                  }
-                  setState(() {
-                    _routeEnd = null;
-                  });
-                  _tryBuildRoute();
-                },
-                onPlaceSelected: (result) {
-                  if (!mounted) {
-                    return;
-                  }
-                  setState(() {
-                    _selectedSearchResult = result;
-                    _routeEnd = result;
-                  });
-                  _tryBuildRoute();
-                },
-              ),
-            ],
-          ),
-        ),
-      Positioned(
-        top: 112,
-        left: 12,
-        child: IgnorePointer(child: _buildRoutingBadge(context)),
-      ),
-      Positioned(
-        top: 12,
-        left: 12,
-        child: IgnorePointer(
-          child: _ZoomBadgeWidget(zoomNotifier: _zoomNotifier),
-        ),
-      ),
-      Positioned(
-        top: 12,
-        right: 12,
-        child: IgnorePointer(child: _buildModeBadge(context)),
-      ),
-      if (_isVectorMode)
-        Positioned(top: 48, right: 12, child: _buildStyleSwitchChip(context)),
-      Positioned(top: 84, right: 12, child: _buildGpsSimulatorChip(context)),
-      Positioned(bottom: 16, right: 12, child: _buildZoomButtons(context)),
-    ];
+  Widget _overlay(Widget Function(BuildContext context) builder) {
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => builder(context),
+    );
   }
 
-  /// Zoomknoepfe fuer die Bedienung mit dem Finger.
-  ///
-  /// Auf einem kleinen Fahrzeugdisplay ist die Kneifgeste unpraktisch - sie
-  /// braucht zwei Finger und eine ruhige Hand. Die Knoepfe sind 56 px gross,
-  /// damit sie mit dem Daumen sicher zu treffen sind.
-  Widget _buildZoomButtons(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return ValueListenableBuilder<double>(
-      valueListenable: _zoomNotifier,
-      builder: (context, zoom, _) {
-        return Material(
-          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.92),
-          borderRadius: BorderRadius.circular(16),
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _ZoomButton(
-                icon: Icons.add,
-                tooltip: 'Hineinzoomen',
-                // Am Anschlag abgeschaltet, damit der Knopf nicht wirkungslos
-                // gedrueckt wird.
-                onPressed: zoom < _activeMaxZoom ? () => _stepZoom(1) : null,
-              ),
-              Divider(
-                height: 1,
-                thickness: 1,
-                color: colorScheme.outlineVariant,
-              ),
-              _ZoomButton(
-                icon: Icons.remove,
-                tooltip: 'Herauszoomen',
-                onPressed: zoom > _activeMinZoom ? () => _stepZoom(-1) : null,
-              ),
-            ],
-          ),
+  Widget _buildTileLayer(BuildContext context) {
+    if (_vectorTileProviders != null && _vectorTheme != null) {
+      return VectorTileLayer(
+        tileProviders: _vectorTileProviders!,
+        theme: _vectorTheme!,
+        sprites: _vectorSprites,
+        maximumZoom: _activeMaxZoom,
+        // Speicherbudget: ohne Angabe gelten die Defaults der Lib.
+        memoryTileCacheMaxSize:
+            _config.memoryTileCacheMaxSize ??
+            VectorTileLayer.defaultTileCacheMaxSize,
+        memoryTileDataCacheMaxSize:
+            _config.memoryTileDataCacheMaxSize ??
+            VectorTileLayer.defaultTileDataCacheMaxSize,
+        textCacheMaxSize:
+            _config.textCacheMaxSize ?? VectorTileLayer.defaultTextCacheMaxSize,
+        concurrency:
+            _config.vectorConcurrency ?? VectorTileLayer.defaultConcurrency,
+        layerMode: _config.vectorLayerMode ?? VectorTileLayerMode.raster,
+        panBuffer: _config.panBuffer,
+        rasterTileScale:
+            _config.rasterTileScale ?? MediaQuery.devicePixelRatioOf(context),
+      );
+    }
+    return TileLayer(
+      tileProvider: _rasterTileProvider,
+      urlTemplate: _config.rasterUrlTemplate,
+      maxZoom: _activeMaxZoom,
+      errorTileCallback: (tile, error, stackTrace) {
+        MapErrorHandler.logDebug(
+          'Kachel $tile nicht geladen: $error',
+          context: 'TileLayer',
         );
       },
     );
   }
 
-  /// Zoomt um [direction] Stufen und behaelt dabei die Bildmitte - wie die
-  /// Kneifgeste, deren Brennpunktverankerung bewusst abgeschaltet ist.
-  void _stepZoom(int direction) {
-    final camera = _mapController.camera;
-    final target = steppedZoom(
-      current: camera.zoom,
-      direction: direction,
-      min: _activeMinZoom,
-      max: _activeMaxZoom,
+  Widget _buildHighlightLayer(BuildContext context) {
+    final place = _controller.highlightedPlace;
+    if (place == null) return const SizedBox.shrink();
+    return MarkerLayer(
+      markers: [
+        Marker(
+          point: place.location,
+          width: 48,
+          height: 56,
+          alignment: Alignment.topCenter,
+          child: Tooltip(
+            message: place.name,
+            child: _PulsingTargetMarker(
+              color:
+                  widget.layerStyle.highlightColor ??
+                  Theme.of(context).colorScheme.error,
+            ),
+          ),
+        ),
+      ],
     );
-    if (target == camera.zoom) {
-      return;
-    }
-    _mapController.move(camera.center, target);
-    _currentZoom = target;
-    _zoomNotifier.value = target;
   }
 
-  Widget _buildGpsSimulatorChip(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final isRunning = _isGpsSimRunning;
-    final statusLabel = _gpsLoadedFixes > 0
-        ? 'GPS Sim ${isRunning ? 'an' : 'aus'} ($_gpsLoadedFixes)'
-        : (_gpsSimMessage ?? 'GPS Sim laden');
+  Widget _buildRouteLayer(BuildContext context) {
+    final points = _controller.routePoints;
+    if (points.isEmpty) return const SizedBox.shrink();
+    return PolylineLayer(
+      polylines: [
+        Polyline(
+          points: points,
+          strokeWidth: widget.layerStyle.routeWidth,
+          color:
+              widget.layerStyle.routeColor ??
+              Theme.of(context).colorScheme.primary,
+        ),
+      ],
+    );
+  }
 
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: _toggleGpsSimulation,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: isRunning
-                ? colorScheme.primaryContainer
-                : colorScheme.secondaryContainer,
-            borderRadius: BorderRadius.circular(999),
+  Widget _buildEndpointLayer(BuildContext context) {
+    final start = _controller.start;
+    final destination = _controller.destination;
+    if (start == null && destination == null) return const SizedBox.shrink();
+    return MarkerLayer(
+      markers: [
+        if (start != null)
+          Marker(
+            point: start.location,
+            width: 44,
+            height: 52,
+            alignment: Alignment.topCenter,
+            child: Tooltip(
+              message: start.name,
+              child: Icon(
+                Icons.trip_origin,
+                size: 28,
+                color: widget.layerStyle.startColor ?? Colors.green.shade700,
+              ),
+            ),
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  isRunning ? Icons.stop_circle_outlined : Icons.play_circle,
-                  size: 14,
-                  color: isRunning
-                      ? colorScheme.onPrimaryContainer
-                      : colorScheme.onSecondaryContainer,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  statusLabel,
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: isRunning
-                        ? colorScheme.onPrimaryContainer
-                        : colorScheme.onSecondaryContainer,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _followSimulatedGps = !_followSimulatedGps;
-                    });
-                  },
-                  child: Icon(
-                    _followSimulatedGps
-                        ? Icons.my_location
-                        : Icons.location_disabled,
-                    size: 14,
-                    color: isRunning
-                        ? colorScheme.onPrimaryContainer
-                        : colorScheme.onSecondaryContainer,
-                  ),
+        if (destination != null)
+          Marker(
+            point: destination.location,
+            width: 44,
+            height: 52,
+            alignment: Alignment.topCenter,
+            child: Tooltip(
+              message: destination.name,
+              child: Icon(
+                Icons.flag,
+                size: 30,
+                color:
+                    widget.layerStyle.destinationColor ?? Colors.red.shade700,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildPositionLayer(BuildContext context) {
+    final fix = _controller.position;
+    if (fix == null) return const SizedBox.shrink();
+    final colorScheme = Theme.of(context).colorScheme;
+    final heading = fix.headingDegrees;
+    return MarkerLayer(
+      markers: [
+        Marker(
+          point: fix.position,
+          width: 42,
+          height: 42,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: widget.layerStyle.positionColor ?? colorScheme.primary,
+              shape: BoxShape.circle,
+              boxShadow: const [
+                BoxShadow(
+                  color: Color(0x44000000),
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStyleSwitchChip(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(999),
-        onTap: _cycleVectorStyle,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: colorScheme.secondaryContainer,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.palette_outlined,
-                  size: 14,
-                  color: colorScheme.onSecondaryContainer,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  _activeVectorStyleLabel(),
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSecondaryContainer,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildModeBadge(BuildContext context) {
-    final isVector = _isVectorMode;
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: isVector
-            ? colorScheme.tertiaryContainer
-            : colorScheme.primaryContainer,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isVector ? Icons.layers : Icons.grid_on,
-              size: 14,
-              color: isVector
-                  ? colorScheme.onTertiaryContainer
-                  : colorScheme.onPrimaryContainer,
-            ),
-            const SizedBox(width: 6),
-            Text(
-              isVector ? 'Vektor MBTiles (PBF)' : 'Raster MBTiles',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: isVector
-                    ? colorScheme.onTertiaryContainer
-                    : colorScheme.onPrimaryContainer,
-                fontWeight: FontWeight.w600,
+            // Der Pfeil zeigt in Fahrtrichtung; ohne Kurs nach Norden.
+            child: Transform.rotate(
+              angle: (heading ?? 0) * math.pi / 180,
+              child: Icon(
+                Icons.navigation,
+                size: 20,
+                color:
+                    widget.layerStyle.onPositionColor ?? colorScheme.onPrimary,
               ),
             ),
-          ],
+          ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildRoutingBadge(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final hasRoute = _routePolyline.isNotEmpty;
-
-    final Color bgColor;
-    final Color fgColor;
-    final String label;
-    final IconData icon;
-
-    if (_isRouting) {
-      bgColor = colorScheme.tertiaryContainer;
-      fgColor = colorScheme.onTertiaryContainer;
-      label = 'Route wird berechnet...';
-      icon = Icons.sync;
-    } else if (hasRoute) {
-      bgColor = colorScheme.primaryContainer;
-      fgColor = colorScheme.onPrimaryContainer;
-      label = _formatRouteSummary();
-      icon = Icons.route;
-    } else if (_routingMessage != null) {
-      bgColor = colorScheme.errorContainer;
-      fgColor = colorScheme.onErrorContainer;
-      label = _routingMessage!;
-      icon = Icons.warning_amber_rounded;
-    } else if (_isRoutingAvailable) {
-      bgColor = colorScheme.secondaryContainer;
-      fgColor = colorScheme.onSecondaryContainer;
-      label = 'Routing bereit';
-      icon = Icons.route;
-    } else {
-      bgColor = colorScheme.errorContainer;
-      fgColor = colorScheme.onErrorContainer;
-      label = 'Valhalla offline';
-      icon = Icons.cloud_off;
-    }
-
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 14, color: fgColor),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: fgColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
+      ],
     );
   }
 }
@@ -1616,88 +1189,6 @@ class _PulsingTargetMarkerState extends State<_PulsingTargetMarker> {
       child: Icon(Icons.location_on, color: widget.color, size: 44),
       builder: (context, scale, child) {
         return Transform.scale(scale: scale, child: child);
-      },
-    );
-  }
-}
-
-/// Separate widget for zoom badge that updates independently without triggering map rebuilds.
-/// Uses ValueListenableBuilder to listen to zoom changes without setState.
-class _ZoomButton extends StatelessWidget {
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback? onPressed;
-
-  const _ZoomButton({
-    required this.icon,
-    required this.tooltip,
-    required this.onPressed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final enabled = onPressed != null;
-
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onPressed,
-        child: SizedBox(
-          width: 56,
-          height: 56,
-          child: Icon(
-            icon,
-            size: 28,
-            color: enabled
-                ? colorScheme.onSurface
-                : colorScheme.onSurface.withValues(alpha: 0.3),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ZoomBadgeWidget extends StatelessWidget {
-  final ValueNotifier<double> zoomNotifier;
-
-  const _ZoomBadgeWidget({required this.zoomNotifier});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return ValueListenableBuilder<double>(
-      valueListenable: zoomNotifier,
-      builder: (context, zoom, _) {
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.zoom_in,
-                  size: 14,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Zoom ${zoom.toStringAsFixed(1)}',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
       },
     );
   }

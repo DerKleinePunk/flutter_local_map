@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:local_map/local_map.dart';
 
 import 'map_bench.dart';
+import 'map_screen.dart';
 
 void _logError(String source, Object error, StackTrace? stack) {
   final timestamp = DateTime.now().toIso8601String();
@@ -357,10 +358,14 @@ class _MapHomePageState extends State<MapHomePage> {
       );
     }
 
-    // Ohne config: greift MapConfig.defaults aus LocalMap.ensureInitialized().
     return wrapForBench(
       bench,
-      MapView(mbtilesPath: _mbtilesPath, mapController: bench?.mapController),
+      MapScreen(
+        mbtilesPath: _mbtilesPath,
+        // Die Config aus LocalMap.ensureInitialized().
+        config: MapConfig.defaults,
+        mapController: bench?.mapController,
+      ),
     );
   }
 }

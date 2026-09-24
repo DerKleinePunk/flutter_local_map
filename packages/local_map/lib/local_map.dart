@@ -3,7 +3,8 @@
 /// Einstiegspunkte:
 /// * [LocalMap.ensureInitialized] einmalig in `main()` aufrufen.
 /// * [MapConfig] konfiguriert Zoom, Mittelpunkt, Styles und Endpunkte.
-/// * [MapView] rendert die Karte, [DownloadOverlay] den Erst-Download.
+/// * [MapView] rendert die Karte, [LocalMapController] steuert sie.
+/// * [DownloadOverlay] zeigt den Erst-Download.
 library;
 
 // Schnittstellen, ueber die der Gastgeber Routing, Position und Suche
@@ -13,6 +14,7 @@ export 'src/api/position.dart';
 export 'src/api/routing.dart';
 
 export 'src/config/map_config.dart';
+export 'src/controller/local_map_controller.dart';
 export 'src/services/gps_nmea_simulator_service.dart';
 export 'src/services/map_downloader.dart';
 export 'src/services/map_error_handler.dart';
