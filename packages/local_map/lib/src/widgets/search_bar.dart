@@ -3,17 +3,54 @@ import 'package:flutter_map/flutter_map.dart';
 import '../api/place_search.dart';
 import '../services/offline_geocoder.dart';
 
-/// Extensions for GeocoderResult to provide type labels and sorting priority
-extension GeocoderResultExtension on GeocoderResult {
-  /// Get a human-readable type label in German
-  String get typeLabel => switch (type) {
-    'place' => 'Ort',
-    'poi' => 'POI',
-    'mountain_peak' => 'Berg',
-    'water_name' => 'Gewässer',
-    'transportation_name' => 'Straße',
+/// Texte von [PlaceSearchBar]. Die Vorgaben sind englisch, [german] ist die
+/// deutsche Fassung; andere Sprachen legt der Gastgeber selbst an.
+class PlaceSearchTexts {
+  final String hintText;
+
+  /// Snackbar, wenn die Suche scheitert; der Fehler folgt nach einem Doppelpunkt.
+  final String searchFailed;
+
+  final String place;
+  final String poi;
+  final String mountainPeak;
+  final String water;
+  final String street;
+
+  const PlaceSearchTexts({
+    this.hintText = 'Search place...',
+    this.searchFailed = 'Search failed',
+    this.place = 'Place',
+    this.poi = 'POI',
+    this.mountainPeak = 'Peak',
+    this.water = 'Water',
+    this.street = 'Street',
+  });
+
+  static const german = PlaceSearchTexts(
+    hintText: 'Ort suchen...',
+    searchFailed: 'Suche fehlgeschlagen',
+    place: 'Ort',
+    mountainPeak: 'Berg',
+    water: 'Gewässer',
+    street: 'Straße',
+  );
+
+  /// Bezeichnung für [GeocoderResult.type]; unbekannte Typen bleiben roh.
+  String typeLabel(String type) => switch (type) {
+    'place' => place,
+    'poi' => poi,
+    'mountain_peak' => mountainPeak,
+    'water_name' => water,
+    'transportation_name' => street,
     _ => type,
   };
+}
+
+/// Extensions for GeocoderResult to provide type labels and sorting priority
+extension GeocoderResultExtension on GeocoderResult {
+  /// Englische Bezeichnung des Typs, siehe [PlaceSearchTexts.typeLabel].
+  String get typeLabel => const PlaceSearchTexts().typeLabel(type);
 
   /// Get type priority for sorting (lower = higher priority)
   int get typePriority => switch (type) {
@@ -30,7 +67,11 @@ class PlaceSearchBar extends StatefulWidget {
   final MapController mapController;
   final PlaceSearch geocoder;
   final double initialZoom;
-  final String hintText;
+
+  /// Überschreibt [PlaceSearchTexts.hintText], etwa für getrennte Start- und
+  /// Zielfelder.
+  final String? hintText;
+  final PlaceSearchTexts texts;
   final IconData prefixIcon;
   final VoidCallback? onClearSearch;
   final Future<List<GeocoderResult>> Function(String query, int limit)?
@@ -45,7 +86,8 @@ class PlaceSearchBar extends StatefulWidget {
     required this.mapController,
     required this.geocoder,
     this.initialZoom = 14,
-    this.hintText = 'Ort suchen...',
+    this.hintText,
+    this.texts = const PlaceSearchTexts(),
     this.prefixIcon = Icons.location_on,
     this.onClearSearch,
     this.searchDelegate,
@@ -133,7 +175,7 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
           _suggestions = [];
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Suchergebnis fehlgeschlagen: $e')),
+          SnackBar(content: Text('${widget.texts.searchFailed}: $e')),
         );
       }
     }
@@ -190,7 +232,7 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
             focusNode: _focusNode,
             onChanged: _search,
             decoration: InputDecoration(
-              hintText: widget.hintText,
+              hintText: widget.hintText ?? widget.texts.hintText,
               prefixIcon: Icon(widget.prefixIcon),
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
@@ -238,7 +280,9 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
                         itemCount: _suggestions.length,
                         itemBuilder: (context, index) {
                           final result = _suggestions[index];
-                          final subtitle = StringBuffer(result.typeLabel);
+                          final subtitle = StringBuffer(
+                            widget.texts.typeLabel(result.type),
+                          );
                           if (result.detail != null) {
                             subtitle.write(' • ${result.detail}');
                           }

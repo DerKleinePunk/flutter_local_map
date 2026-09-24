@@ -222,6 +222,7 @@ class _MapHomePageState extends State<MapHomePage> {
       builder: (context) => StorageSettingsDialog(
         currentLocation: currentLocation,
         config: _downloader.config,
+        texts: StorageSettingsTexts.german,
       ),
     );
 
@@ -348,6 +349,7 @@ class _MapHomePageState extends State<MapHomePage> {
         downloader: _downloader,
         onDownloadComplete: _onDownloadComplete,
         title: 'Kartendaten für Hessen',
+        texts: DownloadOverlayTexts.german,
       );
     }
 

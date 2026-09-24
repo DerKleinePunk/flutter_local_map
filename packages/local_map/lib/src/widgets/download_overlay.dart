@@ -1,13 +1,99 @@
 import 'package:flutter/material.dart';
+import '../config/map_config.dart';
 import '../services/map_downloader.dart';
 
-/// Download-Status Enum
-enum DownloadStatus {
-  notDownloaded,
-  downloading,
-  downloaded,
-  error,
+/// Texte von [DownloadOverlay]. Die Vorgaben sind englisch, [german] ist die
+/// deutsche Fassung; andere Sprachen legt der Gastgeber selbst an.
+class DownloadOverlayTexts {
+  final String title;
+  final String Function(int sizeMB) downloadRequired;
+  final String offlineHint;
+
+  /// Vor dem Namen des Speicherorts, gefolgt von einem Doppelpunkt.
+  final String storageLocation;
+  final String Function(MapStorageLocation location) locationName;
+  final String downloading;
+  final String downloaded;
+  final String downloadFailed;
+  final String unknownError;
+  final String downloadNow;
+  final String deleteMap;
+  final String deleteTitle;
+  final String deleteQuestion;
+  final String cancel;
+  final String delete;
+  final String retry;
+
+  const DownloadOverlayTexts({
+    this.title = 'Map data',
+    this.downloadRequired = _downloadRequiredEn,
+    this.offlineHint =
+        'The map data is stored locally and works without a connection.',
+    this.storageLocation = 'Storage location',
+    this.locationName = _locationNameEn,
+    this.downloading = 'Downloading...',
+    this.downloaded = 'Map data downloaded',
+    this.downloadFailed = 'Download failed',
+    this.unknownError = 'Unknown error',
+    this.downloadNow = 'Download now',
+    this.deleteMap = 'Delete map data',
+    this.deleteTitle = 'Delete map data?',
+    this.deleteQuestion =
+        'Do you really want to delete the downloaded map data?',
+    this.cancel = 'Cancel',
+    this.delete = 'Delete',
+    this.retry = 'Retry',
+  });
+
+  static const german = DownloadOverlayTexts(
+    title: 'Kartendaten',
+    downloadRequired: _downloadRequiredDe,
+    offlineHint:
+        'Die Kartendaten werden lokal gespeichert und '
+        'ermöglichen die Offline-Nutzung.',
+    storageLocation: 'Speicherort',
+    locationName: _locationNameDe,
+    downloading: 'Download läuft...',
+    downloaded: 'Kartendaten erfolgreich heruntergeladen!',
+    downloadFailed: 'Download fehlgeschlagen',
+    unknownError: 'Unbekannter Fehler',
+    downloadNow: 'Jetzt herunterladen',
+    deleteMap: 'Kartendaten löschen',
+    deleteTitle: 'Kartendaten löschen?',
+    deleteQuestion:
+        'Möchten Sie die heruntergeladenen Kartendaten wirklich löschen?',
+    cancel: 'Abbrechen',
+    delete: 'Löschen',
+    retry: 'Erneut versuchen',
+  );
+
+  static String _downloadRequiredEn(int sizeMB) =>
+      'Download required (~$sizeMB MB)';
+
+  static String _downloadRequiredDe(int sizeMB) =>
+      'Download erforderlich (~$sizeMB MB)';
+
+  static String _locationNameEn(MapStorageLocation location) =>
+      switch (location) {
+        MapStorageLocation.applicationSupport => 'Application Support',
+        MapStorageLocation.applicationDocuments => 'Documents',
+        MapStorageLocation.downloads => 'Downloads',
+        MapStorageLocation.externalStorage => 'External Storage',
+        MapStorageLocation.custom => 'Custom',
+      };
+
+  static String _locationNameDe(MapStorageLocation location) =>
+      switch (location) {
+        MapStorageLocation.applicationSupport => 'Application Support',
+        MapStorageLocation.applicationDocuments => 'Dokumente',
+        MapStorageLocation.downloads => 'Downloads',
+        MapStorageLocation.externalStorage => 'Externer Speicher',
+        MapStorageLocation.custom => 'Benutzerdefiniert',
+      };
 }
+
+/// Download-Status Enum
+enum DownloadStatus { notDownloaded, downloading, downloaded, error }
 
 /// Overlay-Widget für den Download der Kartendaten
 class DownloadOverlay extends StatefulWidget {
@@ -15,13 +101,16 @@ class DownloadOverlay extends StatefulWidget {
   final VoidCallback onDownloadComplete;
 
   /// Überschrift über dem Download-Button, z.B. "Kartendaten für Hessen".
-  final String title;
+  /// Überschreibt [DownloadOverlayTexts.title].
+  final String? title;
+  final DownloadOverlayTexts texts;
 
   const DownloadOverlay({
     super.key,
     required this.downloader,
     required this.onDownloadComplete,
-    this.title = 'Kartendaten',
+    this.title,
+    this.texts = const DownloadOverlayTexts(),
   });
 
   @override
@@ -34,7 +123,8 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
   String? _errorMessage;
 
   String _storagePath = '';
-  String _storageLocationName = '';
+
+  DownloadOverlayTexts get _texts => widget.texts;
 
   @override
   void initState() {
@@ -45,11 +135,9 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
 
   Future<void> _loadStorageInfo() async {
     final path = await widget.downloader.getStoragePath();
-    final locationName = widget.downloader.storageLocationName;
     if (mounted) {
       setState(() {
         _storagePath = path;
-        _storageLocationName = locationName;
       });
     }
   }
@@ -58,11 +146,11 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
     final isDownloaded = await widget.downloader.isMapDownloaded();
     if (mounted) {
       setState(() {
-        _status = isDownloaded 
-            ? DownloadStatus.downloaded 
+        _status = isDownloaded
+            ? DownloadStatus.downloaded
             : DownloadStatus.notDownloaded;
       });
-      
+
       if (isDownloaded) {
         widget.onDownloadComplete();
       }
@@ -107,18 +195,16 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Kartendaten löschen?'),
-        content: const Text(
-          'Möchten Sie die heruntergeladenen Kartendaten wirklich löschen?',
-        ),
+        title: Text(_texts.deleteTitle),
+        content: Text(_texts.deleteQuestion),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Abbrechen'),
+            child: Text(_texts.cancel),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Löschen'),
+            child: Text(_texts.delete),
           ),
         ],
       ),
@@ -194,25 +280,25 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
         return Column(
           children: [
             Text(
-              widget.title,
+              widget.title ?? _texts.title,
               style: Theme.of(context).textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Download erforderlich '
-              '(~${widget.downloader.config.estimatedFileSizeMB} MB)',
+              _texts.downloadRequired(
+                widget.downloader.config.estimatedFileSizeMB,
+              ),
               style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              'Die Kartendaten werden lokal gespeichert und '
-              'ermöglichen die Offline-Nutzung.',
+              _texts.offlineHint,
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
-            if (_storageLocationName.isNotEmpty) ...[
+            if (_storagePath.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(8),
@@ -226,10 +312,15 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
                   children: [
                     Row(
                       children: [
-                        Icon(Icons.folder, size: 16, color: Colors.blue.shade700),
+                        Icon(
+                          Icons.folder,
+                          size: 16,
+                          color: Colors.blue.shade700,
+                        ),
                         const SizedBox(width: 8),
                         Text(
-                          'Speicherort: $_storageLocationName',
+                          '${_texts.storageLocation}: '
+                          '${_texts.locationName(widget.downloader.config.storageLocation)}',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
@@ -238,18 +329,16 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
                         ),
                       ],
                     ),
-                    if (_storagePath.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        _storagePath,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.blue.shade700,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 4),
+                    Text(
+                      _storagePath,
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.blue.shade700,
                       ),
-                    ],
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
@@ -261,7 +350,7 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
         return Column(
           children: [
             Text(
-              'Download läuft...',
+              _texts.downloading,
               style: Theme.of(context).textTheme.headlineSmall,
             ),
             const SizedBox(height: 16),
@@ -276,7 +365,7 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
 
       case DownloadStatus.downloaded:
         return Text(
-          'Kartendaten erfolgreich heruntergeladen!',
+          _texts.downloaded,
           style: Theme.of(context).textTheme.headlineSmall,
           textAlign: TextAlign.center,
         );
@@ -285,15 +374,15 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
         return Column(
           children: [
             Text(
-              'Download fehlgeschlagen',
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: Colors.red,
-                  ),
+              _texts.downloadFailed,
+              style: Theme.of(
+                context,
+              ).textTheme.headlineSmall?.copyWith(color: Colors.red),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              _errorMessage ?? 'Unbekannter Fehler',
+              _errorMessage ?? _texts.unknownError,
               style: Theme.of(context).textTheme.bodyMedium,
               textAlign: TextAlign.center,
             ),
@@ -308,12 +397,9 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
         return ElevatedButton.icon(
           onPressed: _startDownload,
           icon: const Icon(Icons.download),
-          label: const Text('Jetzt herunterladen'),
+          label: Text(_texts.downloadNow),
           style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 32,
-              vertical: 16,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           ),
         );
 
@@ -324,19 +410,16 @@ class _DownloadOverlayState extends State<DownloadOverlay> {
         return TextButton.icon(
           onPressed: _deleteMap,
           icon: const Icon(Icons.delete),
-          label: const Text('Kartendaten löschen'),
+          label: Text(_texts.deleteMap),
         );
 
       case DownloadStatus.error:
         return ElevatedButton.icon(
           onPressed: _startDownload,
           icon: const Icon(Icons.refresh),
-          label: const Text('Erneut versuchen'),
+          label: Text(_texts.retry),
           style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 32,
-              vertical: 16,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           ),
         );
     }

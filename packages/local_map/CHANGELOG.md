@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0
+
+- `PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre
+  Texte aus `PlaceSearchTexts`, `DownloadOverlayTexts` und
+  `StorageSettingsTexts`. Die Vorgabe ist jetzt englisch (vorher deutsch); die
+  bisherigen Texte liefern die Konstanten `.german`.
+- `hintText` von `PlaceSearchBar` und `title` von `DownloadOverlay` sind
+  optional und überschreiben den Wert aus den Texten.
+- `GeocoderResult.typeLabel` und `MapDownloader.storageLocationName` sind
+  englisch.
+
 ## 0.3.0
 
 - `MapView.errorBuilder`: Fehler an Stelle der Karte selbst darstellen und

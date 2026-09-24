@@ -243,19 +243,20 @@ class MapDownloader {
     return _downloadPath!;
   }
 
-  /// Gibt Informationen über den aktuellen Speicherort zurück
+  /// Englischer Name des aktuellen Speicherorts, für Logs. Übersetzt zeigt ihn
+  /// `DownloadOverlayTexts.locationName`.
   String get storageLocationName {
     switch (_storageLocation) {
       case MapStorageLocation.applicationSupport:
         return 'Application Support';
       case MapStorageLocation.applicationDocuments:
-        return 'Dokumente';
+        return 'Documents';
       case MapStorageLocation.downloads:
         return 'Downloads';
       case MapStorageLocation.externalStorage:
         return 'External Storage';
       case MapStorageLocation.custom:
-        return 'Benutzerdefiniert: $_customPath';
+        return 'Custom: $_customPath';
     }
   }
 }

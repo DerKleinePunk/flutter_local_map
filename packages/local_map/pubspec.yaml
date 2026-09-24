@@ -1,6 +1,6 @@
 name: local_map
 description: "Offline-Kartendarstellung (MBTiles Raster/Vektor, Geocoding, Valhalla-Routing) als wiederverwendbares Flutter-Package."
-version: 0.3.0
+version: 0.4.0
 
 # Private Bibliothek - nicht fuer pub.dev gedacht.
 publish_to: 'none'

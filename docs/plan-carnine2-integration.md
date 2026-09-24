@@ -10,8 +10,9 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
 - **Phase 0** (emb_cli): fertig. `feature/emb-cli` ist der Integrationszweig in carnine2.
 - **Phase 1** (Lib entkoppeln): fertig. Seit `local_map-v0.3.0` keine festen deutschen Texte in `MapView`
   (`errorBuilder`, `MapError.category`) und keine Hessen-Vorgaben mehr (`MapConfig.center` optional, Start in
-  der Mitte der Kacheln; das alte Setup heißt `MapConfig.hessen`). Rest: `search_bar.dart` und
-  `download_overlay.dart` haben noch deutsche Texte – beide nutzt carnine2 nicht.
+  der Mitte der Kacheln; das alte Setup heißt `MapConfig.hessen`). Seit `local_map-v0.4.0` sind auch
+  Suchfeld, Download-Overlay und Speicherort-Dialog übersetzbar (`PlaceSearchTexts` usw., englische
+  Vorgabe, `.german`). Carnine2 nutzt diese drei nicht und bleibt auf 0.3.0.
 - **Phase 2** (Navigationsmodus): fertig und auf dem Panel abgenommen (Route auf der gefahrenen Strecke,
   flüssig mit Drehung auf Zoom 16).
 - **Phase 3** (Backend): alle fünf RPCs des `NavigationService` (ADR-021) umgesetzt und gegen echtes

@@ -3,6 +3,116 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/map_config.dart';
 import '../services/map_downloader.dart';
 
+/// Texte von [StorageSettingsDialog]. Die Vorgaben sind englisch, [german] ist
+/// die deutsche Fassung; andere Sprachen legt der Gastgeber selbst an.
+class StorageSettingsTexts {
+  final String title;
+  final String intro;
+  final String Function(MapStorageLocation location) locationTitle;
+  final String Function(MapStorageLocation location) locationDescription;
+  final String customPathLabel;
+  final String customPathHint;
+  final String customPathHelper;
+  final String customPathMissing;
+  final String restartWarning;
+  final String cancel;
+  final String save;
+
+  const StorageSettingsTexts({
+    this.title = 'Choose storage location',
+    this.intro = 'Choose where the offline map data is stored:',
+    this.locationTitle = _locationTitleEn,
+    this.locationDescription = _locationDescriptionEn,
+    this.customPathLabel = 'Custom path',
+    this.customPathHint = 'e.g. D:/Maps or /home/user/maps',
+    this.customPathHelper = 'Absolute path to the target directory',
+    this.customPathMissing = 'Please enter a custom path',
+    this.restartWarning =
+        'Changes take effect after restarting the app. '
+        'Existing map data has to be downloaded again.',
+    this.cancel = 'Cancel',
+    this.save = 'Save',
+  });
+
+  static const german = StorageSettingsTexts(
+    title: 'Speicherort wählen',
+    intro: 'Wählen Sie, wo die Offline-Kartendaten gespeichert werden sollen:',
+    locationTitle: _locationTitleDe,
+    locationDescription: _locationDescriptionDe,
+    customPathLabel: 'Benutzerdefinierter Pfad',
+    customPathHint: 'z.B. D:/Maps oder /home/user/maps',
+    customPathHelper: 'Absoluter Pfad zum Zielverzeichnis',
+    customPathMissing: 'Bitte geben Sie einen benutzerdefinierten Pfad an',
+    restartWarning:
+        'Änderungen erfordern einen Neustart der App. '
+        'Vorhandene Kartendaten müssen neu heruntergeladen werden.',
+    cancel: 'Abbrechen',
+    save: 'Speichern',
+  );
+
+  static String _locationTitleEn(MapStorageLocation location) =>
+      switch (location) {
+        MapStorageLocation.applicationSupport =>
+          'Application Support (default)',
+        MapStorageLocation.applicationDocuments => 'Documents',
+        MapStorageLocation.downloads => 'Downloads',
+        MapStorageLocation.externalStorage => 'External Storage (Android)',
+        MapStorageLocation.custom => 'Custom',
+      };
+
+  static String _locationTitleDe(MapStorageLocation location) =>
+      switch (location) {
+        MapStorageLocation.applicationSupport =>
+          'Application Support (Standard)',
+        MapStorageLocation.applicationDocuments => 'Dokumente',
+        MapStorageLocation.downloads => 'Downloads',
+        MapStorageLocation.externalStorage => 'External Storage (Android)',
+        MapStorageLocation.custom => 'Benutzerdefiniert',
+      };
+
+  static String _locationDescriptionEn(MapStorageLocation location) =>
+      switch (location) {
+        MapStorageLocation.applicationSupport =>
+          'Recommended for internal app data\n'
+              'Windows: AppData\\Roaming\n'
+              'Android: /data/data/<app>/files',
+        MapStorageLocation.applicationDocuments =>
+          'For user-generated data\n'
+              'Windows: Documents\n'
+              'Android: Documents',
+        MapStorageLocation.downloads =>
+          'In the downloads folder\n'
+              'Easy for users to reach',
+        MapStorageLocation.externalStorage =>
+          'Android only\n'
+              'External storage/SD card',
+        MapStorageLocation.custom =>
+          'Custom path\n'
+              'Full control over the location',
+      };
+
+  static String _locationDescriptionDe(MapStorageLocation location) =>
+      switch (location) {
+        MapStorageLocation.applicationSupport =>
+          'Empfohlen für App-interne Daten\n'
+              'Windows: AppData\\Roaming\n'
+              'Android: /data/data/<app>/files',
+        MapStorageLocation.applicationDocuments =>
+          'Für benutzergenerierte Daten\n'
+              'Windows: Dokumente\n'
+              'Android: Documents',
+        MapStorageLocation.downloads =>
+          'Im Download-Ordner\n'
+              'Leicht für Benutzer zugänglich',
+        MapStorageLocation.externalStorage =>
+          'Nur Android\n'
+              'Externer Speicher/SD-Karte',
+        MapStorageLocation.custom =>
+          'Benutzerdefinierter Pfad\n'
+              'Volle Kontrolle über Speicherort',
+      };
+}
+
 /// Dialog zur Auswahl des Speicherorts für Offline-Karten
 class StorageSettingsDialog extends StatefulWidget {
   final MapStorageLocation currentLocation;
@@ -11,10 +121,13 @@ class StorageSettingsDialog extends StatefulWidget {
   /// Ohne Angabe wird [MapConfig.defaults] verwendet.
   final MapConfig? config;
 
+  final StorageSettingsTexts texts;
+
   const StorageSettingsDialog({
     super.key,
     required this.currentLocation,
     this.config,
+    this.texts = const StorageSettingsTexts(),
   });
 
   @override
@@ -43,11 +156,9 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
     // Validierung für Custom Path
     if (_selectedLocation == MapStorageLocation.custom) {
       if (_customPathController.text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Bitte geben Sie einen benutzerdefinierten Pfad an'),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(widget.texts.customPathMissing)));
         return;
       }
     }
@@ -64,47 +175,11 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
     }
   }
 
-  String _getLocationDescription(MapStorageLocation location) {
-    switch (location) {
-      case MapStorageLocation.applicationSupport:
-        return 'Empfohlen für App-interne Daten\n'
-            'Windows: AppData\\Roaming\n'
-            'Android: /data/data/<app>/files';
-      case MapStorageLocation.applicationDocuments:
-        return 'Für benutzergenerierte Daten\n'
-            'Windows: Dokumente\n'
-            'Android: Documents';
-      case MapStorageLocation.downloads:
-        return 'Im Download-Ordner\n'
-            'Leicht für Benutzer zugänglich';
-      case MapStorageLocation.externalStorage:
-        return 'Nur Android\n'
-            'Externer Speicher/SD-Karte';
-      case MapStorageLocation.custom:
-        return 'Benutzerdefinierter Pfad\n'
-            'Volle Kontrolle über Speicherort';
-    }
-  }
-
-  String _getLocationTitle(MapStorageLocation location) {
-    switch (location) {
-      case MapStorageLocation.applicationSupport:
-        return 'Application Support (Standard)';
-      case MapStorageLocation.applicationDocuments:
-        return 'Dokumente';
-      case MapStorageLocation.downloads:
-        return 'Downloads';
-      case MapStorageLocation.externalStorage:
-        return 'External Storage (Android)';
-      case MapStorageLocation.custom:
-        return 'Benutzerdefiniert';
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final texts = widget.texts;
     return AlertDialog(
-      title: const Text('Speicherort wählen'),
+      title: Text(texts.title),
       content: SingleChildScrollView(
         child: SizedBox(
           width: double.maxFinite,
@@ -112,10 +187,7 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Wählen Sie, wo die Offline-Kartendaten gespeichert werden sollen:',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
+              Text(texts.intro, style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 16),
               RadioGroup<MapStorageLocation>(
                 groupValue: _selectedLocation,
@@ -131,9 +203,9 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
                       margin: const EdgeInsets.only(bottom: 8),
                       child: RadioListTile<MapStorageLocation>(
                         value: location,
-                        title: Text(_getLocationTitle(location)),
+                        title: Text(texts.locationTitle(location)),
                         subtitle: Text(
-                          _getLocationDescription(location),
+                          texts.locationDescription(location),
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),
@@ -145,11 +217,11 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: _customPathController,
-                  decoration: const InputDecoration(
-                    labelText: 'Benutzerdefinierter Pfad',
-                    hintText: 'z.B. D:/Maps oder /home/user/maps',
-                    border: OutlineInputBorder(),
-                    helperText: 'Absoluter Pfad zum Zielverzeichnis',
+                  decoration: InputDecoration(
+                    labelText: texts.customPathLabel,
+                    hintText: texts.customPathHint,
+                    border: const OutlineInputBorder(),
+                    helperText: texts.customPathHelper,
                   ),
                 ),
               ],
@@ -167,8 +239,7 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        'Änderungen erfordern einen Neustart der App. '
-                        'Vorhandene Kartendaten müssen neu heruntergeladen werden.',
+                        texts.restartWarning,
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.amber.shade900,
@@ -185,12 +256,9 @@ class _StorageSettingsDialogState extends State<StorageSettingsDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Abbrechen'),
+          child: Text(texts.cancel),
         ),
-        ElevatedButton(
-          onPressed: _saveAndClose,
-          child: const Text('Speichern'),
-        ),
+        ElevatedButton(onPressed: _saveAndClose, child: Text(texts.save)),
       ],
     );
   }
