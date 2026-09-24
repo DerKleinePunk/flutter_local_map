@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:dio/dio.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -72,24 +74,35 @@ class ValhallaRoutingService implements RoutingProvider {
     }
     // Stehzeiten liefern denselben Punkt viele Male. Für das Matching
     // bringen sie nichts, kosten aber Rechenzeit.
-    final shape = <Map<String, double>>[];
-    LatLng? previous;
+    final points = <LatLng>[];
     for (final p in trace) {
-      if (previous != null &&
-          previous.latitude == p.latitude &&
-          previous.longitude == p.longitude) {
+      final last = points.isEmpty ? null : points.last;
+      if (last != null &&
+          last.latitude == p.latitude &&
+          last.longitude == p.longitude) {
         continue;
       }
-      shape.add({'lat': p.latitude, 'lon': p.longitude});
-      previous = p;
+      points.add(p);
     }
 
-    return _post('/trace_route', {
-      'shape': shape,
-      'costing': costing,
-      'shape_match': 'map_snap',
-      'directions_options': {'units': units, 'language': language},
-    });
+    // Valhalla matcht eine Spur, die ihre eigene Strecke wieder befährt,
+    // nur zum Teil: eine 45-km-Hin-und-Rückfahrt kam als 22,7 km zurück,
+    // ihre Hälften einzeln dagegen vollständig. Deshalb dort teilen und die
+    // Stücke wieder zusammensetzen.
+    final pieces = <RoutingResult>[];
+    for (final piece in splitTraceAtOverlaps(points)) {
+      pieces.add(
+        await _post('/trace_route', {
+          'shape': [
+            for (final p in piece) {'lat': p.latitude, 'lon': p.longitude},
+          ],
+          'costing': costing,
+          'shape_match': 'map_snap',
+          'directions_options': {'units': units, 'language': language},
+        }),
+      );
+    }
+    return joinRoutes(pieces);
   }
 
   Future<RoutingResult> _post(String path, Map<String, dynamic> body) async {
@@ -285,3 +298,91 @@ class _DecodedValue {
 
   const _DecodedValue({required this.value, required this.nextIndex});
 }
+
+/// Teilt eine Spur dort, wo sie ihre eigene frühere Strecke wieder
+/// befährt: sobald ein Punkt näher als [radiusMeters] an einem Punkt
+/// desselben Stücks liegt, der mehr als [minPathGapMeters] Fahrweg zurück
+/// liegt. So wird eine Hin- und Rückfahrt am Umkehrpunkt geteilt, eine
+/// Kurve oder ein Halt an der Ampel aber nicht. Benachbarte Stücke teilen
+/// sich einen Punkt.
+List<List<LatLng>> splitTraceAtOverlaps(
+  List<LatLng> trace, {
+  double radiusMeters = 25,
+  double minPathGapMeters = 300,
+}) {
+  if (trace.length < 3) return [trace];
+
+  final path = List<double>.filled(trace.length, 0);
+  for (var i = 1; i < trace.length; i++) {
+    path[i] = path[i - 1] + _flatMeters(trace[i - 1], trace[i]);
+  }
+
+  final pieces = <List<LatLng>>[];
+  var start = 0;
+  for (var i = start + 1; i < trace.length; i++) {
+    for (var j = start; j < i; j++) {
+      if (path[i] - path[j] <= minPathGapMeters) break;
+      if (_flatMeters(trace[i], trace[j]) < radiusMeters) {
+        pieces.add(trace.sublist(start, i));
+        start = i - 1;
+        break;
+      }
+    }
+  }
+  pieces.add(trace.sublist(start));
+  return pieces;
+}
+
+/// Abstand in einer Plattkarten-Näherung - für Punkte, die höchstens
+/// einige Kilometer auseinander liegen, genau genug und viel billiger als
+/// die Kugelformel, die hier millionenfach liefe.
+double _flatMeters(LatLng a, LatLng b) {
+  const metersPerDegree = 111319.49;
+  final cosLat = math.cos(a.latitude * math.pi / 180);
+  final dx = (b.longitude - a.longitude) * cosLat * metersPerDegree;
+  final dy = (b.latitude - a.latitude) * metersPerDegree;
+  return math.sqrt(dx * dx + dy * dy);
+}
+
+/// Setzt nacheinander gefahrene Routenstücke zu einer Route zusammen.
+///
+/// Die Geometrie wird aneinandergehängt, die Manöver-Indizes verschoben.
+/// Das "Ziel erreicht" am Ende eines Stücks fällt weg, außer beim letzten.
+RoutingResult joinRoutes(List<RoutingResult> pieces) {
+  if (pieces.length == 1) return pieces.single;
+  final geometry = <RoutingPoint>[];
+  final maneuvers = <RoutingManeuver>[];
+  var distanceMeters = 0.0;
+  var durationSeconds = 0;
+  for (var i = 0; i < pieces.length; i++) {
+    final piece = pieces[i];
+    final offset = geometry.length;
+    geometry.addAll(piece.geometry);
+    distanceMeters += piece.distanceMeters;
+    durationSeconds += piece.durationSeconds;
+    final isLast = i == pieces.length - 1;
+    for (final m in piece.maneuvers) {
+      if (!isLast && _isArrival(m.type)) continue;
+      final begin = m.beginShapeIndex;
+      maneuvers.add(
+        RoutingManeuver(
+          instruction: m.instruction,
+          lengthKm: m.lengthKm,
+          timeSeconds: m.timeSeconds,
+          type: m.type,
+          beginShapeIndex: begin == null ? null : begin + offset,
+          streetNames: m.streetNames,
+        ),
+      );
+    }
+  }
+  return RoutingResult(
+    geometry: geometry,
+    distanceMeters: distanceMeters,
+    durationSeconds: durationSeconds,
+    maneuvers: maneuvers,
+  );
+}
+
+/// Valhalla: 4 Ziel, 5 Ziel rechts, 6 Ziel links.
+bool _isArrival(int? type) => type == 4 || type == 5 || type == 6;
