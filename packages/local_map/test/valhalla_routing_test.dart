@@ -10,6 +10,7 @@ class _FixedAdapter implements HttpClientAdapter {
   _FixedAdapter(this.body);
 
   final Map<String, dynamic> body;
+  final requests = <RequestOptions>[];
 
   @override
   Future<ResponseBody> fetch(
@@ -17,6 +18,7 @@ class _FixedAdapter implements HttpClientAdapter {
     Stream<Uint8List>? requestStream,
     Future<void>? cancelFuture,
   ) async {
+    requests.add(options);
     return ResponseBody.fromString(
       jsonEncode(body),
       200,
@@ -56,66 +58,129 @@ String _encode(List<List<double>> points) {
 }
 
 void main() {
-  test('Manoever-Indizes zeigen ueber alle Legs in die Gesamtgeometrie', () async {
-    final leg1 = _encode([
-      [50.0, 9.0],
-      [50.001, 9.0],
-      [50.002, 9.0],
-    ]);
-    final leg2 = _encode([
-      [50.002, 9.0],
-      [50.002, 9.001],
-    ]);
-    final dio = Dio()
-      ..httpClientAdapter = _FixedAdapter({
+  test(
+    'Manoever-Indizes zeigen ueber alle Legs in die Gesamtgeometrie',
+    () async {
+      final leg1 = _encode([
+        [50.0, 9.0],
+        [50.001, 9.0],
+        [50.002, 9.0],
+      ]);
+      final leg2 = _encode([
+        [50.002, 9.0],
+        [50.002, 9.001],
+      ]);
+      final dio = Dio()
+        ..httpClientAdapter = _FixedAdapter({
+          'trip': {
+            'legs': [
+              {
+                'shape': leg1,
+                'summary': {'length': 0.2, 'time': 30},
+                'maneuvers': [
+                  {
+                    'instruction': 'Nach Norden fahren.',
+                    'length': 0.2,
+                    'time': 30,
+                    'type': 1,
+                    'begin_shape_index': 0,
+                    'street_names': ['Hauptstraße'],
+                  },
+                ],
+              },
+              {
+                'shape': leg2,
+                'summary': {'length': 0.07, 'time': 10},
+                'maneuvers': [
+                  {
+                    'instruction': 'Rechts abbiegen.',
+                    'length': 0.07,
+                    'time': 10,
+                    'type': 10,
+                    'begin_shape_index': 1,
+                  },
+                ],
+              },
+            ],
+          },
+        });
+
+      final RoutingProvider provider = ValhallaRoutingService(dio: dio);
+      final result = await provider.route(
+        start: const LatLng(50.0, 9.0),
+        end: const LatLng(50.002, 9.001),
+      );
+
+      expect(result.geometry, hasLength(5));
+      expect(result.distanceMeters, closeTo(270, 1e-6));
+      expect(result.durationSeconds, 40);
+      expect(result.maneuvers[0].beginShapeIndex, 0);
+      expect(result.maneuvers[0].streetNames, ['Hauptstraße']);
+      // Die erste Leg belegt die Indizes 0-2, Index 1 der zweiten Leg ist
+      // damit Index 4 der Gesamtgeometrie.
+      expect(result.maneuvers[1].beginShapeIndex, 4);
+      expect(result.geometry[4].lon, closeTo(9.001, 1e-6));
+      expect(result.maneuvers[1].streetNames, isEmpty);
+    },
+  );
+
+  test(
+    'routeAlongTrace schickt die Spur an /trace_route, ohne Doppelpunkte',
+    () async {
+      final adapter = _FixedAdapter({
         'trip': {
           'legs': [
             {
-              'shape': leg1,
-              'summary': {'length': 0.2, 'time': 30},
-              'maneuvers': [
-                {
-                  'instruction': 'Nach Norden fahren.',
-                  'length': 0.2,
-                  'time': 30,
-                  'type': 1,
-                  'begin_shape_index': 0,
-                  'street_names': ['Hauptstraße'],
-                },
-              ],
-            },
-            {
-              'shape': leg2,
-              'summary': {'length': 0.07, 'time': 10},
-              'maneuvers': [
-                {
-                  'instruction': 'Rechts abbiegen.',
-                  'length': 0.07,
-                  'time': 10,
-                  'type': 10,
-                  'begin_shape_index': 1,
-                },
-              ],
+              'shape': _encode([
+                [50.0, 9.0],
+                [50.001, 9.0],
+              ]),
+              'summary': {'length': 0.1, 'time': 12},
+              'maneuvers': <Object>[],
             },
           ],
         },
       });
+      final service = ValhallaRoutingService(
+        dio: Dio()..httpClientAdapter = adapter,
+      );
 
-    final RoutingProvider provider = ValhallaRoutingService(dio: dio);
-    final result = await provider.route(
-      start: const LatLng(50.0, 9.0),
-      end: const LatLng(50.002, 9.001),
-    );
+      final result = await service.routeAlongTrace(const [
+        LatLng(50.0, 9.0),
+        LatLng(50.0, 9.0), // Stand an der Ampel
+        LatLng(50.0, 9.0),
+        LatLng(50.001, 9.0),
+      ]);
 
-    expect(result.geometry, hasLength(5));
-    expect(result.distanceMeters, closeTo(270, 1e-6));
-    expect(result.durationSeconds, 40);
-    expect(result.maneuvers[0].beginShapeIndex, 0);
-    expect(result.maneuvers[0].streetNames, ['Hauptstraße']);
-    // Die erste Leg belegt die Indizes 0-2, Index 1 der zweiten Leg ist
-    // damit Index 4 der Gesamtgeometrie.
-    expect(result.maneuvers[1].beginShapeIndex, 4);
-    expect(result.geometry[4].lon, closeTo(9.001, 1e-6));
-    expect(result.maneuvers[1].streetNames, isEmpty);
+      expect(result.geometry, hasLength(2));
+      final request = adapter.requests.single;
+      expect(request.uri.path, '/trace_route');
+      final body = request.data as Map<String, dynamic>;
+      expect(body['shape'], hasLength(2));
+      expect(body['shape_match'], 'map_snap');
+      expect((body['directions_options'] as Map)['language'], 'de-DE');
+    },
+  );
+
+  test('route fragt deutsche Anweisungen an', () async {
+    final adapter = _FixedAdapter({
+      'trip': {
+        'legs': [
+          {
+            'shape': _encode([
+              [50.0, 9.0],
+              [50.001, 9.0],
+            ]),
+            'summary': {'length': 0.1, 'time': 12},
+          },
+        ],
+      },
+    });
+    await ValhallaRoutingService(
+      dio: Dio()..httpClientAdapter = adapter,
+    ).route(start: const LatLng(50, 9), end: const LatLng(50.001, 9));
+    final body = adapter.requests.single.data as Map<String, dynamic>;
+    expect(adapter.requests.single.uri.path, '/route');
+    expect((body['directions_options'] as Map)['language'], 'de-DE');
   });
 }

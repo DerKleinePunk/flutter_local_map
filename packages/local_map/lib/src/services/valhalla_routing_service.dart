@@ -10,7 +10,11 @@ class ValhallaRoutingService implements RoutingProvider {
   final Dio _dio;
   final Uri _baseUri;
 
-  ValhallaRoutingService({Dio? dio, Uri? baseUri})
+  /// Sprache der Manöveranweisungen (Valhalla-Sprachcode). Ohne Angabe
+  /// antwortet Valhalla englisch.
+  final String language;
+
+  ValhallaRoutingService({Dio? dio, Uri? baseUri, this.language = 'de-DE'})
     : _dio =
           dio ??
           Dio(
@@ -40,13 +44,54 @@ class ValhallaRoutingService implements RoutingProvider {
         {'lat': end.latitude, 'lon': end.longitude},
       ],
       'costing': costing,
-      'directions_options': {'units': units},
+      'directions_options': {'units': units, 'language': language},
     };
 
-    final uri = _baseUri.resolve('/route');
+    return _post('/route', requestBody);
+  }
+
+  /// Legt eine aufgezeichnete Fahrt auf das Straßennetz (Map-Matching) und
+  /// liefert sie als Route, mit Manövern wie [route].
+  ///
+  /// Anders als [route] berechnet Valhalla dabei keinen eigenen Weg, sondern
+  /// folgt [trace] - die Route ist also genau die gefahrene Strecke. Das
+  /// braucht, wer eine Aufzeichnung abspielt und die Anweisungen dazu passend
+  /// sehen will.
+  Future<RoutingResult> routeAlongTrace(
+    List<LatLng> trace, {
+    String costing = 'auto',
+    String units = 'kilometers',
+  }) async {
+    if (trace.length < 2) {
+      throw const RoutingException('Spur braucht mindestens zwei Punkte.');
+    }
+    // Stehzeiten liefern denselben Punkt viele Male. Für das Matching
+    // bringen sie nichts, kosten aber Rechenzeit.
+    final shape = <Map<String, double>>[];
+    LatLng? previous;
+    for (final p in trace) {
+      if (previous != null &&
+          previous.latitude == p.latitude &&
+          previous.longitude == p.longitude) {
+        continue;
+      }
+      shape.add({'lat': p.latitude, 'lon': p.longitude});
+      previous = p;
+    }
+
+    return _post('/trace_route', {
+      'shape': shape,
+      'costing': costing,
+      'shape_match': 'map_snap',
+      'directions_options': {'units': units, 'language': language},
+    });
+  }
+
+  Future<RoutingResult> _post(String path, Map<String, dynamic> body) async {
+    final uri = _baseUri.resolve(path);
 
     try {
-      final response = await _dio.postUri(uri, data: requestBody);
+      final response = await _dio.postUri(uri, data: body);
       final data = response.data;
 
       if (data is! Map<String, dynamic>) {
@@ -58,10 +103,10 @@ class ValhallaRoutingService implements RoutingProvider {
       return _parseRouteResponse(data);
     } on DioException catch (error) {
       final statusCode = error.response?.statusCode;
-      final body = error.response?.data;
+      final errorBody = error.response?.data;
 
-      if (body is Map<String, dynamic>) {
-        final message = body['error'] ?? body['message'];
+      if (errorBody is Map<String, dynamic>) {
+        final message = errorBody['error'] ?? errorBody['message'];
         if (message is String && message.isNotEmpty) {
           throw RoutingException('Valhalla-Fehler ($statusCode): $message');
         }

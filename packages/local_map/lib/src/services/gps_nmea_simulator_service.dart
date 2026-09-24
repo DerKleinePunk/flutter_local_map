@@ -45,6 +45,9 @@ class GpsNmeaSimulatorService implements PositionSource {
 
   bool get isRunning => _running;
   bool get hasData => _fixes.isNotEmpty;
+
+  /// Alle geladenen Meldungen, etwa um die Fahrt als Route anzuzeigen.
+  List<SimulatedGpsFix> get loadedFixes => List.unmodifiable(_fixes);
   int get fixCount => _fixes.length;
 
   Future<int> loadFromPath(String path) async {
@@ -72,9 +75,10 @@ class GpsNmeaSimulatorService implements PositionSource {
   Future<int> loadDefaultTourFile({List<String>? candidatePaths}) async {
     final candidates = candidatePaths ?? MapConfig.defaults.gpsTourFilePaths;
     final resolved = candidates
-        .map((path) => p.isAbsolute(path)
-            ? path
-            : p.join(Directory.current.path, path))
+        .map(
+          (path) =>
+              p.isAbsolute(path) ? path : p.join(Directory.current.path, path),
+        )
         .toList();
 
     for (final path in resolved) {
@@ -335,5 +339,4 @@ class GpsNmeaSimulatorService implements PositionSource {
     final year = 2000 + yearShort;
     return DateTime.utc(year, month, day, hour, minute, second);
   }
-
 }

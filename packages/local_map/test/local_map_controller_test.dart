@@ -203,4 +203,27 @@ void main() {
     expect(map.headingUp, isTrue);
     expect(notified, 1);
   });
+
+  test(
+    'setRoute setzt eine fertige Route und schlaegt laufende Anfragen',
+    () async {
+      final routing = _FakeRouting();
+      final map = LocalMapController(routingProvider: routing);
+      addTearDown(map.dispose);
+
+      await map.setStart(_place('A', 50, 9));
+      final pending = map.setDestination(_place('B', 50.1, 9.1));
+      map.setRoute(_result(45));
+      // Die alte Anfrage kommt danach zurueck und darf nichts aendern.
+      routing.pending.single.complete(_result(1));
+      await pending;
+
+      expect(map.route?.distanceMeters, 45000);
+      expect(map.isRouting, isFalse);
+      expect(map.start, isNull);
+
+      map.setRoute(null);
+      expect(map.route, isNull);
+    },
+  );
 }

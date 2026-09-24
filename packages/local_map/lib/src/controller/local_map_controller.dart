@@ -158,6 +158,29 @@ class LocalMapController extends ChangeNotifier {
     return _updateRoute();
   }
 
+  /// Setzt eine fertige Route, ohne [routingProvider] zu fragen - etwa eine
+  /// vom Backend berechnete oder eine per Map-Matching aus einer
+  /// Aufzeichnung gewonnene. [start] und [destination] sind optional und nur
+  /// für die Markierungen. `null` entfernt die Route.
+  void setRoute(
+    RoutingResult? route, {
+    GeocoderResult? start,
+    GeocoderResult? destination,
+  }) {
+    // Eine noch laufende Berechnung darf diese Route nicht überschreiben.
+    _routeRequest++;
+    _start = start;
+    _destination = destination;
+    _isRouting = false;
+    _routingError = null;
+    _setRoute(route);
+    if (route != null) {
+      _followPosition = false;
+      _view?.fitRoute(_routePoints);
+    }
+    _notify();
+  }
+
   /// Hebt [place] hervor und bewegt die Kamera dorthin. Der Folgemodus
   /// endet dabei, sonst holte die nächste Positionsmeldung die Kamera
   /// sofort zurück.

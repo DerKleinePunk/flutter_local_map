@@ -34,6 +34,7 @@ class _MapScreenState extends State<MapScreen> {
   late final LocalMapController _map;
 
   bool _geocoderReady = false;
+  bool _matchingTour = false;
   int _gpsLoadedFixes = 0;
   String? _gpsSimMessage;
 
@@ -94,6 +95,30 @@ class _MapScreenState extends State<MapScreen> {
       _gpsSimMessage = e.toString();
     }
     if (mounted) setState(() {});
+  }
+
+  /// Legt die geladene Tour per Map-Matching auf die Straßen und zeigt sie
+  /// als Route. Damit passen Route und Abbiegehinweise genau zu dem, was der
+  /// Simulator abfährt - eine selbst berechnete Route zum selben Ziel nähme
+  /// oft einen anderen Weg.
+  Future<void> _showTourAsRoute() async {
+    final fixes = _gpsSimulator.loadedFixes;
+    if (fixes.length < 2 || _matchingTour) return;
+    setState(() => _matchingTour = true);
+    try {
+      final route = await _routing.routeAlongTrace(
+        fixes.map((f) => f.position).toList(),
+      );
+      _map.setRoute(route);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Tour als Route: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _matchingTour = false);
+    }
   }
 
   @override
@@ -187,6 +212,19 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       Positioned(top: 84, right: 12, child: _buildGpsSimulatorChip(context)),
+      if (_gpsSimulator.hasData)
+        Positioned(
+          top: 120,
+          right: 12,
+          child: _Badge(
+            icon: _matchingTour ? Icons.sync : Icons.alt_route,
+            label: _matchingTour
+                ? 'Tour wird abgeglichen...'
+                : 'Tour als Route',
+            tone: _Tone.secondary,
+            onTap: _matchingTour ? null : _showTourAsRoute,
+          ),
+        ),
       Positioned(
         bottom: 16,
         right: 12,
