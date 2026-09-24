@@ -1,3 +1,5 @@
+import 'package:latlong2/latlong.dart';
+
 import '../services/offline_geocoder.dart';
 
 /// Sucht Orte nach Namen, für Suchfelder über der Karte.
@@ -6,6 +8,12 @@ import '../services/offline_geocoder.dart';
 /// Fahrzeugsystem kann die Suche ebenso in sein Backend verlegen.
 abstract interface class PlaceSearch {
   /// Treffer für [query], die wichtigsten zuerst (Orte vor POIs vor Bergen
-  /// usw.), höchstens [limit] Stück.
-  Future<List<GeocoderResult>> searchPlaces(String query, {int limit = 15});
+  /// usw.), höchstens [limit] Stück. Mit [near] kommen Treffer in der Nähe
+  /// davon zuerst - "Hauptstraße" gibt es tausendmal. Eine Implementierung
+  /// darf [near] ignorieren.
+  Future<List<GeocoderResult>> searchPlaces(
+    String query, {
+    int limit = 15,
+    LatLng? near,
+  });
 }

@@ -37,9 +37,35 @@ class OfflineGeocoder implements PlaceSearch {
 
   OfflineGeocoder();
 
+  /// Mit [near] werden je Typ mehr Kandidaten geholt und nach Entfernung
+  /// sortiert; die Rangfolge der Typen bleibt.
   @override
-  Future<List<GeocoderResult>> searchPlaces(String query, {int limit = 15}) =>
-      searchPrioritized(query, limit: limit);
+  Future<List<GeocoderResult>> searchPlaces(
+    String query, {
+    int limit = 15,
+    LatLng? near,
+  }) async {
+    if (near == null) {
+      return searchPrioritized(query, limit: limit);
+    }
+    // FTS liefert Treffer ohne Ortsbezug. Mehr holen, damit die nahen
+    // ueberhaupt dabei sind, dann je Typ nach Entfernung ordnen.
+    final candidates = await searchPrioritized(query, limit: limit * 10);
+    const distance = Distance();
+    final byType = <String, List<GeocoderResult>>{};
+    for (final r in candidates) {
+      byType.putIfAbsent(r.type, () => []).add(r);
+    }
+    final ordered = <GeocoderResult>[];
+    for (final group in byType.values) {
+      group.sort(
+        (a, b) =>
+            distance(near, a.location).compareTo(distance(near, b.location)),
+      );
+      ordered.addAll(group);
+    }
+    return ordered.take(limit).toList();
+  }
 
   /// Initialize geocoder with a names database
   /// Returns true if database was loaded successfully
@@ -51,14 +77,20 @@ class OfflineGeocoder implements PlaceSearch {
 
       final file = File(namesDatabasePath);
       if (!file.existsSync()) {
-        MapErrorHandler.logDebug('Database not found: $namesDatabasePath', context: 'geocoder');
+        MapErrorHandler.logDebug(
+          'Database not found: $namesDatabasePath',
+          context: 'geocoder',
+        );
         return false;
       }
 
       // Close previous database if open
       await _database?.close();
 
-      MapErrorHandler.logDebug('Attempting to open database: $namesDatabasePath', context: 'geocoder');
+      MapErrorHandler.logDebug(
+        'Attempting to open database: $namesDatabasePath',
+        context: 'geocoder',
+      );
       _database = await openDatabase(namesDatabasePath, readOnly: true);
       _currentNamesDb = namesDatabasePath;
 
@@ -68,14 +100,20 @@ class OfflineGeocoder implements PlaceSearch {
       );
 
       if (tables.isEmpty) {
-        MapErrorHandler.logDebug('Required tables not found in database', context: 'geocoder');
+        MapErrorHandler.logDebug(
+          'Required tables not found in database',
+          context: 'geocoder',
+        );
         await _database?.close();
         _database = null;
         _currentNamesDb = null;
         return false;
       }
 
-      MapErrorHandler.logDebug('Initialized with $namesDatabasePath', context: 'geocoder');
+      MapErrorHandler.logDebug(
+        'Initialized with $namesDatabasePath',
+        context: 'geocoder',
+      );
       return true;
     } catch (e) {
       MapErrorHandler.logError('Error initializing: $e', context: 'geocoder');
@@ -192,7 +230,10 @@ class OfflineGeocoder implements PlaceSearch {
 
       return allResults;
     } catch (e) {
-      MapErrorHandler.logError('Prioritized search error: $e', context: 'geocoder');
+      MapErrorHandler.logError(
+        'Prioritized search error: $e',
+        context: 'geocoder',
+      );
       return [];
     }
   }
@@ -211,12 +252,18 @@ class OfflineGeocoder implements PlaceSearch {
         await dbFile.writeAsBytes(
           data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
         );
-        MapErrorHandler.logDebug('Copied database from assets to $dbPath', context: 'geocoder');
+        MapErrorHandler.logDebug(
+          'Copied database from assets to $dbPath',
+          context: 'geocoder',
+        );
       }
 
       return dbPath;
     } catch (e) {
-      MapErrorHandler.logError('Error copying database: $e', context: 'geocoder');
+      MapErrorHandler.logError(
+        'Error copying database: $e',
+        context: 'geocoder',
+      );
       return null;
     }
   }
