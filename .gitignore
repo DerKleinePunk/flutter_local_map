@@ -55,3 +55,6 @@ scripts/node_modules/
 
 # Claude Code: lokale Berechtigungen bleiben pro Entwickler
 .claude/settings.local.json
+
+# Glyphen fuer den Raster-Schritt, liegt nicht mehr im Baum (siehe README)
+scripts/styles.zip

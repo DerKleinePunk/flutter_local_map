@@ -445,6 +445,7 @@ def unpack_styles_zip_to_tmp(tmp_dir: Path) -> None:
         print("[error] Keine styles.zip gefunden. Erwartete Pfade:")
         for candidate in STYLES_ZIP_CANDIDATES:
             print(f"       - {candidate}")
+        print("       Holen mit: git lfs install && git restore --source=1da5f2b scripts/styles.zip")
         sys.exit(1)
 
     try:

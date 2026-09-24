@@ -25,7 +25,7 @@ Die Entscheidung erfolgt zur Laufzeit anhand der MBTiles-Metadaten (`format`, `m
 - Flutter SDK (Dart SDK gemaess [pubspec.yaml](pubspec.yaml))
 - Aktivierter Desktop-Support in Flutter
 - Fuer lokale Tile-Erzeugung: Docker (optional zusaetzlich Python-Skripte)
-- Fuer den Raster-Schritt: `git-lfs` (wird fuer `scripts/styles.zip` benoetigt – `sudo apt install git-lfs && git lfs install`)
+- Fuer den Raster-Schritt: `scripts/styles.zip` (Glyphen, 64 MB). Die Datei liegt nicht mehr im Arbeitsbaum, damit Projekte, die `local_map` per Git einbinden, sie nicht bei jedem `pub get` mitladen. Einmalig holen mit `git-lfs` (`sudo apt install git-lfs && git lfs install`) und `git restore --source=1da5f2b scripts/styles.zip`; sie ist danach per `.gitignore` ausgeschlossen.
 - Fuer den experimentellen MapLibre-Renderer: Node.js + npm (getestet mit Node 24.x)
 - Fuer `scripts/render_raster_test.py`: Python-Pakete `requests` und `tqdm` (Ubuntu: `sudo apt install python3-requests python3-tqdm`)
 - Fuer `maplibre_native` unter Ubuntu: OpenGL/UV-Runtime (`sudo apt install libopengl0 libuv1`)
