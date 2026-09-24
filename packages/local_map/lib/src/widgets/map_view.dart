@@ -6,6 +6,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' show Distance, LengthUnit;
 import 'package:flutter_map_mbtiles/flutter_map_mbtiles.dart';
 import 'package:mbtiles/mbtiles.dart';
 import 'package:sqlite3/sqlite3.dart' as sqlite;
@@ -17,6 +18,7 @@ import '../config/map_config.dart';
 import '../controller/local_map_controller.dart';
 import '../services/map_camera_bounds.dart';
 import '../services/map_error_handler.dart';
+import '../navigation/heading_filter.dart';
 import '../services/offline_geocoder.dart';
 
 /// Farben und Maße der Ebenen, die [MapView] über die Kacheln legt.
@@ -64,19 +66,33 @@ class MapView extends StatefulWidget {
 
   final MapLayerStyle layerStyle;
 
+  /// Wo das Fahrzeug im Navigationsmodus (Fahrtrichtung oben) steht, als
+  /// Anteil der Kartenhöhe von oben. 0,72 lässt gut zwei Drittel der Karte
+  /// für die Strecke voraus.
+  final double navigationAnchor;
+
+  /// Überblendzeit der Kamera zwischen zwei Positionsmeldungen. Etwas
+  /// kürzer als der Meldetakt (1 Hz), damit die Bewegung vor der nächsten
+  /// Meldung ankommt. [Duration.zero] springt ohne Überblendung.
+  final Duration followAnimation;
+
   const MapView({
     super.key,
     this.mbtilesPath,
     this.config,
     this.controller,
     this.layerStyle = const MapLayerStyle(),
-  });
+    this.navigationAnchor = 0.72,
+    this.followAnimation = const Duration(milliseconds: 900),
+  }) : assert(navigationAnchor >= 0.5 && navigationAnchor < 1);
 
   @override
   State<MapView> createState() => _MapViewState();
 }
 
-class _MapViewState extends State<MapView> implements LocalMapViewHandle {
+class _MapViewState extends State<MapView>
+    with SingleTickerProviderStateMixin
+    implements LocalMapViewHandle {
   static const Set<String> _knownVectorSourceAliases = {
     'openmaptiles',
     'versatiles-shortbread',
@@ -119,7 +135,18 @@ class _MapViewState extends State<MapView> implements LocalMapViewHandle {
   bool _isLoading = true;
   String? _errorMessage;
 
+  /// Überblendung zwischen zwei Positionsmeldungen. [_shown] ist, was der
+  /// Pfeil gerade zeigt; die Kamera folgt ihm, solange der Folgemodus an ist.
+  late final AnimationController _follow;
+  _Pose? _followFrom;
+  _Pose? _followTo;
+  final ValueNotifier<_Pose?> _shown = ValueNotifier<_Pose?>(null);
+
   static const Set<String> _rasterFormats = {'png', 'jpg', 'jpeg', 'webp'};
+
+  /// Weiter als das wird nicht ueberblendet, sondern gesprungen. 250 m
+  /// zwischen zwei Meldungen im Sekundentakt waeren 900 km/h.
+  static const double _maxBlendMeters = 250;
 
   List<String> get _localVectorStyleAssets => _config.vectorStyleAssets;
 
@@ -138,6 +165,8 @@ class _MapViewState extends State<MapView> implements LocalMapViewHandle {
     _selectedVectorStyleAssetIndex = _localVectorStyleAssets.isEmpty
         ? 0
         : _config.initialVectorStyleIndex % _localVectorStyleAssets.length;
+    _follow = AnimationController(vsync: this, duration: widget.followAnimation)
+      ..addListener(_onFollowTick);
     _controller.attachView(this);
     _initializeTileProvider();
   }
@@ -759,6 +788,8 @@ class _MapViewState extends State<MapView> implements LocalMapViewHandle {
 
   @override
   void dispose() {
+    _follow.dispose();
+    _shown.dispose();
     _controller.detachView(this);
     _disposeTileResources();
     // Nur den selbst angelegten Controller entsorgen - ein uebergebener
@@ -832,9 +863,68 @@ class _MapViewState extends State<MapView> implements LocalMapViewHandle {
   Future<void> cycleVectorStyle() => _cycleVectorStyle();
 
   @override
-  void followPosition(PositionFix fix) {
+  void positionChanged(PositionFix fix) {
+    final target = _Pose(
+      fix.position,
+      _controller.heading ?? fix.headingDegrees ?? 0,
+    );
+    final from = _shown.value;
+    // Weite Spruenge (Tour beginnt von vorn, erster Fix nach langer Pause)
+    // nicht ueberblenden - die Kamera wuerde quer ueber die Karte fliegen.
+    final jump =
+        from != null &&
+        const Distance().as(LengthUnit.Meter, from.position, target.position) >
+            _maxBlendMeters;
+    if (from == null || jump || widget.followAnimation == Duration.zero) {
+      _follow.stop();
+      _showPose(target);
+      return;
+    }
+    _followFrom = from;
+    _followTo = target;
+    _follow.duration = widget.followAnimation;
+    _follow.forward(from: 0);
+  }
+
+  @override
+  void resetRotation() {
     if (!_mapReady) return;
-    _mapController.move(fix.position, _mapController.camera.zoom);
+    _mapController.rotate(0);
+  }
+
+  void _onFollowTick() {
+    final from = _followFrom;
+    final to = _followTo;
+    if (from == null || to == null) return;
+    _showPose(_Pose.lerp(from, to, _follow.value));
+  }
+
+  /// Setzt den Pfeil auf [pose] und fuehrt die Kamera nach, wenn sie folgt.
+  void _showPose(_Pose pose) {
+    _shown.value = pose;
+    if (!_mapReady || !_controller.followPosition) return;
+
+    final camera = _mapController.camera;
+    final zoom = camera.zoom;
+    if (!_controller.headingUp) {
+      _mapController.move(pose.position, zoom);
+      return;
+    }
+
+    // Fahrtrichtung oben: die Karte um -Kurs drehen (flutter_map dreht die
+    // Ebenen im Uhrzeigersinn) und die Bildmitte in Fahrtrichtung vor das
+    // Fahrzeug legen, damit es bei navigationAnchor steht. Gerechnet in
+    // projizierten Pixeln, dort zeigt Norden nach oben und die Richtung ist
+    // unabhaengig von der Drehung der Kamera.
+    final ahead =
+        (widget.navigationAnchor - 0.5) * camera.nonRotatedSize.height;
+    final rad = pose.heading * math.pi / 180;
+    final vehicle = camera.projectAtZoom(pose.position, zoom);
+    final center = camera.unprojectAtZoom(
+      vehicle + Offset(math.sin(rad), -math.cos(rad)) * ahead,
+      zoom,
+    );
+    _mapController.moveAndRotate(center, zoom, -pose.heading);
   }
 
   // --- Darstellung -----------------------------------------------------------
@@ -918,6 +1008,15 @@ class _MapViewState extends State<MapView> implements LocalMapViewHandle {
           _controller.reportZoom(_mapController.camera.zoom);
         },
         onTap: (tapPosition, latLng) => _controller.clearHighlight(),
+        // Wer die Karte mit dem Finger verschiebt, will woanders hinsehen -
+        // der Folgemodus endet, bis der Gastgeber ihn wieder einschaltet.
+        // Zoomen beendet ihn nicht.
+        onMapEvent: (event) {
+          if (event is MapEventMoveStart &&
+              event.source == MapEventSource.dragStart) {
+            _controller.followPosition = false;
+          }
+        },
         onPositionChanged: (camera, hasGesture) {
           if (!mounted) return;
           if ((camera.zoom - _currentZoom).abs() < 0.01) return;
@@ -941,7 +1040,8 @@ class _MapViewState extends State<MapView> implements LocalMapViewHandle {
         _overlay(_buildHighlightLayer),
         _overlay(_buildRouteLayer),
         _overlay(_buildEndpointLayer),
-        _overlay(_buildPositionLayer),
+        // Haengt an der Ueberblendung, nicht am Controller.
+        _buildPositionLayer(context),
         // Quellenangabe. Sie liegt links unten, damit die Bedienelemente
         // des Gastgebers rechts sie nicht verdecken - sie muss sichtbar
         // bleiben.
@@ -1085,41 +1185,47 @@ class _MapViewState extends State<MapView> implements LocalMapViewHandle {
   }
 
   Widget _buildPositionLayer(BuildContext context) {
-    final fix = _controller.position;
-    if (fix == null) return const SizedBox.shrink();
     final colorScheme = Theme.of(context).colorScheme;
-    final heading = fix.headingDegrees;
-    return MarkerLayer(
-      markers: [
-        Marker(
-          point: fix.position,
-          width: 42,
-          height: 42,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: widget.layerStyle.positionColor ?? colorScheme.primary,
-              shape: BoxShape.circle,
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x44000000),
-                  blurRadius: 8,
-                  offset: Offset(0, 3),
+    return ValueListenableBuilder<_Pose?>(
+      valueListenable: _shown,
+      builder: (context, pose, _) {
+        if (pose == null) return const SizedBox.shrink();
+        return MarkerLayer(
+          markers: [
+            Marker(
+              point: pose.position,
+              width: 42,
+              height: 42,
+              // Dreht mit der Karte: der Pfeil zeigt in Kartenrichtung den
+              // Kurs, bei Fahrtrichtung oben also nach oben.
+              rotate: false,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: widget.layerStyle.positionColor ?? colorScheme.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x44000000),
+                      blurRadius: 8,
+                      offset: Offset(0, 3),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            // Der Pfeil zeigt in Fahrtrichtung; ohne Kurs nach Norden.
-            child: Transform.rotate(
-              angle: (heading ?? 0) * math.pi / 180,
-              child: Icon(
-                Icons.navigation,
-                size: 20,
-                color:
-                    widget.layerStyle.onPositionColor ?? colorScheme.onPrimary,
+                child: Transform.rotate(
+                  angle: pose.heading * math.pi / 180,
+                  child: Icon(
+                    Icons.navigation,
+                    size: 20,
+                    color:
+                        widget.layerStyle.onPositionColor ??
+                        colorScheme.onPrimary,
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-      ],
+          ],
+        );
+      },
     );
   }
 }
@@ -1192,4 +1298,20 @@ class _PulsingTargetMarkerState extends State<_PulsingTargetMarker> {
       },
     );
   }
+}
+
+/// Position und Kurs, wie sie der Pfeil gerade zeigt.
+class _Pose {
+  final LatLng position;
+  final double heading;
+
+  const _Pose(this.position, this.heading);
+
+  static _Pose lerp(_Pose a, _Pose b, double t) => _Pose(
+    LatLng(
+      a.position.latitude + (b.position.latitude - a.position.latitude) * t,
+      a.position.longitude + (b.position.longitude - a.position.longitude) * t,
+    ),
+    (a.heading + shortestTurn(a.heading, b.heading) * t) % 360,
+  );
 }

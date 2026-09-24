@@ -6,6 +6,8 @@ import 'package:latlong2/latlong.dart';
 
 import '../api/position.dart';
 import '../api/routing.dart';
+import '../navigation/heading_filter.dart';
+import '../navigation/route_progress.dart';
 import '../services/offline_geocoder.dart';
 
 /// Was eine eingehängte [MapView] für den Controller erledigt.
@@ -17,7 +19,14 @@ abstract interface class LocalMapViewHandle {
   void fitRoute(List<LatLng> points);
   void stepZoom(int direction);
   Future<void> cycleVectorStyle();
-  void followPosition(PositionFix fix);
+
+  /// Eine neue Position ist da, oder Folgemodus bzw. Ausrichtung haben sich
+  /// geändert. Die Ansicht bewegt den Pfeil und - wenn [followPosition] an
+  /// ist - die Kamera, gedreht nach [heading], falls [headingUp] an ist.
+  void positionChanged(PositionFix fix);
+
+  /// Dreht die Karte zurück auf Norden oben.
+  void resetRotation();
 }
 
 /// Zustand und Befehle der Karte, für die Bedienung durch den Gastgeber.
@@ -62,6 +71,10 @@ class LocalMapController extends ChangeNotifier {
   bool? _routingAvailable;
   PositionFix? _position;
   bool _followPosition = true;
+  bool _headingUp = false;
+  final HeadingFilter _headingFilter = HeadingFilter();
+  RouteTracker? _tracker;
+  RouteProgress? _progress;
   bool _isVectorMode = false;
   String? _activeStyleName;
   double _minZoom = 0;
@@ -98,11 +111,29 @@ class LocalMapController extends ChangeNotifier {
     if (_followPosition == value) return;
     _followPosition = value;
     _notify();
-    final fix = _position;
-    if (value && fix != null) {
-      _view?.followPosition(fix);
-    }
+    _refollow();
   }
+
+  /// Ob die Karte in Fahrtrichtung gedreht wird, solange sie der Position
+  /// folgt. Aus: Norden oben.
+  bool get headingUp => _headingUp;
+  set headingUp(bool value) {
+    if (_headingUp == value) return;
+    _headingUp = value;
+    _notify();
+    if (!value) {
+      _view?.resetRotation();
+    }
+    _refollow();
+  }
+
+  /// Der Kurs, nach dem die Karte gedreht wird: der GPS-Kurs, geglättet und
+  /// im Stand eingefroren. `null`, solange keiner bekannt ist.
+  double? get heading => _headingFilter.heading;
+
+  /// Stand der Position auf der Route: nächstes Manöver, Restweg, Abstand.
+  /// `null` ohne Route oder ohne Position.
+  RouteProgress? get progress => _progress;
 
   /// Aktueller Zoom der Kamera.
   ValueListenable<double> get zoom => _zoom;
@@ -127,9 +158,12 @@ class LocalMapController extends ChangeNotifier {
     return _updateRoute();
   }
 
-  /// Hebt [place] hervor und bewegt die Kamera dorthin.
+  /// Hebt [place] hervor und bewegt die Kamera dorthin. Der Folgemodus
+  /// endet dabei, sonst holte die nächste Positionsmeldung die Kamera
+  /// sofort zurück.
   void showPlace(GeocoderResult place) {
     _highlightedPlace = place;
+    _followPosition = false;
     _notify();
     _view?.moveToPlace(place);
   }
@@ -182,6 +216,9 @@ class LocalMapController extends ChangeNotifier {
       if (_disposed || request != _routeRequest) return;
       _setRoute(result);
       _routingAvailable = true;
+      // Erst die Übersicht über die ganze Route; die Fahrt beginnt, wenn
+      // der Gastgeber den Folgemodus wieder einschaltet.
+      _followPosition = false;
       _view?.fitRoute(_routePoints);
     } catch (e) {
       if (_disposed || request != _routeRequest) return;
@@ -200,14 +237,24 @@ class LocalMapController extends ChangeNotifier {
     _routePoints = route == null
         ? const <LatLng>[]
         : route.geometry.map((p) => p.toLatLng()).toList(growable: false);
+    _tracker = route == null ? null : RouteTracker(route);
+    final fix = _position;
+    _progress = fix == null ? null : _tracker?.update(fix.position);
   }
 
   void _onPosition(PositionFix fix) {
     if (_disposed) return;
     _position = fix;
+    _headingFilter.update(fix);
+    _progress = _tracker?.update(fix.position);
     _notify();
-    if (_followPosition) {
-      _view?.followPosition(fix);
+    _view?.positionChanged(fix);
+  }
+
+  void _refollow() {
+    final fix = _position;
+    if (_followPosition && fix != null) {
+      _view?.positionChanged(fix);
     }
   }
 

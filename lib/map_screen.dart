@@ -187,8 +187,56 @@ class _MapScreenState extends State<MapScreen> {
           ),
         ),
       Positioned(top: 84, right: 12, child: _buildGpsSimulatorChip(context)),
-      Positioned(bottom: 16, right: 12, child: _buildZoomButtons(context)),
+      Positioned(
+        bottom: 16,
+        right: 12,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildNavigationButtons(context),
+            const SizedBox(height: 12),
+            _buildZoomButtons(context),
+          ],
+        ),
+      ),
+      if (_map.progress?.nextManeuver != null)
+        Positioned(
+          bottom: 16,
+          left: 200,
+          right: 200,
+          child: _ManeuverCard(progress: _map.progress!),
+        ),
     ];
+  }
+
+  /// Folgen und Ausrichtung - die beiden Schalter des Navigationsmodus.
+  Widget _buildNavigationButtons(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Material(
+      color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.92),
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _ZoomButton(
+            icon: _map.followPosition
+                ? Icons.my_location
+                : Icons.location_searching,
+            tooltip: _map.followPosition ? 'Folgt der Position' : 'Folgen',
+            onPressed: _map.position == null
+                ? null
+                : () => _map.followPosition = !_map.followPosition,
+          ),
+          Divider(height: 1, thickness: 1, color: colorScheme.outlineVariant),
+          _ZoomButton(
+            icon: _map.headingUp ? Icons.navigation : Icons.explore,
+            tooltip: _map.headingUp ? 'Fahrtrichtung oben' : 'Norden oben',
+            onPressed: () => _map.headingUp = !_map.headingUp,
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildRoutingBadge(BuildContext context) {
@@ -398,6 +446,67 @@ class _ZoomBadge extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Nächstes Manöver mit Entfernung, darunter Restweg und Restzeit.
+class _ManeuverCard extends StatelessWidget {
+  const _ManeuverCard({required this.progress});
+
+  final RouteProgress progress;
+
+  static String _distance(double meters) => meters < 1000
+      ? '${(meters / 10).round() * 10} m'
+      : '${(meters / 1000).toStringAsFixed(1)} km';
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final maneuver = progress.nextManeuver!;
+    final toNext = progress.distanceToNextManeuverMeters ?? 0;
+    final minutes = (progress.remainingSeconds / 60).round();
+
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0.95),
+      elevation: 4,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Text(
+              _distance(toNext),
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    maneuver.instruction,
+                    style: theme.textTheme.titleMedium,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    'noch ${_distance(progress.remainingMeters)} • $minutes min',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

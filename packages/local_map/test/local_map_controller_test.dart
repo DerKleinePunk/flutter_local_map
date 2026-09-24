@@ -143,4 +143,64 @@ void main() {
     // Nach dispose haengt der Controller nicht mehr an der Quelle.
     expect(source.controller.hasListener, isFalse);
   });
+
+  test('mit Route und Position gibt es Fortschritt', () async {
+    final routing = _FakeRouting();
+    final source = _FakePositions();
+    final map = LocalMapController(
+      routingProvider: routing,
+      positionSource: source,
+    );
+    addTearDown(map.dispose);
+
+    await map.setStart(_place('A', 50, 9));
+    final done = map.setDestination(_place('B', 50.1, 9.1));
+    routing.pending.single.complete(_result(13));
+    await done;
+    expect(map.progress, isNull, reason: 'noch keine Position');
+
+    source.controller.add(
+      const PositionFix(
+        position: LatLng(50.05, 9.05),
+        headingDegrees: 40,
+        speedMps: 15,
+      ),
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    final progress = map.progress!;
+    expect(progress.distanceToRouteMeters, lessThan(5));
+    expect(progress.remainingMeters, closeTo(progress.traveledMeters, 50));
+    expect(map.heading, 40);
+  });
+
+  test('Suche und neue Route beenden den Folgemodus', () async {
+    final routing = _FakeRouting();
+    final map = LocalMapController(routingProvider: routing);
+    addTearDown(map.dispose);
+
+    expect(map.followPosition, isTrue);
+    map.showPlace(_place('A', 50, 9));
+    expect(map.followPosition, isFalse);
+
+    map.followPosition = true;
+    await map.setStart(_place('A', 50, 9));
+    final done = map.setDestination(_place('B', 50.1, 9.1));
+    routing.pending.single.complete(_result(13));
+    await done;
+    expect(map.followPosition, isFalse);
+  });
+
+  test('Fahrtrichtung oben laesst sich schalten', () {
+    final map = LocalMapController();
+    addTearDown(map.dispose);
+    var notified = 0;
+    map.addListener(() => notified++);
+
+    expect(map.headingUp, isFalse);
+    map.headingUp = true;
+    map.headingUp = true;
+    expect(map.headingUp, isTrue);
+    expect(notified, 1);
+  });
 }
