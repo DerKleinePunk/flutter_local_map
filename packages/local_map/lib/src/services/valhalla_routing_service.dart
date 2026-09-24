@@ -1,63 +1,12 @@
 import 'package:dio/dio.dart';
 import 'package:latlong2/latlong.dart';
 
-/// Repräsentiert ein Koordinatenpaar im WGS84-Format.
-class RoutingPoint {
-  final double lat;
-  final double lon;
+import '../api/routing.dart';
 
-  const RoutingPoint({required this.lat, required this.lon});
-
-  factory RoutingPoint.fromLatLng(LatLng value) =>
-      RoutingPoint(lat: value.latitude, lon: value.longitude);
-
-  LatLng toLatLng() => LatLng(lat, lon);
-}
-
-/// Einzelnes Turn-by-Turn-Manöver aus einer Valhalla-Antwort.
-class RoutingManeuver {
-  final String instruction;
-  final double lengthKm;
-  final int timeSeconds;
-  final int? type;
-
-  const RoutingManeuver({
-    required this.instruction,
-    required this.lengthKm,
-    required this.timeSeconds,
-    required this.type,
-  });
-}
-
-/// Ergebnis einer Routingabfrage.
-class RoutingResult {
-  final List<RoutingPoint> geometry;
-  final double distanceMeters;
-  final int durationSeconds;
-  final List<RoutingManeuver> maneuvers;
-
-  const RoutingResult({
-    required this.geometry,
-    required this.distanceMeters,
-    required this.durationSeconds,
-    required this.maneuvers,
-  });
-}
-
-/// Fehlerklasse für nachvollziehbare Routing-Fehlermeldungen.
-class RoutingException implements Exception {
-  final String message;
-
-  const RoutingException(this.message);
-
-  @override
-  String toString() => 'RoutingException: $message';
-}
-
-/// HTTP-Client für lokales/offline Valhalla Routing.
+/// [RoutingProvider], der einen Valhalla-Server per HTTP fragt.
 ///
 /// Standard-Endpunkt: http://127.0.0.1:8002
-class ValhallaRoutingService {
+class ValhallaRoutingService implements RoutingProvider {
   final Dio _dio;
   final Uri _baseUri;
 
@@ -75,6 +24,10 @@ class ValhallaRoutingService {
           ),
       _baseUri = baseUri ?? Uri.parse('http://127.0.0.1:8002');
 
+  /// Adresse des Servers, für Meldungen an den Benutzer.
+  Uri get baseUri => _baseUri;
+
+  @override
   Future<RoutingResult> route({
     required LatLng start,
     required LatLng end,
@@ -120,6 +73,7 @@ class ValhallaRoutingService {
     }
   }
 
+  @override
   Future<bool> isAvailable() async {
     final uri = _baseUri.resolve('/status');
 
@@ -154,6 +108,7 @@ class ValhallaRoutingService {
         continue;
       }
 
+      final legShapeOffset = geometry.length;
       final shape = legRaw['shape'];
       if (shape is String && shape.isNotEmpty) {
         geometry.addAll(_decodePolyline(shape, precision: 6));
@@ -181,6 +136,8 @@ class ValhallaRoutingService {
           final length = maneuverRaw['length'];
           final time = maneuverRaw['time'];
           final type = maneuverRaw['type'];
+          final beginShapeIndex = maneuverRaw['begin_shape_index'];
+          final streetNames = maneuverRaw['street_names'];
 
           maneuvers.add(
             RoutingManeuver(
@@ -188,6 +145,15 @@ class ValhallaRoutingService {
               lengthKm: length is num ? length.toDouble() : 0.0,
               timeSeconds: time is num ? time.toInt() : 0,
               type: type is int ? type : null,
+              // Jede Leg zaehlt ihre Indizes ab 0, die Geometrie haengt die
+              // Legs aber aneinander - daher um den bisherigen Umfang
+              // verschieben.
+              beginShapeIndex: beginShapeIndex is int
+                  ? legShapeOffset + beginShapeIndex
+                  : null,
+              streetNames: streetNames is List
+                  ? streetNames.whereType<String>().toList()
+                  : const <String>[],
             ),
           );
         }

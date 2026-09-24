@@ -6,6 +6,12 @@
 /// * [MapView] rendert die Karte, [DownloadOverlay] den Erst-Download.
 library;
 
+// Schnittstellen, ueber die der Gastgeber Routing, Position und Suche
+// selbst liefern kann.
+export 'src/api/place_search.dart';
+export 'src/api/position.dart';
+export 'src/api/routing.dart';
+
 export 'src/config/map_config.dart';
 export 'src/services/gps_nmea_simulator_service.dart';
 export 'src/services/map_downloader.dart';

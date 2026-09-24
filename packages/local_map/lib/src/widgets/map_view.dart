@@ -183,7 +183,9 @@ class _MapViewState extends State<MapView> {
     }
 
     try {
-      _gpsSimulator.start(interval: const Duration(seconds: 5), loop: true);
+      // Im Takt der Aufzeichnung (1 Hz). Der fruehere feste 5-s-Takt liess
+      // die Karte springen und spielte eine 51-min-Tour in gut vier Stunden.
+      _gpsSimulator.start(loop: true);
       if (!mounted) {
         return;
       }
@@ -211,7 +213,7 @@ class _MapViewState extends State<MapView> {
       _isRoutingAvailable = available;
       _routingMessage = available
           ? null
-          : 'Valhalla nicht erreichbar (127.0.0.1:8002).';
+          : 'Valhalla nicht erreichbar (${_config.valhallaBaseUri.authority}).';
     });
   }
 

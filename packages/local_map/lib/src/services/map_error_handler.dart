@@ -50,9 +50,28 @@ class MapError {
   String toString() => userMessage;
 }
 
+/// Schwere einer Meldung an [MapErrorHandler.sink].
+enum MapLogLevel { debug, info, error }
+
+/// Nimmt die Meldungen der Karte entgegen, siehe [MapErrorHandler.sink].
+typedef MapLogSink =
+    void Function(
+      MapLogLevel level,
+      String message, {
+      String? context,
+      Object? error,
+      StackTrace? stackTrace,
+    });
+
 /// Service zur Klassifizierung und Logging von Map-Fehlern.
 class MapErrorHandler {
   static const String _logTag = '[MapError]';
+
+  /// Leitet alle Meldungen der Karte an das Logging des Gastgebers um.
+  ///
+  /// Ohne Angabe gehen sie per `debugPrint` mit dem Präfix `[MapError]` auf
+  /// die Konsole. Debug-Meldungen kommen in beiden Fällen nur im Debug-Build.
+  static MapLogSink? sink;
 
   /// Klassifiziert einen Fehler und gibt strukturierte Fehlerinformation zurück.
   static MapError classify(
@@ -181,10 +200,16 @@ class MapErrorHandler {
 
   /// Strukturiertes Debug-Logging mit Kontext.
   static void logDebug(String message, {String? context}) {
-    if (kDebugMode) {
-      final contextStr = context != null ? ' [$context]' : '';
-      debugPrint('$_logTag$contextStr $message');
+    if (!kDebugMode) {
+      return;
     }
+    final target = sink;
+    if (target != null) {
+      target(MapLogLevel.debug, message, context: context);
+      return;
+    }
+    final contextStr = context != null ? ' [$context]' : '';
+    debugPrint('$_logTag$contextStr $message');
   }
 
   /// Meldungen ueber den Zustand der Karte, die auch im Release sichtbar sind.
@@ -193,6 +218,11 @@ class MapErrorHandler {
   /// nachvollziehen koennen muss - etwa welcher Style tatsaechlich geladen
   /// wurde. Alles Weitere gehoert in [logDebug].
   static void logInfo(String message, {String? context}) {
+    final target = sink;
+    if (target != null) {
+      target(MapLogLevel.info, message, context: context);
+      return;
+    }
     final contextStr = context != null ? ' [$context]' : '';
     debugPrint('$_logTag INFO$contextStr: $message');
   }
@@ -216,6 +246,17 @@ class MapErrorHandler {
     StackTrace? stackTrace, [
     String? context,
   ]) {
+    final target = sink;
+    if (target != null) {
+      target(
+        MapLogLevel.error,
+        message,
+        context: context,
+        error: error,
+        stackTrace: stackTrace,
+      );
+      return;
+    }
     final contextStr = context != null ? ' [$context]' : '';
     debugPrint('$_logTag ERROR$contextStr: $message');
     if (error != null) {

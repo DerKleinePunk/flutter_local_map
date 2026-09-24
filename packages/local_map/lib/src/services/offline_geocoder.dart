@@ -1,10 +1,12 @@
 import 'package:flutter/services.dart';
-import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+
+import '../api/place_search.dart';
+import 'map_error_handler.dart';
 
 class GeocoderResult {
   final String name;
@@ -25,17 +27,19 @@ class GeocoderResult {
   String toString() => '$name ($type)';
 }
 
-class OfflineGeocoder {
-  static final OfflineGeocoder _instance = OfflineGeocoder._internal();
-
+/// [PlaceSearch] über eine lokale Namensdatenbank (SQLite mit FTS5).
+///
+/// Jede Instanz hält ihre eigene Verbindung. Wer sie anlegt, schließt sie
+/// auch wieder mit [close].
+class OfflineGeocoder implements PlaceSearch {
   Database? _database;
   String? _currentNamesDb;
 
-  factory OfflineGeocoder() {
-    return _instance;
-  }
+  OfflineGeocoder();
 
-  OfflineGeocoder._internal();
+  @override
+  Future<List<GeocoderResult>> searchPlaces(String query, {int limit = 15}) =>
+      searchPrioritized(query, limit: limit);
 
   /// Initialize geocoder with a names database
   /// Returns true if database was loaded successfully
@@ -47,14 +51,14 @@ class OfflineGeocoder {
 
       final file = File(namesDatabasePath);
       if (!file.existsSync()) {
-        debugPrint('[geocoder] Database not found: $namesDatabasePath');
+        MapErrorHandler.logDebug('Database not found: $namesDatabasePath', context: 'geocoder');
         return false;
       }
 
       // Close previous database if open
       await _database?.close();
 
-      debugPrint('[geocoder] Attempting to open database: $namesDatabasePath');
+      MapErrorHandler.logDebug('Attempting to open database: $namesDatabasePath', context: 'geocoder');
       _database = await openDatabase(namesDatabasePath, readOnly: true);
       _currentNamesDb = namesDatabasePath;
 
@@ -64,17 +68,17 @@ class OfflineGeocoder {
       );
 
       if (tables.isEmpty) {
-        debugPrint('[geocoder] Required tables not found in database');
+        MapErrorHandler.logDebug('Required tables not found in database', context: 'geocoder');
         await _database?.close();
         _database = null;
         _currentNamesDb = null;
         return false;
       }
 
-      debugPrint('[geocoder] Initialized with $namesDatabasePath');
+      MapErrorHandler.logDebug('Initialized with $namesDatabasePath', context: 'geocoder');
       return true;
     } catch (e) {
-      debugPrint('[geocoder] Error initializing: $e');
+      MapErrorHandler.logError('Error initializing: $e', context: 'geocoder');
       return false;
     }
   }
@@ -111,7 +115,7 @@ class OfflineGeocoder {
           )
           .toList();
     } catch (e) {
-      debugPrint('[geocoder] Search error: $e');
+      MapErrorHandler.logError('Search error: $e', context: 'geocoder');
       return [];
     }
   }
@@ -151,7 +155,7 @@ class OfflineGeocoder {
           )
           .toList();
     } catch (e) {
-      debugPrint('[geocoder] Search by type error: $e');
+      MapErrorHandler.logError('Search by type error: $e', context: 'geocoder');
       return [];
     }
   }
@@ -188,7 +192,7 @@ class OfflineGeocoder {
 
       return allResults;
     } catch (e) {
-      debugPrint('[geocoder] Prioritized search error: $e');
+      MapErrorHandler.logError('Prioritized search error: $e', context: 'geocoder');
       return [];
     }
   }
@@ -207,12 +211,12 @@ class OfflineGeocoder {
         await dbFile.writeAsBytes(
           data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes),
         );
-        debugPrint('[geocoder] Copied database from assets to $dbPath');
+        MapErrorHandler.logDebug('Copied database from assets to $dbPath', context: 'geocoder');
       }
 
       return dbPath;
     } catch (e) {
-      debugPrint('[geocoder] Error copying database: $e');
+      MapErrorHandler.logError('Error copying database: $e', context: 'geocoder');
       return null;
     }
   }

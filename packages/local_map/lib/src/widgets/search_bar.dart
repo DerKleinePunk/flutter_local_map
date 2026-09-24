@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import '../api/place_search.dart';
 import '../services/offline_geocoder.dart';
 
 /// Extensions for GeocoderResult to provide type labels and sorting priority
@@ -27,7 +28,7 @@ extension GeocoderResultExtension on GeocoderResult {
 
 class PlaceSearchBar extends StatefulWidget {
   final MapController mapController;
-  final OfflineGeocoder geocoder;
+  final PlaceSearch geocoder;
   final double initialZoom;
   final String hintText;
   final IconData prefixIcon;
@@ -110,7 +111,7 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
     try {
       final results =
           await (widget.searchDelegate?.call(query, 15) ??
-              widget.geocoder.searchPrioritized(query, limit: 15));
+              widget.geocoder.searchPlaces(query, limit: 15));
 
       // Results are already sorted by searchPrioritized, but ensure consistency
       results.sort(
@@ -214,57 +215,58 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
         ),
         // Suggestions dropdown
         if (_showSuggestions && (_isLoading || _suggestions.isNotEmpty))
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            constraints: const BoxConstraints(maxHeight: 300),
-            decoration: BoxDecoration(
+          // Material statt einer farbigen Box: ListTile zeichnet Hintergrund
+          // und Tintenwelle auf das naechste Material darunter. In einer
+          // DecoratedBox waeren sie unsichtbar, Flutter 3.47 meldet das.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Material(
               color: Colors.white,
+              elevation: 3,
+              shadowColor: Colors.black.withValues(alpha: 0.4),
               borderRadius: BorderRadius.circular(8),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
-            ),
-            child: _isLoading
-                ? const SizedBox(
-                    height: 60,
-                    child: Center(child: CircularProgressIndicator()),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: _suggestions.length,
-                    itemBuilder: (context, index) {
-                      final result = _suggestions[index];
-                      final subtitle = StringBuffer(result.typeLabel);
-                      if (result.detail != null) {
-                        subtitle.write(' • ${result.detail}');
-                      }
-                      subtitle.write(' • z${result.zoom}');
-                      return Listener(
-                        behavior: HitTestBehavior.opaque,
-                        onPointerDown: (_) {
-                          _isSelectingSuggestion = true;
-                          widget.onSuggestionPointerDown?.call(result);
-                          debugPrint(
-                            '[search] Pointer down on suggestion: ${result.name}',
+              clipBehavior: Clip.antiAlias,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 60,
+                        child: Center(child: CircularProgressIndicator()),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _suggestions.length,
+                        itemBuilder: (context, index) {
+                          final result = _suggestions[index];
+                          final subtitle = StringBuffer(result.typeLabel);
+                          if (result.detail != null) {
+                            subtitle.write(' • ${result.detail}');
+                          }
+                          subtitle.write(' • z${result.zoom}');
+                          return Listener(
+                            behavior: HitTestBehavior.opaque,
+                            onPointerDown: (_) {
+                              _isSelectingSuggestion = true;
+                              widget.onSuggestionPointerDown?.call(result);
+                              debugPrint(
+                                '[search] Pointer down on suggestion: ${result.name}',
+                              );
+                            },
+                            child: ListTile(
+                              leading: _getTypeIcon(result.type),
+                              title: Text(result.name),
+                              subtitle: Text(
+                                subtitle.toString(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              onTap: () => _selectPlace(result),
+                            ),
                           );
                         },
-                        child: ListTile(
-                          leading: _getTypeIcon(result.type),
-                          title: Text(result.name),
-                          subtitle: Text(
-                            subtitle.toString(),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          onTap: () => _selectPlace(result),
-                        ),
-                      );
-                    },
-                  ),
+                      ),
+              ),
+            ),
           ),
       ],
     );

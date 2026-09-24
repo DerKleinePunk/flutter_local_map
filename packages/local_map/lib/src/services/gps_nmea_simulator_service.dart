@@ -1,36 +1,49 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:path/path.dart' as p;
 
+import '../api/position.dart';
 import '../config/map_config.dart';
 
-class SimulatedGpsFix {
-  final LatLng position;
-  final DateTime? timestampUtc;
+/// Positionsmeldung aus einer NMEA-Aufzeichnung.
+class SimulatedGpsFix extends PositionFix {
   final String sourceSentence;
 
   const SimulatedGpsFix({
-    required this.position,
-    required this.timestampUtc,
+    required super.position,
+    required super.timestampUtc,
     required this.sourceSentence,
+    super.headingDegrees,
+    super.speedMps,
   });
 }
 
-class GpsNmeaSimulatorService {
+/// Spielt eine NMEA-Aufzeichnung als [PositionSource] ab.
+class GpsNmeaSimulatorService implements PositionSource {
+  /// Obergrenze fuer die Pause zwischen zwei Meldungen beim Abspielen im
+  /// Originaltakt. Luecken in der Aufzeichnung (Tunnel, Empfaenger aus)
+  /// sollen die Wiedergabe nicht minutenlang anhalten.
+  static const Duration maxReplayGap = Duration(seconds: 5);
+
+  static const double _knotsToMps = 0.514444;
+
   final StreamController<SimulatedGpsFix> _controller =
       StreamController<SimulatedGpsFix>.broadcast();
 
   final List<SimulatedGpsFix> _fixes = <SimulatedGpsFix>[];
 
   Timer? _timer;
+  bool _running = false;
   int _currentIndex = 0;
 
   Stream<SimulatedGpsFix> get fixes => _controller.stream;
 
-  bool get isRunning => _timer != null;
+  @override
+  Stream<PositionFix> get positions => _controller.stream;
+
+  bool get isRunning => _running;
   bool get hasData => _fixes.isNotEmpty;
   int get fixCount => _fixes.length;
 
@@ -77,17 +90,26 @@ class GpsNmeaSimulatorService {
     );
   }
 
-  void start({
-    Duration interval = const Duration(seconds: 1),
-    bool loop = true,
-  }) {
+  /// Startet die Wiedergabe.
+  ///
+  /// Ohne [interval] laeuft sie im Takt der Aufzeichnung, geteilt durch
+  /// [speedFactor]; Pausen sind auf [maxReplayGap] begrenzt. Mit [interval]
+  /// kommt jede Meldung in festem Abstand.
+  void start({Duration? interval, bool loop = true, double speedFactor = 1}) {
     if (_fixes.isEmpty) {
       throw Exception('Keine GPS-Fixes geladen.');
     }
+    if (speedFactor <= 0) {
+      throw ArgumentError.value(speedFactor, 'speedFactor', 'muss > 0 sein');
+    }
 
     stop();
+    _running = true;
 
-    _timer = Timer.periodic(interval, (_) {
+    void emitNext() {
+      if (!_running) {
+        return;
+      }
       if (_currentIndex >= _fixes.length) {
         if (!loop) {
           stop();
@@ -96,12 +118,46 @@ class GpsNmeaSimulatorService {
         _currentIndex = 0;
       }
 
-      _controller.add(_fixes[_currentIndex]);
+      final fix = _fixes[_currentIndex];
+      _controller.add(fix);
       _currentIndex++;
-    });
+
+      final next = _currentIndex < _fixes.length ? _fixes[_currentIndex] : null;
+      _timer = Timer(
+        interval ?? _replayDelay(fix, next, speedFactor),
+        emitNext,
+      );
+    }
+
+    // Die erste Meldung sofort, damit die Karte nicht erst eine Pause lang
+    // auf den Positionspfeil wartet.
+    _timer = Timer(Duration.zero, emitNext);
+  }
+
+  Duration _replayDelay(
+    SimulatedGpsFix current,
+    SimulatedGpsFix? next,
+    double speedFactor,
+  ) {
+    final from = current.timestampUtc;
+    final to = next?.timestampUtc;
+    var gap = const Duration(seconds: 1);
+    if (from != null && to != null) {
+      gap = to.difference(from);
+      // Mitternacht oder eine Aufzeichnung ohne Datum: die Differenz wird
+      // negativ. Dann im Sekundentakt weiter.
+      if (gap.isNegative) {
+        gap = const Duration(seconds: 1);
+      }
+    }
+    if (gap > maxReplayGap) {
+      gap = maxReplayGap;
+    }
+    return gap * (1 / speedFactor);
   }
 
   void stop() {
+    _running = false;
     _timer?.cancel();
     _timer = null;
   }
@@ -116,7 +172,8 @@ class GpsNmeaSimulatorService {
   }
 
   List<SimulatedGpsFix> _parseFixes(List<String> lines) {
-    final parsed = <SimulatedGpsFix>[];
+    final rmc = <SimulatedGpsFix>[];
+    final gga = <SimulatedGpsFix>[];
 
     for (final raw in lines) {
       final line = raw.trim();
@@ -134,17 +191,21 @@ class GpsNmeaSimulatorService {
       if (type == r'$GPRMC') {
         final fix = _parseRmc(fields, payload);
         if (fix != null) {
-          parsed.add(fix);
+          rmc.add(fix);
         }
       } else if (type == r'$GPGGA') {
         final fix = _parseGga(fields, payload);
         if (fix != null) {
-          parsed.add(fix);
+          gga.add(fix);
         }
       }
     }
 
-    return parsed;
+    // Ein Empfaenger schickt je Sekunde meist beide Saetze fuer dieselbe
+    // Position. Gemischt kaeme jede Position doppelt, und die GGA-Haelfte
+    // haette keinen Kurs - die Karte wuerde im Sekundentakt hin- und
+    // herdrehen. RMC hat Kurs und Geschwindigkeit und gewinnt daher.
+    return rmc.isNotEmpty ? rmc : gga;
   }
 
   SimulatedGpsFix? _parseRmc(List<String> fields, String source) {
@@ -165,10 +226,14 @@ class GpsNmeaSimulatorService {
     }
 
     final timestamp = _parseUtcDateTime(fields[1], fields[9]);
+    final speedKnots = double.tryParse(fields[7]);
+    final course = double.tryParse(fields[8]);
     return SimulatedGpsFix(
       position: LatLng(lat, lon),
       timestampUtc: timestamp,
       sourceSentence: source,
+      speedMps: speedKnots == null ? null : speedKnots * _knotsToMps,
+      headingDegrees: course == null ? null : course % 360,
     );
   }
 
@@ -190,11 +255,6 @@ class GpsNmeaSimulatorService {
     }
 
     final timestamp = _parseUtcDateTime(fields[1], null);
-    if (kDebugMode) {
-      final now = DateTime.now().toIso8601String();
-      print('[$now] Parsed GGA fix: lat=$lat, lon=$lon, time=$timestamp');
-    }
-
     return SimulatedGpsFix(
       position: LatLng(lat, lon),
       timestampUtc: timestamp,
