@@ -105,6 +105,56 @@ MapView(mbtilesPath: path, config: myConfig)
 
 Ohne `config:` greifen Widgets und Services auf `MapConfig.defaults` zurück.
 
+## Steuern: LocalMapController
+
+`MapView` zeichnet nur die Karte: Kacheln und darüber Route, Start und Ziel,
+einen hervorgehobenen Ort und die eigene Position. **Bedienelemente bringt sie
+nicht mit** — Suchfelder, Zoomknöpfe und Anzeigen baut die App selbst und legt
+sie über die Karte. Gesteuert wird über einen `LocalMapController`:
+
+```dart
+final map = LocalMapController(
+  routingProvider: ValhallaRoutingService(),   // oder eigene Implementierung
+  positionSource: meinePositionsquelle,        // z. B. GpsNmeaSimulatorService
+);
+
+// im build():
+Stack(children: [
+  MapView(mbtilesPath: path, controller: map),
+  // eigene Knöpfe darüber, z. B.
+  Positioned(bottom: 16, right: 16,
+      child: IconButton(icon: const Icon(Icons.add), onPressed: map.zoomIn)),
+]);
+
+// Befehle
+await map.setStart(ort);          // Route wird neu berechnet,
+await map.setDestination(ziel);   // sobald Start und Ziel da sind
+map.showPlace(treffer);           // hervorheben und hinspringen
+map.followPosition = true;        // Kamera folgt der Position
+```
+
+Der Controller ist ein `ChangeNotifier` (Route, `isRouting`, `routingError`,
+`position`, `isVectorMode`, `activeStyleName` …); der Zoom kommt getrennt als
+`map.zoom` (`ValueListenable<double>`). Wer die Farben der Ebenen anpassen
+will, übergibt `MapView(layerStyle: MapLayerStyle(routeColor: …))`.
+
+Eine vollständige Bedienung mit Suche, Routing-Anzeige und GPS-Simulator
+zeigt `lib/map_screen.dart` der Demo-App im Repository-Root.
+
+### Eigene Quellen
+
+Routing, Position und Suche sind Schnittstellen. Ein Gastgeber, der sie
+selbst liefert (etwa aus einem eigenen Backend), implementiert:
+
+| Schnittstelle | Mitgelieferte Implementierung | Aufgabe |
+| --- | --- | --- |
+| `RoutingProvider` | `ValhallaRoutingService` (HTTP) | `route(start, end)` → `RoutingResult` mit Geometrie und Manövern |
+| `PositionSource` | `GpsNmeaSimulatorService` (NMEA-Aufzeichnung) | `Stream<PositionFix>` mit Position, Kurs, Geschwindigkeit |
+| `PlaceSearch` | `OfflineGeocoder` (SQLite/FTS5) | `searchPlaces(query)` für `PlaceSearchBar` |
+
+Meldungen der Karte lassen sich mit `MapErrorHandler.sink = …` in das eigene
+Logging umleiten.
+
 ## MapConfig
 
 | Feld | Default | Bedeutung |
@@ -145,23 +195,25 @@ Die mitgelieferten Styles liegen unter
 
 ## Geocoding
 
-`MapView` sucht die Namensdatenbank neben der MBTiles-Datei: aus
-`karte.mbtiles` wird `karte_names.db`. Fehlt sie, bleibt die Suchleiste ohne
-Ergebnisse — die Karte funktioniert trotzdem. Die Datenbank wird mit
-`scripts/extract_names_to_sqlite.py` im Repository-Root erzeugt.
+`OfflineGeocoder` sucht in einer Namensdatenbank, die mit
+`scripts/extract_names_to_sqlite.py` im Repository-Root erzeugt wird. Die
+Demo-App legt sie neben die MBTiles-Datei (aus `karte.mbtiles` wird
+`karte_names.db`); `MapView` selbst braucht sie nicht.
 
 ## Öffentliche API
 
 `package:local_map/local_map.dart` exportiert:
 
 - **Setup:** `LocalMap`, `MapConfig`, `MapStorageLocation`
+- **Steuerung:** `LocalMapController`, `MapLayerStyle`
+- **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`
 - **Widgets:** `MapView`, `DownloadOverlay`, `PlaceSearchBar`,
   `StorageSettingsDialog`
 - **Services:** `MapDownloader`, `StoragePreferences`, `OfflineGeocoder`,
   `ValhallaRoutingService`, `GpsNmeaSimulatorService`, `MapErrorHandler`
 - **Modelle:** `GeocoderResult`, `RoutingResult`, `RoutingManeuver`,
-  `RoutingPoint`, `SimulatedGpsFix`, `MapError`, `MapErrorCategory`,
-  `MbTilesException`, `RoutingException`
+  `RoutingPoint`, `PositionFix`, `SimulatedGpsFix`, `MapError`,
+  `MapErrorCategory`, `MapLogLevel`, `MbTilesException`, `RoutingException`
 - **Durchgereicht:** `LatLng`, `LatLngBounds`, `MapController`
 
 ## Einsatz auf eingebettetem Linux (emb_cli / ivi-homescreen)
