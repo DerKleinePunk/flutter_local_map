@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.1
+
+- Die mitgelieferten Vektorstyles beschriften jetzt: Sie lesen die Namen
+  aus `name:latin` (Rückfall `name`). tilemaker schreibt Namen nur als
+  `name:latin`, mit `{name}` erschien kein Orts-, Straßen- oder
+  Gewässername.
+- `id` und `metadata.version` der drei Styles sind erhöht, damit
+  `vector_map_tiles` keine gecachten Kacheln vom alten Stand zeigt.
+
 ## 0.4.0
 
 - `PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre

@@ -26,7 +26,7 @@ dependencies:
   local_map:
     git:
       url: https://github.com/DerKleinePunk/flutter_local_map
-      ref: local_map-v0.4.0
+      ref: local_map-v0.4.1
       path: packages/local_map
 ```
 
@@ -238,6 +238,17 @@ MapConfig(
   ],
 )
 ```
+
+Zwei Fallen bei eigenen Styles für Kacheln aus `scripts/tilemaker.sh`:
+
+- **Namen stehen nur in `name:latin`**, ein Feld `name` gibt es nicht. Ein
+  `"text-field": "{name}"` zeichnet deshalb nichts. Stattdessen
+  `["coalesce", ["get", "name:latin"], ["get", "name"]]`.
+- **`vector_map_tiles` cacht unter `/tmp/.vector_map`** vorgefilterte
+  Kacheldaten unter der Style-`id` und gerenderte Kacheln unter `id` und
+  `metadata.version`. Nach einer Änderung am Style `metadata.version`
+  erhöhen, bei geänderten Ebenen, Filtern oder abgefragten Feldern auch die
+  `id` - sonst zeigt die Karte den alten Stand.
 
 Die mitgelieferten Styles liegen unter
 `packages/local_map/assets/maps/` und werden automatisch mitgebundelt.

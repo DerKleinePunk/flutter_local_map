@@ -630,6 +630,12 @@ Ein sichtbarer Ruckler beim Nachladen neuer Kacheln, kein Einfrieren.
   [Betrieb auf eingebettetem Linux](#betrieb-auf-eingebettetem-linux-emb_cli--ivi-homescreen).
   Gegenprobe: dieselbe MBTiles-Datei und derselben Style lokal starten. Ist die
   Schrift dort da, liegt es am Zielsystem, nicht an Style oder Kacheln.
+- **Namen stehen in den tilemaker-Kacheln nur als `name:latin`**, ein Feld
+  `name` gibt es nicht. Ein Style mit `"text-field": "{name}"` zeichnet
+  deshalb keinen einzigen Namen, auch mit Schrift. Die mitgelieferten Styles
+  lesen seit `local_map-v0.4.1` `name:latin`. Nach einer Style-Aenderung den
+  Cache `/tmp/.vector_map` bedenken, siehe
+  [packages/local_map/README.md](packages/local_map/README.md#eigene-vektorstyles).
 - Die lokalen Styles enthalten Label-Layer fuer `place`, `transportation_name` und `water_name`.
 - Erscheinen einzelne Labels nicht, auf den zweiten Style umschalten und die
   Logs in [packages/local_map/lib/src/widgets/map_view.dart](packages/local_map/lib/src/widgets/map_view.dart) pruefen.
