@@ -1,0 +1,15 @@
+[Unit]
+Description=Valhalla Routing (lokal, fuer die Kartenanwendung)
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+# 1 Worker: auf dem Pi reicht einer, jeder weitere haelt eigene Kachel-Caches.
+ExecStart=/opt/valhalla/bin/valhalla_service /home/pi/valhalla-data/valhalla.json 1
+Restart=on-failure
+RestartSec=5
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

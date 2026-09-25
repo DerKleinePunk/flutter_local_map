@@ -261,12 +261,31 @@ Erwartung: JSON mit `trip`, `legs`, `shape`, `maneuvers`.
 Seit 2026-09-24 laeuft Valhalla **3.9.0** auf beiden Test-Pis als
 systemd-Dienst `valhalla.service`, nativ, ohne Container, nur auf
 `127.0.0.1:8002`. Auf `jeep-pi` (Debian 13) ist es direkt auf dem Pi aus den
-Quellen gebaut (Programme unter `/opt/valhalla`, Bauzeit rund 46 min):
+Quellen gebaut (Programme unter `/opt/valhalla`, Bauzeit rund 46 min), mit
+[scripts/valhalla/build_valhalla_on_pi.sh](../scripts/valhalla/build_valhalla_on_pi.sh);
+die Unit dazu ist [scripts/valhalla/valhalla.service](../scripts/valhalla/valhalla.service)
+(Pfade unter `/home/pi/valhalla-data` fuer andere Geraete anpassen). Das ist
+ein anderer Weg als das Cross-Compile weiter oben:
+
+```bash
+scp scripts/valhalla/build_valhalla_on_pi.sh pi@<pi>:
+ssh pi@<pi> ./build_valhalla_on_pi.sh     # prime_server + Valhalla 3.9.0 nach /opt/valhalla
+```
+
+- Die Routing-Kacheln (`valhalla_tiles.tar`, Deutschland, 5 GB) stammen noch
+  aus dem Build vom 2026-04-11 mit dem Container; 3.9.0 liest sie.
+- Zur Laufzeit direkt gelinkt: `libcurl4t64 libczmq4 libzmq5 libgeotiff5
+  libproj25 liblz4-1 libprotobuf-lite32t64 libsqlite3-0 zlib1g libstdc++6`.
+  `libprime_server.so.0` liegt in `/opt/valhalla/lib`, das Skript traegt den
+  Pfad per `ldconfig` ein. `libvalhalla` gibt es nur statisch
+  (`libvalhalla.a`), fuer die spaetere Einbindung ins Rust-Backend.
+- Speicher im Betrieb (Deutschland-Kacheln, 1 Worker): etwa 80-120 MB RSS.
 
 - Debian hat kein Valhalla-Paket. `prime_server` kommt ebenfalls aus den
   Quellen, dazu wird `spatialite-bin` gebraucht.
 - Die Konfiguration mit `valhalla_build_config` **derselben** Version
-  erzeugen. Eine `valhalla.json` aus dem April-Build laesst 3.9.0 abstuerzen;
+  erzeugen. Eine `valhalla.json` aus dem April-Build laesst 3.9.0 abstuerzen
+  (es fehlt `loki.service_defaults.mvt_min_zoom_road_class`);
   die Kacheln (`valhalla_tiles.tar`) aus dem April liest 3.9.0 dagegen.
 - Beenden per SSH mit `pkill -x valhalla_servic` - der Prozessname ist auf
   15 Zeichen gekuerzt, und `pkill -f` trifft die eigene SSH-Sitzung mit.

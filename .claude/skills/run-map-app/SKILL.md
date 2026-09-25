@@ -46,7 +46,7 @@ Ein Bundle aus altem Quellstand startet fehlerfrei und sieht fast richtig aus â€
 Die App sucht einen **festen Dateinamen** `germany.mbtiles` im Datenverzeichnis, die UI bietet keine Dateiauswahl. Der Name sagt nichts ueber die Art der Datei:
 
 - `map/tiles-germany/germany.mbtiles` (154 GB) ist **Raster** (`format=png`). Damit gibt es keinen Vektor-Style, der Style-Chip bewirkt nichts, und die Zeile `Style aktiv` bleibt fuer immer aus.
-- Vektor (`format=pbf`): `hessen.mbtiles` (38 GB, deckt trotz des Namens ganz Deutschland ab), `germany-vec.mbtiles` (38 GB), `hessen_extract.mbtiles` (5,4 GB).
+- Vektor (`format=pbf`): `hessen.mbtiles` (2,2 GB, Hessen, seit 2026-09-23 mit dem eigenen `process-openmaptiles.lua` gebaut; byte-gleich mit der Datei, die Carnine2 ausliefert), `germany-vec.mbtiles` (16 GB, ganz Deutschland), `hessen_extract.mbtiles` (5,7 GB, Ausschnitt aus einem aelteren Deutschland-Build). Die `*-lua-original`-Dateien sind der Vergleichsstand vor dem eigenen Lua.
 
 Immer zuerst pruefen, nie nach dem Namen gehen:
 
