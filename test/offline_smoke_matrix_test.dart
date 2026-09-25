@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:local_map/local_map.dart';
@@ -120,16 +121,24 @@ void main() {
         expect(error.userMessage, contains('tiff'));
       });
 
-      test('Accepts known raster formats', () {
-        for (final format in ['png', 'jpg', 'jpeg', 'webp']) {
-          // Should not throw - just verify the classifier works
-          final error = MapErrorHandler.classifyUnsupportedFormat(
-            'unknown',
-            mbtilesPath: '/test.mbtiles',
-          );
-          // If it doesn't throw, classification worked
-          expect(error, isNotNull);
-        }
+      // Was angenommen wird, entscheidet MapView selbst. Deshalb baut der
+      // Test die Karte mit einer kleinen Datei je Format auf und sieht nach,
+      // ob sie an Stelle der Karte einen Fehler zeigt.
+      for (final format in ['png', 'jpg', 'jpeg', 'webp', 'pbf']) {
+        testWidgets('Accepts $format', (tester) async {
+          final error = await _pumpMapViewWithFormat(tester, format);
+          expect(error, isNull);
+        });
+      }
+
+      testWidgets('MapView shows the error for an unsupported format', (
+        tester,
+      ) async {
+        final error = await _pumpMapViewWithFormat(tester, 'tiff');
+        expect(
+          error?.category,
+          equals(MapErrorCategory.mbtilesFormatUnsupported),
+        );
       });
     });
 
@@ -217,4 +226,58 @@ void main() {
       });
     });
   });
+}
+
+/// Legt eine MBTiles-Datei ohne Kacheln mit [format] an, baut [MapView]
+/// damit auf und liefert den Fehler, den die Karte an ihrer Stelle zeigt -
+/// `null`, wenn sie keinen zeigt.
+Future<MapError?> _pumpMapViewWithFormat(
+  WidgetTester tester,
+  String format,
+) async {
+  final dir = Directory.systemTemp.createTempSync('format_$format');
+  addTearDown(() => dir.deleteSync(recursive: true));
+  final path = '${dir.path}/test.mbtiles';
+
+  final db = sqlite3.open(path);
+  db.execute('CREATE TABLE metadata (name TEXT, value TEXT)');
+  db.execute(
+    'CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, '
+    'tile_row INTEGER, tile_data BLOB)',
+  );
+  final insert = db.prepare('INSERT INTO metadata VALUES (?, ?)');
+  for (final row in [
+    ['name', 'test'],
+    ['format', format],
+    ['minzoom', '8'],
+    ['maxzoom', '14'],
+    ['bounds', '8.9,50.2,9.9,50.9'],
+  ]) {
+    insert.execute(row);
+  }
+  insert.close();
+  db.close();
+
+  MapError? shown;
+  await tester.pumpWidget(
+    MaterialApp(
+      home: MapView(
+        mbtilesPath: path,
+        config: MapConfig(),
+        errorBuilder: (context, error) {
+          shown = error;
+          return const SizedBox.shrink();
+        },
+      ),
+    ),
+  );
+  // Das Laden der Metadaten und des Styles laeuft ueber echte Ein-/Ausgabe.
+  await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 1)));
+  await tester.pump();
+
+  // vector_map_tiles stellt beim Aufbau einen 3-s-Timer; ohne Abbauen und
+  // Weiterlaufen meldet der Test ihn als offen.
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(seconds: 5));
+  return shown;
 }
