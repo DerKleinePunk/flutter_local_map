@@ -105,7 +105,7 @@ void main() {
         );
 
         expect(error.category, equals(MapErrorCategory.sqliteError));
-        expect(error.userMessage, contains('Fehler beim Lesen'));
+        expect(error.userMessage, contains('Could not read the map file'));
       });
     });
 

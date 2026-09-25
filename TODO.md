@@ -200,9 +200,12 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
   Renderfehler bzw. nach toter Eingabe aus.
 - **Der Pi startet die App im Vollbild nur mit `-f`.** Sonst laeuft die View
   mit 1920x720 in einem 1920x1080-Scanout.
-- **`test/offline_smoke_test_matrix.dart` laeuft nie mit.** Der Dateiname endet
-  nicht auf `_test.dart`, `flutter test` sammelt sie also nicht ein - die
-  "12 Tests gruen" unter P2 sind seit dem Umbau unbelegt.
+- **Testdateien muessen auf `_test.dart` enden**, sonst sammelt `flutter test`
+  sie nicht ein. Die Smoke-Matrix hiess `offline_smoke_test_matrix.dart` und
+  lief deshalb lange nicht mit; unbemerkt veraltete dabei eine Erwartung
+  (deutsche Fehlermeldung, seit 0.3.0 englisch). Seit 2026-09-25 heisst sie
+  `offline_smoke_matrix_test.dart` und ist gruen. Die Tests im Root brauchen
+  die echten MBTiles unter `map/tiles-germany/`.
 
 ## P0 - Muss sofort
 - [x] Non-Regression: Raster-MBTiles-Unterstützung muss erhalten bleiben
@@ -255,7 +258,7 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
   - ✅ Szenario 5: Format validation (accepted/rejected)
   - ✅ Szenario 6: Concurrent access patterns
   - ✅ Szenario 7: Metadata completeness
-  - ✅ Alle 12 Tests grün (test/offline_smoke_test_matrix.dart)
+  - ✅ Alle 12 Tests grün (test/offline_smoke_matrix_test.dart, wieder belegt am 2026-09-25)
 
 ## Definition of Done
 - [x] Kein Codepfad lädt Styles aus dem Netz.
