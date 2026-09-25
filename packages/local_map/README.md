@@ -26,9 +26,13 @@ dependencies:
   local_map:
     git:
       url: https://github.com/DerKleinePunk/flutter_local_map
-      ref: master
+      ref: local_map-v0.4.0
       path: packages/local_map
 ```
+
+Besser eine feste Marke `local_map-vX.Y.Z` als `master`: jede Version hat
+einen Eintrag in [CHANGELOG.md](CHANGELOG.md), und ein Wechsel der Marke ist
+dann eine bewusste Entscheidung des Gastgebers.
 
 ### Pflicht in beiden Varianten: dependency_overrides
 
@@ -148,9 +152,13 @@ selbst liefert (etwa aus einem eigenen Backend), implementiert:
 
 | Schnittstelle | Mitgelieferte Implementierung | Aufgabe |
 | --- | --- | --- |
-| `RoutingProvider` | `ValhallaRoutingService` (HTTP) | `route(start, end)` → `RoutingResult` mit Geometrie und Manövern |
+| `RoutingProvider` | `ValhallaRoutingService` (HTTP) | `route(start: …, end: …)` → `RoutingResult` mit Geometrie und Manövern; ohne `start` ab der eigenen Position. `isAvailable()` für die Anzeige |
 | `PositionSource` | `GpsNmeaSimulatorService` (NMEA-Aufzeichnung) | `Stream<PositionFix>` mit Position, Kurs, Geschwindigkeit |
-| `PlaceSearch` | `OfflineGeocoder` (SQLite/FTS5) | `searchPlaces(query)` für `PlaceSearchBar` |
+| `PlaceSearch` | `OfflineGeocoder` (SQLite/FTS5) | `searchPlaces(query, near: …)` für `PlaceSearchBar`; mit `near` zuerst Treffer in der Nähe |
+
+Eine fertig berechnete Route – etwa vom eigenen Backend oder per
+Map-Matching aus einer Aufzeichnung (`ValhallaRoutingService.routeAlongTrace`)
+– übernimmt `map.setRoute(route)`, ohne den `RoutingProvider` zu fragen.
 
 Meldungen der Karte lassen sich mit `MapErrorHandler.sink = …` in das eigene
 Logging umleiten.
@@ -171,6 +179,26 @@ MapView(
 )
 ```
 
+### Navigationsmodus
+
+```dart
+map.followPosition = true;  // Kamera folgt der Position
+map.headingUp = true;       // Karte dreht nach Kurs; false = Norden oben
+```
+
+Der Kurs kommt aus `PositionFix`, geglättet und im Stand eingefroren
+(`HeadingFilter`). Mit Route und Position liefert `map.progress` ein
+`RouteProgress`: Reststrecke, Restzeit, nächstes Manöver und der Abstand
+dorthin. **Anzeigen tut das der Gastgeber** – Abbiegekarte und Fahrtleiste
+gehören in die App, nicht in die Karte.
+
+### Texte
+
+`PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre
+Texte aus `PlaceSearchTexts`, `DownloadOverlayTexts` und
+`StorageSettingsTexts`. Die Vorgabe ist englisch, `.german` liefert die
+deutschen Texte; für weitere Sprachen eigene Instanzen übergeben.
+
 ## MapConfig
 
 | Feld | Default | Bedeutung |
@@ -187,6 +215,10 @@ MapView(
 | `valhallaBaseUri` | `http://127.0.0.1:8002` | Endpunkt des lokalen Routers |
 | `gpsTourFilePaths` | leer | NMEA-Tourdatei für den GPS-Simulator |
 | `rasterUrlTemplate` | `mbtiles://local` | Pflichtfeld des Raster-`TileLayer` |
+| `searchResultZoom` | `15` | Zoom beim Anspringen eines Suchtreffers; `null` = Zoom des Geocoder-Treffers |
+| `panBuffer` | `0` | Kachelreihen außerhalb des Bildes (Vektor im Raster-Modus); `0` halbiert auf dem Pi die Ladezeit |
+| `rasterTileScale` | `null` | Auflösungsfaktor beim Rastern der Vektorkacheln; `null` = Pixelverhältnis des Bildschirms statt fest 2,0 |
+| `memoryTileCacheMaxSize` / `memoryTileDataCacheMaxSize` / `textCacheMaxSize` / `vectorConcurrency` / `vectorLayerMode` | `null` | Speicher- und Thread-Budget von `vector_map_tiles`; `null` = dessen Vorgabe |
 
 `MapConfig.defaults` ist ein `MapConfig()` ohne Ortsbezug. `MapConfig.hessen`
 liefert das Setup der Demo-App: Start bei Alsfeld, Kamera-Begrenzung auf
@@ -223,9 +255,11 @@ Demo-App legt sie neben die MBTiles-Datei (aus `karte.mbtiles` wird
 
 - **Setup:** `LocalMap`, `MapConfig`, `MapStorageLocation`
 - **Steuerung:** `LocalMapController`, `MapLayerStyle`
+- **Navigation:** `RouteTracker`, `RouteProgress`, `HeadingFilter`
 - **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`
 - **Widgets:** `MapView`, `DownloadOverlay`, `PlaceSearchBar`,
-  `StorageSettingsDialog`
+  `StorageSettingsDialog`, dazu ihre Texte `DownloadOverlayTexts`,
+  `PlaceSearchTexts`, `StorageSettingsTexts` und `DownloadStatus`
 - **Services:** `MapDownloader`, `StoragePreferences`, `OfflineGeocoder`,
   `ValhallaRoutingService`, `GpsNmeaSimulatorService`, `MapErrorHandler`
 - **Modelle:** `GeocoderResult`, `RoutingResult`, `RoutingManeuver`,
@@ -259,10 +293,12 @@ Kacheln aus dem Bild schiebt (bei Zoom 11 verschiebt ein Griff 320 px neben der
 Bildmitte das Zentrum um über 10 km). Gemessen in
 [test/pinch_gesture_test.dart](test/pinch_gesture_test.dart).
 
-**Zoomknöpfe:** Unten rechts liegen zwei 56 px große Knöpfe, die eine ganze
-Zoomstufe weiterschalten und dabei die Bildmitte behalten. Auf einem kleinen
+**Zoomknöpfe** bringt `MapView` nicht mit. `map.zoomIn()` und `map.zoomOut()`
+schalten eine ganze Zoomstufe weiter und behalten die Bildmitte; die Knöpfe
+dazu legt der Gastgeber über die Karte (Beispiel: `lib/map_screen.dart` der
+Demo-App, 56 px, am Anschlag abgeschaltet). Auf einem kleinen
 Fahrzeugdisplay ist das die verlässliche Bedienung — die Kneifgeste braucht
-zwei Finger und eine ruhige Hand. Am Zoom-Anschlag sind sie abgeschaltet.
+zwei Finger und eine ruhige Hand.
 
 **Tastaturbedienung:** Pfeiltasten schieben die Karte, **R** zoomt hinein, **F**
 heraus. Auf einem Ziel ohne angeschlossenes Zeigergerät — etwa bei der

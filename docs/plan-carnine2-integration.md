@@ -2,7 +2,7 @@
 
 Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_local_map bei `eef48b5`). Die Abschnitte ab „Ziel“ beschreiben den Ausgangsplan; den aktuellen Stand zeigt der Abschnitt „Stand“.
 
-## Stand (2026-09-24, 09:15)
+## Stand (2026-09-24, abends)
 
 **Die Karte läuft in Carnine2**, auf beiden Pis: auf carnine-pc (Carnine2-Sitzung, Debos-Image) und auf jeep-pi
 (normales Debian, Backend dort nativ gebaut). Gegenüber dem Zeitplan unten sind wir damit rund vier Wochen voraus.
@@ -21,12 +21,13 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
 - **Phase 4** (Kartenseite): läuft. Navigationsmodus-Umschaltung abgenommen. carnine2 bindet die Lib über
   eine **feste Marke** ein (`ref: local_map-v0.3.0`), nicht mehr über `master`; `scripts/styles.zip` liegt
   nicht mehr im Baum, `pub get` braucht kein `GIT_LFS_SKIP_SMUDGE` mehr.
-  Offen (Carnine2-Sitzung): Stil zu dunkel, man sieht nur Straßen (carnine2 #28);
-  `MapLayerStyle.backgroundColor` setzen (heller Blitz beim Öffnen); Suche „genauer Name vor
-  Präfix-Treffer“ im Backend nachziehen (Lib seit `1da5f2b`); `feature/map-page` @ `5b37b3b` mergen.
+  `feature/map-page` ist nach `feature/emb-cli` gemergt (`d3d9f2f`); dort stehen seit `eaaac26` auch
+  `MapLayerStyle.backgroundColor` (`#0e0e0e`, kein heller Blitz beim Öffnen) und die Suche „genauer Name
+  vor Präfix-Treffer“ im Backend. Die Kartenseite läuft auf carnine-pc und auf jeep-pi.
+  Offen (Carnine2-Sitzung): Stil zu dunkel, man sieht nur Straßen (carnine2 #28).
 - **Phase 5**: begonnen. Karte und Musik laufen auf carnine-pc gleichzeitig (homescreen ca. 90 % eines
-  Kerns), der Dauertest zum Einfrieren läuft. Offen: GPS-Maus im Auto, eigene Messetour, Speichermessung
-  gegen 4 GB.
+  Kerns). Dauertest zum Einfrieren bestanden: 3 h 22 min Karte am Stück, nie eingefroren, 0 verlorene
+  Page-Flips, ~56 fps, RSS 160 MB. Offen: GPS-Maus im Auto, eigene Messetour, Speichermessung gegen 4 GB.
 
 **Regel für Lib-Änderungen:** Jede Änderung, die carnine2 braucht, bekommt eine neue Marke
 `local_map-vX.Y.Z` mit Eintrag in `packages/local_map/CHANGELOG.md`. carnine2 wechselt die Marke bewusst.

@@ -1,8 +1,14 @@
 # TODO - Offline-Karten (flutter_map)
 
-## Stand 2026-09-22
+## Stand 2026-09-25
 
-### Was sich geaendert hat
+Den Stand der Einbindung in Carnine2 fuehrt
+[docs/plan-carnine2-integration.md](docs/plan-carnine2-integration.md), die
+Aenderungen an der Bibliothek
+[packages/local_map/CHANGELOG.md](packages/local_map/CHANGELOG.md) (zuletzt
+`local_map-v0.4.0`). Hier stehen die offenen Punkte der Karte selbst.
+
+### Was sich geaendert hat (bis 2026-09-22)
 
 - Die Karte liegt als eigenstaendiges Package unter
   [packages/local_map/](packages/local_map/). Die App im Root ist Demo und
@@ -12,8 +18,10 @@
   Umrechnungsfehler im NMEA-Parser (Teiler 1000 statt 100 beim Laengengrad),
   der die Kamera auf 15,36 statt 9,36 Grad Ost schickte - also aus der
   Abdeckung von `hessen.mbtiles` heraus (Ostgrenze 15,05). Commit `1a3f14a`.
-- `vector_map_tiles` kommt wieder von pub.dev (9.0.0-beta.13), der eigene
-  Fork ist abgeloest. Es bleiben zwei Git-Overrides.
+- `vector_map_tiles` kommt aus einem neuen Fork: upstream 9.0.0-beta.13 plus
+  ein Commit, der `panBuffer` und `rasterTileScale` einstellbar macht (Branch
+  `local_map_pi`, seit `ba06454`). Der alte Fork zum Cancellation-Handling
+  ist abgeloest. Es sind wieder **drei** Git-Overrides.
 
 Gemessen (Release, GPS-Route bei Zoom 17, offline im Netzwerk-Namespace):
 alle Kacheln sichtbar, 422 MB RSS, schlechtester Frame 86 ms Build +
@@ -55,10 +63,9 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
       Touchpad der Riitek-Funktastatur (`/dev/input/event1`, relative Maus).
       Bevor jemand weiter "Touch" sucht: das Geraet, das getestet werden
       soll, muss erst angeschlossen sein.
-- [ ] **Valhalla laeuft nicht auf dem Pi.** Die App spricht
-      `http://127.0.0.1:8002` an, dort lauscht nichts und `valhalla_service`
-      ist nicht installiert - daher die Meldung "Valhalla nicht zu
-      erreichen". Offener Deployment-Schritt, kein Fehler.
+- [x] **Valhalla laeuft auf dem Pi** (2026-09-24): 3.9.0 als systemd-Dienst
+      auf `127.0.0.1:8002`, auf beiden Pis. Einzelheiten in
+      [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md#stand-auf-den-test-pis).
 - [x] **`logError` aus der `kDebugMode`-Sperre genommen.** In
       [map_error_handler.dart](packages/local_map/lib/src/services/map_error_handler.dart)
       loggt `_logError` jetzt immer, `logDebug` bleibt auf Debug beschraenkt.
@@ -88,7 +95,11 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
       Die Standard-Startposition (Alsfeld) liegt darin, die Kamerakorrektur
       meldet sich also nicht mehr - das leere Log ist der Nachweis. Gebaut in
       54 s, uebertragen in 70 s bei rund 77 MB/s.
-- [ ] **Die App wird nach einiger Laufzeit blind und stumm.** Auf dem Pi
+- [x] **Die App wird nach einiger Laufzeit blind und stumm.** Erledigt
+      (2026-09-24): Dauertest auf carnine-pc 3 h 22 min Karte am Stueck, nie
+      eingefroren, 0 verlorene Page-Flips, ~56 fps, RSS 160 MB; auf jeep-pi
+      seither ebenfalls nicht mehr aufgetreten. Die Eingrenzung bleibt hier
+      stehen, falls es wiederkommt: Auf dem Pi
       bleibt das Bild irgendwann stehen und Beruehrungen bewirken nichts
       mehr. Am 2026-09-23 eingekreist:
       - Kein Absturz: der Prozess lebt, alle Threads schlafen regulaer, kein
@@ -110,8 +121,13 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
       die Engine keinen Vsync mehr und zeichnet nie wieder - Eingaben werden
       dabei weiter verarbeitet (CPU steigt), nur sichtbar wird nichts.
       Gegenprobe waere `--drm-pipeline-depth 2` oder `--drm-async-flip no`.
-- [ ] **Messharness fuer den Pi bauen**, um echte Frame-Zeiten vom Zielgeraet
-      zu bekommen statt der WSL2-Zahlen mit defektem GPU-Stack.
+- [x] **Messharness fuer den Pi** (2026-09-23): der Messlauf
+      `LOCAL_MAP_BENCH` der Demo-App ([lib/map_bench.dart](lib/map_bench.dart),
+      Aufruf im [README](README.md#messlauf-fuer-die-ladezeit)) misst die
+      Ladezeit und die Frame-Zeiten im Release direkt auf dem Pi. Damit
+      entstanden `panBuffer 0`, `rasterTileScale` und das eigene
+      tilemaker-Lua: Start 5 s -> 1,9 s, Frankfurt z14 17-19 s -> 9 s,
+      z8 16-17 s -> 3,4-3,8 s.
 
 ### Offen
 
@@ -138,14 +154,17 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
       bestehenden `maxRendererPoolSizes` - eine Zeile, aber ein Neu-Rendern
       der 154 GB. Vorher klaeren, ob die Raster-Pipeline ueberhaupt noch
       gebraucht wird, jetzt wo Vektor laeuft.
-- [ ] **Auf dem echten Pi gegenmessen.** Alle Zahlen oben stammen von WSL2
-      mit defektem GPU-Stack und sind dort vermutlich eher pessimistisch -
-      das ist aber eine Vermutung. Verfahren steht im
-      [README](README.md#vektorkarte-ruckelt-oder-friert-ein).
-- [ ] **Upstream-PR fuer die beiden verbliebenen Forks.** Sie existieren nur,
-      weil die pub.dev-Versionen an `mbtiles ^0.4.0` haengen (und
-      `vector_map_tiles_mbtiles` zusaetzlich an `vector_map_tiles ^8.0.0`).
-      Letzte Veroeffentlichung dort: September 2024.
+- [x] **Auf dem echten Pi gegenmessen.** Ladezeiten gemessen (siehe
+      Messharness oben). Offen bleibt die Speichermessung gegen 4 GB mit
+      Valhalla, Karte und Medienwiedergabe gleichzeitig - die gehoert zu
+      Phase 5 im [Carnine2-Plan](docs/plan-carnine2-integration.md).
+- [ ] **Upstream-PRs fuer die drei Forks.** Die beiden aus
+      `flutter_map_plugins` existieren nur, weil die pub.dev-Versionen an
+      `mbtiles ^0.4.0` haengen (und `vector_map_tiles_mbtiles` zusaetzlich an
+      `vector_map_tiles ^8.0.0`); letzte Veroeffentlichung dort: September
+      2024. Der `vector_map_tiles`-Fork ist ein einzelner Commit
+      (`panBuffer`, `rasterTileScale` einstellbar) und taugt als PR an
+      upstream.
 - [ ] **`jni` im Linux-Build beobachten.** Kam mit dem Upgrade von
       `path_provider_android` neu herein und landet als `libdartjni.so` im
       Bundle. Baut hier durch; falls die Pi-Kette stolpert,
@@ -162,7 +181,7 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
 - **Eine leere Karte ist meist ein Koordinatenproblem**, kein Renderfehler.
   Zuerst pruefen, ob die Kameraposition in den `bounds` der MBTiles liegt.
 - **Tests liegen an zwei Orten.** `flutter test` im Repo-Root findet nur
-  `test/`, die 17 Tests des Pakets brauchen `flutter test` in
+  `test/`, die Tests des Pakets brauchen `flutter test` in
   [packages/local_map/](packages/local_map/).
 - **Zoom-Gesten auf kleinen Ausschnitten.** `flutter_map` verankert den Zoom
   ab Werk am Brennpunkt der Geste (`pinchMove`) bzw. am Mauszeiger. Auf einer
@@ -239,10 +258,11 @@ Bibliothek vorgebaut herunterlaedt statt zu kompilieren.
   - ✅ Alle 12 Tests grün (test/offline_smoke_test_matrix.dart)
 
 ## Definition of Done
-- [ ] Kein Codepfad lädt Styles aus dem Netz.
-- [ ] Karte funktioniert vollständig offline.
-- [ ] Lokaler Style wird genutzt, Fallback greift nur bei Fehlern.
-- [ ] Raster-MBTiles werden weiterhin korrekt gelesen und angezeigt.
+- [x] Kein Codepfad lädt Styles aus dem Netz.
+- [x] Karte funktioniert vollständig offline (nachgewiesen im
+      Netzwerk-Namespace, einziger Zugriff ist Valhalla auf `127.0.0.1`).
+- [x] Lokaler Style wird genutzt, Fallback greift nur bei Fehlern.
+- [x] Raster-MBTiles werden weiterhin korrekt gelesen und angezeigt.
 - [ ] `flutter analyze` ohne neue Issues.
 
 ## MapLibre-Migrationsplan (April 2026)

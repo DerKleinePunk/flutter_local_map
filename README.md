@@ -24,7 +24,7 @@ Die Entscheidung erfolgt zur Laufzeit anhand der MBTiles-Metadaten (`format`, `m
 
 - Flutter SDK (Dart SDK gemaess [pubspec.yaml](pubspec.yaml))
 - Aktivierter Desktop-Support in Flutter
-- Fuer lokale Tile-Erzeugung: Docker (optional zusaetzlich Python-Skripte)
+- Fuer lokale Tile-Erzeugung: Docker oder Podman (optional zusaetzlich Python-Skripte)
 - Fuer den Raster-Schritt: `scripts/styles.zip` (Glyphen, 64 MB). Die Datei liegt nicht mehr im Arbeitsbaum, damit Projekte, die `local_map` per Git einbinden, sie nicht bei jedem `pub get` mitladen. Einmalig holen mit `git-lfs` (`sudo apt install git-lfs && git lfs install`) und `git restore --source=1da5f2b scripts/styles.zip`; sie ist danach per `.gitignore` ausgeschlossen.
 - Fuer den experimentellen MapLibre-Renderer: Node.js + npm (getestet mit Node 24.x)
 - Fuer `scripts/render_raster_test.py`: Python-Pakete `requests` und `tqdm` (Ubuntu: `sudo apt install python3-requests python3-tqdm`)
@@ -60,6 +60,10 @@ flutter run -d linux
 - Valhalla Run-Skript fuer Windows/Pwsh: [scripts/valhalla/run_valhalla_server.ps1](scripts/valhalla/run_valhalla_server.ps1)
 - Tilemaker-Skript: [scripts/tilemaker.sh](scripts/tilemaker.sh)
 - Tilemaker z17 Config: [scripts/tilemaker/config-openmaptiles-z17.json](scripts/tilemaker/config-openmaptiles-z17.json)
+- Tilemaker Lua (eigene Fassung, Wohnflaechen nach Groesse): [scripts/tilemaker/process-openmaptiles.lua](scripts/tilemaker/process-openmaptiles.lua)
+- Valhalla Cross-Compile und Deploy fuer den Pi: [scripts/valhalla/cross_compile_valhalla_pi.sh](scripts/valhalla/cross_compile_valhalla_pi.sh), [scripts/valhalla/deploy_valhalla_pi.sh](scripts/valhalla/deploy_valhalla_pi.sh)
+- Bedienung der Demo-App: [lib/map_screen.dart](lib/map_screen.dart)
+- Messlauf fuer die Ladezeit: [lib/map_bench.dart](lib/map_bench.dart)
 - Raster-Renderer (Vektor -> PNG-MBTiles): [scripts/render_raster.py](scripts/render_raster.py)
 - Hoehenlinien-Generator (DEM -> Kontur-MBTiles): [scripts/build_contours.sh](scripts/build_contours.sh)
 - Experimenteller Renderer mit Benchmark-Fokus: [scripts/render_raster_test.py](scripts/render_raster_test.py)
@@ -102,7 +106,7 @@ Offline-first Verhalten:
 	4. internes Fallback-Theme
 - Remote-Styles, Remote-Glyphs und Remote-Sprites sind nicht Teil des Standardpfads.
 - Bei Inkompatibilitaet zwischen Style und MBTiles-Schema faellt die App auf ein internes Fallback-Theme zurueck.
-- In der Kartenansicht kann der aktive lokale Vektor-Style ueber den Style-Chip oben rechts umgeschaltet werden.
+- In der Demo-App kann der aktive lokale Vektor-Style ueber den Style-Chip oben rechts umgeschaltet werden (`LocalMapController.cycleVectorStyle()`).
 
 Hinweis:
 
@@ -148,8 +152,12 @@ Eigenschaften des Skripts:
 - laedt nur fehlende Daten nach
 - entpackt Natural-Earth-Daten nur, wenn Zielverzeichnis noch nicht vorhanden ist
 - bricht standardmaessig ab, wenn Ausgabedatei bereits existiert
-- erzwingt Neuaufbau mit `FORCE_REBUILD=1`
-- unterstuetzt optionale Regionen `vogelsberg` und `braunschweig` fuer schnelle Test-Builds
+- `FORCE_REBUILD=1` baut neu, aber per `tilemaker --merge` in die vorhandene Datei; fuer einen sauberen Neubau die Zieldatei vorher wegschieben
+- `SKIP_PBF_MD5=1` ueberspringt die Pruefsumme, wenn Geofabriks `.md5` nachweislich einen aelteren Tagesstand beschreibt
+- unterstuetzt optionale Regionen `vogelsberg`, `braunschweig` und `hessen` fuer schnellere Builds
+- nimmt `docker` oder `podman`, je nachdem was laeuft (`CONTAINER_CMD` erzwingt eines)
+- Arbeitsverzeichnis per `TILEMAKER_WORK_DIR` umstellbar (Standard `map/tiles-germany`); noetig bei einem podman-remote, dessen Server nur Pfade unter `/mnt/wsl` sieht
+- verarbeitet mit dem eigenen [process-openmaptiles.lua](scripts/tilemaker/process-openmaptiles.lua): Wohnflaechen kommen nach Groesse statt fest ab z8 in die Kacheln (auf dem Pi z8 etwa 2,5-mal schneller)
 - unterstuetzt optional `raster`/`--raster` fuer einen zweiten Schritt (PNG-MBTiles aus Vektor-MBTiles)
 - startet am Ende automatisch die Valhalla-Tile-Generierung via [scripts/valhalla/build_valhalla_from_pbf.sh](scripts/valhalla/build_valhalla_from_pbf.sh)
 
@@ -168,6 +176,9 @@ cd scripts
 # Braunschweig mit Umland (BBox 10.28,52.12,10.78,52.42)
 # Erzeugt braunschweig.mbtiles statt germany.mbtiles
 ./tilemaker.sh braunschweig
+
+# Hessen (BBox)
+./tilemaker.sh hessen
 
 # Vektor + Raster (zweite Datei mit PNG-Tiles)
 ./tilemaker.sh raster
@@ -414,11 +425,13 @@ dazu und bindet das Package per `path:`-Dependency ein.
 
 ```
 flutter_local_map/
-├── lib/main.dart          App-Shell (Menue, Download-Flow, Theme)
+├── lib/main.dart          App-Shell (Menue, Beenden, Download-Flow, Theme)
+├── lib/map_screen.dart    Bedienung: Suche, Routing, GPS-Simulator, Badges
+├── lib/map_bench.dart     Messlauf fuer die Ladezeit (LOCAL_MAP_BENCH)
 ├── test/                  Tests, die echte MBTiles unter map/ brauchen
 ├── packages/local_map/    Die Bibliothek
 │   ├── lib/local_map.dart Oeffentliche API (Barrel-Export)
-│   ├── lib/src/           config/ services/ widgets/
+│   ├── lib/src/           api/ config/ controller/ navigation/ services/ widgets/
 │   ├── assets/maps/       Vektor-Styles
 │   └── test/              Unit-/Widget-Tests der Bibliothek
 ├── map/                   Kartendaten (nicht im Git)
@@ -451,6 +464,24 @@ als Default gesetzt:
 - Vektor-Styles, Valhalla-Endpunkt, GPS-Tourdatei
 - Vektor-Speicherbudget: `memoryTileCacheMaxSize`, `memoryTileDataCacheMaxSize`,
   `textCacheMaxSize`, `vectorConcurrency`, `vectorLayerMode`
+
+## Messlauf fuer die Ladezeit
+
+Die Demo-App bringt einen Messlauf mit, der ohne eigenen Build auch im
+Release auf dem Pi laeuft. Er faehrt feste Ziele an (Frankfurt z14, Alsfeld
+z12, Kassel z11, Mittelhessen z9, Hessen z8, zurueck nach Frankfurt) und
+misst, bis das Bild stillsteht:
+
+```bash
+rm -rf /tmp/.vector_map                  # Datei-Cache leeren, sonst misst man die Platte
+LOCAL_MAP_BENCH=exit LOCAL_MAP_BENCH_STABLE_MS=10000 ./homescreen -b . -f
+```
+
+- `LOCAL_MAP_BENCH=1` misst, `exit` beendet die App danach.
+- `LOCAL_MAP_BENCH_STABLE_MS` ist die Ruhezeit, ab der ein Ziel als fertig
+  gilt (Standard 3000). Auf dem Pi 10000 nehmen: bei Frankfurt z14 und z8
+  kommt dort ueber 3 s kein neues Bild, und das Ziel gaelte zu frueh als
+  fertig.
 
 ## Zielplattform und Betriebsgrenzen
 
@@ -538,7 +569,7 @@ Danach steht `[DrmCursor] ready (sprite=24px ...)` im Log.
   Beschriftungen werden unleserlich. Loesung ohne `vc4-fkms-v3d`:
   [docs/waveshare-1024x600-full-kms.md](docs/waveshare-1024x600-full-kms.md).
 - Routing: Die App fragt `http://127.0.0.1:8002` ab. Laeuft dort kein
-  Valhalla, meldet die Oberflaeche "Valhalla nicht zu erreichen" - siehe
+  Valhalla, meldet die Oberflaeche "Valhalla nicht erreichbar" - siehe
   [docs/valhalla-offline-setup.md](docs/valhalla-offline-setup.md).
 - Die MBTiles liegen auf dem Geraet unter
   `~/.local/share/homescreen/offline_maps/`. Der Dateiname sagt nichts ueber
@@ -633,6 +664,10 @@ flutter build linux --release
 ```
 
 ## Changelog (Kurz)
+
+Aenderungen an der Bibliothek stehen in
+[packages/local_map/CHANGELOG.md](packages/local_map/CHANGELOG.md), jede
+Version hat eine Git-Marke `local_map-vX.Y.Z`. Hier nur die Werkzeuge:
 
 - 2026-04: `maplibre_native` in [scripts/render_raster_test.py](scripts/render_raster_test.py) auf robusten Large-MBTiles-Betrieb aktualisiert.
 - 2026-04: Node-Helper [scripts/render_maplibre_native.js](scripts/render_maplibre_native.js) nutzt jetzt `better-sqlite3` (file-basiert) statt `sql.js` In-Memory-Load.

@@ -126,7 +126,7 @@ ssh jeep-pi 'cd ~/flutter-sample && ./homescreen -b . -f -t Adwaita'
 - **`-f` ist Pflicht.** `Size: 1920 x 720` im Log ist der Default der View-Konfiguration, nicht der Scanout-Modus. Ohne `-f` bekommst du ein falsches Bild und misst Unsinn.
 - **`-d`** schaltet das Backend-Debuglog dazu. Dann zaehlen `[DrmCompositor] LayerScene commit`-Zeilen — hoeren sie auf, wird nicht mehr gezeichnet (das ist das bekannte Einfrieren, kein Absturz; siehe Memory `pi-freeze-reproduction`).
 - **Beenden: `pkill -x homescreen`.** `pkill -f "homescreen -b"` trifft die eigene SSH-Kommandozeile mit und wirft dich aus der Sitzung. Derselbe Fehler passiert lokal genauso.
-- **Valhalla laeuft dort nicht** — "Valhalla nicht erreichbar" ist erwartet und kein Befund.
+- **Valhalla laeuft dort** seit 2026-09-24 als systemd-Dienst (`valhalla.service`, 3.9.0, `127.0.0.1:8002`). Zeigt die App "Valhalla nicht erreichbar", ist das ein Befund: `systemctl status valhalla` pruefen.
 - Das Geraet hat 7,6 GB RAM, die **Zielplattform sind 4 GB**. Speichermessungen entsprechend einordnen.
 
 ---

@@ -1,6 +1,10 @@
 # Valhalla Offline Setup (Build + Pi Runtime)
 
-Stand: 2026-04-08
+Stand: 2026-04-08, ergaenzt 2026-09-25 (Betrieb auf dem Pi, Anbindung in der App)
+
+> **Heute auf den Pis:** Valhalla 3.9.0 laeuft nativ als systemd-Dienst, ohne
+> Container - siehe [Stand auf den Test-Pis](#stand-auf-den-test-pis). Der
+> `docker run` unten ist der aeltere Weg.
 
 ## Ziel
 
@@ -238,10 +242,36 @@ Erwartung: JSON mit `trip`, `legs`, `shape`, `maneuvers`.
 
 ## 6) Flutter-Anbindung
 
-- Neuer Service: `lib/services/valhalla_routing_service.dart`
-- Anfrage an `POST /route`
-- Rueckgabe: Geometrie + Distanz + Dauer + Manoever
+- Service: [`ValhallaRoutingService`](../packages/local_map/lib/src/services/valhalla_routing_service.dart)
+  im Package `local_map`, eine Umsetzung der Schnittstelle `RoutingProvider`.
+  Ein Gastgeber kann stattdessen eine eigene liefern (Carnine2 fragt sein
+  Rust-Backend per gRPC).
+- `route(start:, end:)` schickt `POST /route`, `routeAlongTrace(...)` eine
+  aufgezeichnete Tour an `POST /trace_route` (Map-Matching). Eine Spur, die
+  dieselbe Strasse zurueckfaehrt, wird dabei an den Selbstueberlappungen
+  geteilt und wieder zusammengesetzt - sonst matcht Valhalla nur die Haelfte.
+- `isAvailable()` fragt `GET /status`; die Demo-App zeigt damit
+  "Valhalla nicht erreichbar" an.
+- Anweisungen kommen in `language` (Standard `de-DE`).
+- Rueckgabe: Geometrie + Distanz + Dauer + Manoever (`RoutingResult`)
 - Karte bleibt bei euren Raster-/Vektor-MBTiles unveraendert
+
+## Stand auf den Test-Pis
+
+Seit 2026-09-24 laeuft Valhalla **3.9.0** auf beiden Test-Pis als
+systemd-Dienst `valhalla.service`, nativ, ohne Container, nur auf
+`127.0.0.1:8002`. Auf `jeep-pi` (Debian 13) ist es direkt auf dem Pi aus den
+Quellen gebaut (Programme unter `/opt/valhalla`, Bauzeit rund 46 min):
+
+- Debian hat kein Valhalla-Paket. `prime_server` kommt ebenfalls aus den
+  Quellen, dazu wird `spatialite-bin` gebraucht.
+- Die Konfiguration mit `valhalla_build_config` **derselben** Version
+  erzeugen. Eine `valhalla.json` aus dem April-Build laesst 3.9.0 abstuerzen;
+  die Kacheln (`valhalla_tiles.tar`) aus dem April liest 3.9.0 dagegen.
+- Beenden per SSH mit `pkill -x valhalla_servic` - der Prozessname ist auf
+  15 Zeichen gekuerzt, und `pkill -f` trifft die eigene SSH-Sitzung mit.
+- Vom Entwicklungsrechner aus erreichbar per Tunnel:
+  `ssh -f -N -L 18002:127.0.0.1:8002 jeep-pi`.
 
 ## Troubleshooting
 
@@ -252,7 +282,9 @@ Erwartung: JSON mit `trip`, `legs`, `shape`, `maneuvers`.
 
 ## Nächste Schritte im Projekt
 
-1. Service in UI-Flow integrieren (z. B. Start/Ziel aus Suche -> Route).
-2. Polyline in `MapView` als Overlay zeichnen.
-3. Healthcheck beim App-Start (Valhalla erreichbar?).
-4. Optional: systemd-Unit fuer Pi statt Docker.
+1. ~~Service in UI-Flow integrieren (z. B. Start/Ziel aus Suche -> Route).~~ Erledigt.
+2. ~~Polyline in `MapView` als Overlay zeichnen.~~ Erledigt.
+3. ~~Healthcheck beim App-Start (Valhalla erreichbar?).~~ Erledigt (`isAvailable()`).
+4. ~~Optional: systemd-Unit fuer Pi statt Docker.~~ Erledigt, siehe oben.
+5. Fuer Carnine2: `libvalhalla` direkt ins Rust-Backend einbinden und den
+   Dienst abschaffen - siehe [plan-carnine2-integration.md](plan-carnine2-integration.md).
