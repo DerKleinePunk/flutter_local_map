@@ -46,6 +46,12 @@ class MapBench {
   );
   static const _timeout = Duration(seconds: 60);
 
+  /// Verzeichnis fuer eine Aufnahme je Ziel als PNG, gesetzt ueber
+  /// `LOCAL_MAP_BENCH_SHOTS`. Unter WSLg und auf dem Pi gibt es kein
+  /// Bildschirmfoto von aussen; so laesst sich trotzdem nachsehen, was die
+  /// Karte gezeichnet hat, etwa ob Beschriftungen da sind.
+  static final _shotsDir = Platform.environment['LOCAL_MAP_BENCH_SHOTS'];
+
   /// Feste Ziele, damit Laeufe vergleichbar sind. Jedes liegt ausserhalb
   /// des vorigen, nur das letzte kehrt zurueck und misst den Cache.
   static final _steps = <(String, LatLng, double)>[
@@ -78,14 +84,17 @@ class MapBench {
     final measureFrom = sinceMain.elapsed;
     final first = await _measure(before: null);
     _report('Start (ab main)', first, offset: measureFrom);
+    await _saveShot(0, 'start');
 
     var sum = Duration.zero;
+    var index = 0;
     for (final (name, center, zoom) in _steps) {
       final before = await _snapshotHash();
       mapController.move(center, zoom);
       final result = await _measure(before: before);
       sum += result.total;
       _report(name, result);
+      await _saveShot(++index, name);
     }
     _log('Summe der Ziele: ${sum.inMilliseconds} ms');
 
@@ -151,6 +160,25 @@ class MapBench {
         h = ((h ^ w) * 0x01000193) & 0xffffffff;
       }
       return h;
+    } finally {
+      image.dispose();
+    }
+  }
+
+  Future<void> _saveShot(int index, String name) async {
+    final dir = _shotsDir;
+    if (dir == null || dir.isEmpty) return;
+    final boundary = boundaryKey.currentContext?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary) return;
+    final image = await boundary.toImage();
+    try {
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (data == null) return;
+      final slug = name.replaceAll(RegExp(r'[^A-Za-z0-9]+'), '_');
+      final file = File('$dir/${index.toString().padLeft(2, '0')}_$slug.png');
+      await file.parent.create(recursive: true);
+      await file.writeAsBytes(data.buffer.asUint8List());
+      _log('Aufnahme: ${file.path}');
     } finally {
       image.dispose();
     }
