@@ -14,7 +14,9 @@ void main() {
         expect(File(vectorPath).existsSync(), isTrue);
 
         final db = sqlite3.open(vectorPath, mode: OpenMode.readOnly);
-        final rows = db.select("SELECT name, value FROM metadata WHERE name = 'format';");
+        final rows = db.select(
+          "SELECT name, value FROM metadata WHERE name = 'format';",
+        );
 
         expect(rows, isNotEmpty);
         expect(rows.first['value'].toString().toLowerCase(), equals('pbf'));
@@ -25,16 +27,19 @@ void main() {
         final vectorPath = 'map/tiles-germany/hessen.mbtiles';
         final db = sqlite3.open(vectorPath, mode: OpenMode.readOnly);
 
-        final rows = db.select("SELECT name, value FROM metadata WHERE name IN ('minzoom', 'maxzoom', 'json');");
-        
+        final rows = db.select(
+          "SELECT name, value FROM metadata WHERE name IN ('minzoom', 'maxzoom', 'json');",
+        );
+
         expect(rows.length, greaterThan(0));
-        
+
         // Should have zoom levels
-        final hasMinOrMaxZoom = rows.any((r) => r['name'] == 'minzoom') ||
-                               rows.any((r) => r['name'] == 'maxzoom');
-        
+        final hasMinOrMaxZoom =
+            rows.any((r) => r['name'] == 'minzoom') ||
+            rows.any((r) => r['name'] == 'maxzoom');
+
         expect(hasMinOrMaxZoom, isTrue);
-        
+
         db.close();
       });
     });
@@ -45,7 +50,9 @@ void main() {
         expect(File(rasterPath).existsSync(), isTrue);
 
         final db = sqlite3.open(rasterPath, mode: OpenMode.readOnly);
-        final rows = db.select("SELECT name, value FROM metadata WHERE name = 'format';");
+        final rows = db.select(
+          "SELECT name, value FROM metadata WHERE name = 'format';",
+        );
 
         expect(rows, isNotEmpty);
         final format = rows.first['value'].toString().toLowerCase();
@@ -58,21 +65,21 @@ void main() {
         final db = sqlite3.open(rasterPath, mode: OpenMode.readOnly);
 
         final rows = db.select(
-          "SELECT name, value FROM metadata WHERE name IN ('minzoom', 'maxzoom');"
+          "SELECT name, value FROM metadata WHERE name IN ('minzoom', 'maxzoom');",
         );
 
         expect(rows.length, greaterThanOrEqualTo(2));
-        
+
         final minZoomRow = rows.firstWhere((r) => r['name'] == 'minzoom');
         final maxZoomRow = rows.firstWhere((r) => r['name'] == 'maxzoom');
-        
+
         final minZoom = int.parse(minZoomRow['value'].toString());
         final maxZoom = int.parse(maxZoomRow['value'].toString());
 
         expect(minZoom, lessThan(maxZoom));
         expect(minZoom, greaterThanOrEqualTo(0));
         expect(maxZoom, lessThanOrEqualTo(28));
-        
+
         db.close();
       });
     });
@@ -89,10 +96,13 @@ void main() {
           context: 'smoke test',
         );
 
-        expect(error.category, isIn([
-          MapErrorCategory.assetMissing,
-          MapErrorCategory.mbtilesMissing
-        ]));
+        expect(
+          error.category,
+          isIn([
+            MapErrorCategory.assetMissing,
+            MapErrorCategory.mbtilesMissing,
+          ]),
+        );
       });
     });
 
@@ -117,7 +127,10 @@ void main() {
           mbtilesPath: '/path/to/map.mbtiles',
         );
 
-        expect(error.category, equals(MapErrorCategory.mbtilesFormatUnsupported));
+        expect(
+          error.category,
+          equals(MapErrorCategory.mbtilesFormatUnsupported),
+        );
         expect(error.userMessage, contains('tiff'));
       });
 
@@ -145,7 +158,7 @@ void main() {
     group('Scenario 6: Concurrent access', () {
       test('Multiple connections to same MBTiles file', () {
         final testPath = 'map/tiles-germany/hessen.mbtiles';
-        
+
         // Open two read-only connections
         final db1 = sqlite3.open(testPath, mode: OpenMode.readOnly);
         final db2 = sqlite3.open(testPath, mode: OpenMode.readOnly);
@@ -179,7 +192,9 @@ void main() {
         final rasterPath = 'map/tiles-germany/hessen_raster.mbtiles';
         final db = sqlite3.open(rasterPath, mode: OpenMode.readOnly);
 
-        final rows = db.select("SELECT name FROM metadata WHERE name IN ('minzoom', 'maxzoom');");
+        final rows = db.select(
+          "SELECT name FROM metadata WHERE name IN ('minzoom', 'maxzoom');",
+        );
         final fieldNames = rows.map((r) => r['name'].toString()).toSet();
 
         expect(fieldNames.contains('minzoom'), isTrue);

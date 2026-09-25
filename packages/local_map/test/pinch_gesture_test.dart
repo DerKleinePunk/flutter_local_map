@@ -119,7 +119,11 @@ void main() {
       '(${distance.round()} m verschoben)',
     );
 
-    expect(endZoom, greaterThan(startZoom), reason: 'die Geste soll hineinzoomen');
+    expect(
+      endZoom,
+      greaterThan(startZoom),
+      reason: 'die Geste soll hineinzoomen',
+    );
     expect(
       distance,
       lessThan(2000),
@@ -201,7 +205,8 @@ void main() {
       _buildMap(
         controller,
         io: const InteractionOptions(
-          flags: InteractiveFlag.drag |
+          flags:
+              InteractiveFlag.drag |
               InteractiveFlag.flingAnimation |
               InteractiveFlag.pinchZoom |
               InteractiveFlag.doubleTapZoom |

@@ -7,28 +7,28 @@ enum MapErrorCategory {
 
   /// Asset (Style JSON, Sprites, Glyphs) nicht gefunden
   assetMissing,
-  
+
   /// JSON kann nicht geparst werden
   jsonInvalid,
-  
+
   /// MBTiles-Datei nicht vorhanden
   mbtilesMissing,
-  
+
   /// MBTiles-Format wird nicht unterstützt
   mbtilesFormatUnsupported,
-  
+
   /// SQLite-Fehler beim Lesen der MBTiles
   sqliteError,
-  
+
   /// Vektor-Style hat keine Quellen
   styleMissingSource,
-  
+
   /// Vektor-Layer mit Style nicht kompatibel
   styleLayerIncompatible,
-  
+
   /// Theme Reader kann Stil nicht parsen
   themeParseError,
-  
+
   /// Andere/unklassifizierte Fehler
   unknown,
 }
@@ -90,7 +90,8 @@ class MapErrorHandler {
 
     // Asset Fehler
     if (errorStr.contains('asset') && errorStr.contains('not found')) {
-      final msg = 'Map asset not found$contextStr. Check the files in assets/maps.';
+      final msg =
+          'Map asset not found$contextStr. Check the files in assets/maps.';
       _logError(msg, error, stackTrace);
       return MapError(
         category: MapErrorCategory.assetMissing,
@@ -115,7 +116,9 @@ class MapErrorHandler {
     }
 
     // MBTiles nicht vorhanden
-    if (errorStr.contains('file') && errorStr.contains('not') && errorStr.contains('exist')) {
+    if (errorStr.contains('file') &&
+        errorStr.contains('not') &&
+        errorStr.contains('exist')) {
       final msg = 'Map file does not exist$contextStr.';
       _logError(msg, error, stackTrace);
       return MapError(
@@ -194,7 +197,8 @@ class MapErrorHandler {
     String format, {
     String? mbtilesPath,
   }) {
-    final msg = 'Map data format "$format" is not supported. '
+    final msg =
+        'Map data format "$format" is not supported. '
         'Expected png, jpg, jpeg, webp (raster) or pbf (vector).';
     _logError(msg, null, null, 'File: $mbtilesPath');
     return MapError(

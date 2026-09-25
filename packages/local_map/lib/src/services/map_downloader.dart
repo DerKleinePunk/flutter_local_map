@@ -33,14 +33,14 @@ class MapDownloader {
   /// Initialisiert den Downloader und setzt den Download-Pfad
   Future<void> initialize() async {
     final baseDir = await _getBaseDirectory();
-    if(MapStorageLocation.custom == _storageLocation) {
+    if (MapStorageLocation.custom == _storageLocation) {
       // Bei benutzerdefiniertem Pfad verwenden wir diesen direkt
       _downloadPath = _customPath;
     } else {
       // Ansonsten erstellen wir den Standard-Unterordner
       _downloadPath = p.join(baseDir.path, _config.storageSubdirectory);
     }
-    
+
     // Erstelle das Verzeichnis, falls es nicht existiert
     final dir = Directory(_downloadPath!);
     if (!await dir.exists()) {
@@ -68,9 +68,7 @@ class MapDownloader {
 
       case MapStorageLocation.externalStorage:
         if (!Platform.isAndroid) {
-          throw UnsupportedError(
-            'External Storage nur auf Android verfügbar',
-          );
+          throw UnsupportedError('External Storage nur auf Android verfügbar');
         }
         final dir = await getExternalStorageDirectory();
         if (dir == null) {
@@ -108,7 +106,7 @@ class MapDownloader {
   }
 
   /// Lädt die MBTiles-Datei herunter
-  /// 
+  ///
   /// [onProgress] Callback wird mit dem Fortschritt aufgerufen (0.0 bis 1.0)
   /// Wirft eine [Exception] bei Fehlern
   Future<void> downloadMap({
@@ -116,7 +114,7 @@ class MapDownloader {
   }) async {
     try {
       final path = await getMBTilesPath();
-      
+
       // Download mit Progress-Tracking
       await _dio.download(
         _config.downloadUrl,
@@ -142,7 +140,7 @@ class MapDownloader {
       } catch (_) {
         // Ignoriere Fehler beim Löschen
       }
-      
+
       throw Exception('Fehler beim Herunterladen der Kartendaten: $e');
     }
   }
@@ -150,7 +148,7 @@ class MapDownloader {
   /// Validiert, ob die Datei eine gültige SQLite/MBTiles-Datei ist
   Future<void> _validateMBTilesFile(String path) async {
     final file = File(path);
-    
+
     // Prüfe ob Datei existiert und nicht leer ist
     if (!await file.exists()) {
       throw Exception('Datei wurde nicht erstellt');
@@ -164,7 +162,7 @@ class MapDownloader {
     // Prüfe SQLite Header (erste 16 Bytes sollten "SQLite format 3" sein)
     final bytes = await file.openRead(0, 16).first;
     final header = String.fromCharCodes(bytes.take(15));
-    
+
     if (!header.startsWith('SQLite format 3')) {
       throw Exception('Datei ist keine gültige SQLite/MBTiles-Datei');
     }
@@ -175,17 +173,17 @@ class MapDownloader {
     if (!await isMapDownloaded()) {
       return null;
     }
-    
+
     final path = await getMBTilesPath();
     final file = File(path);
     return await file.length();
   }
 
   /// Kopiert eine lokal vorhandene MBTiles-Datei in das App-Verzeichnis
-  /// 
+  ///
   /// Nützlich für Entwicklung/Testing, um die vom Python-Skript
   /// heruntergeladene Datei zu verwenden, ohne sie neu herunterladen zu müssen.
-  /// 
+  ///
   /// [sourcePath] Der Pfad zur Quell-MBTiles-Datei
   /// [onProgress] Optional: Callback für Kopierfortschritt (0.0 bis 1.0)
   Future<void> copyLocalMap({
@@ -194,14 +192,14 @@ class MapDownloader {
   }) async {
     try {
       final sourceFile = File(sourcePath);
-      
+
       if (!await sourceFile.exists()) {
         throw Exception('Quelldatei nicht gefunden: $sourcePath');
       }
 
       final targetPath = await getMBTilesPath();
       final targetFile = File(targetPath);
-      
+
       // Prüfe ob Ziel bereits existiert
       if (await targetFile.exists()) {
         await targetFile.delete();
@@ -211,24 +209,24 @@ class MapDownloader {
       final fileSize = await sourceFile.length();
       final source = sourceFile.openRead();
       final sink = targetFile.openWrite();
-      
+
       int bytesCopied = 0;
-      
+
       await for (final chunk in source) {
         sink.add(chunk);
         bytesCopied += chunk.length;
-        
+
         if (onProgress != null && fileSize > 0) {
           onProgress(bytesCopied / fileSize);
         }
       }
-      
+
       await sink.flush();
       await sink.close();
-      
+
       // Validiere die kopierte Datei
       await _validateMBTilesFile(targetPath);
-      
+
       onProgress?.call(1.0);
     } catch (e) {
       throw Exception('Fehler beim Kopieren der Kartendaten: $e');

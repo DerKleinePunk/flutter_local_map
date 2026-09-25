@@ -150,8 +150,7 @@ void main() {
     // der Umschalter wirkt korrekt, und das Bild aendert sich trotzdem nie.
     final ids = <String, String>{};
     for (final style in styles) {
-      final json =
-          jsonDecode(style.readAsStringSync()) as Map<String, dynamic>;
+      final json = jsonDecode(style.readAsStringSync()) as Map<String, dynamic>;
       final id = json['id'];
       final name = style.uri.pathSegments.last;
 

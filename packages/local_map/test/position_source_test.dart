@@ -63,25 +63,28 @@ void main() {
     expect(sim.fixCount, 3);
   });
 
-  test('Wiedergabe im Takt der Aufzeichnung, geteilt durch speedFactor', () async {
-    final sim = GpsNmeaSimulatorService()..loadFromLines(tour);
-    addTearDown(sim.dispose);
+  test(
+    'Wiedergabe im Takt der Aufzeichnung, geteilt durch speedFactor',
+    () async {
+      final sim = GpsNmeaSimulatorService()..loadFromLines(tour);
+      addTearDown(sim.dispose);
 
-    final stamps = <Duration>[];
-    final watch = Stopwatch()..start();
-    final sub = sim.positions.listen((_) => stamps.add(watch.elapsed));
-    // Eine Sekunde Abstand in der Aufzeichnung, zehnfach beschleunigt:
-    // 100 ms zwischen den Meldungen.
-    sim.start(loop: false, speedFactor: 10);
-    await Future<void>.delayed(const Duration(milliseconds: 450));
-    sim.stop();
-    await sub.cancel();
+      final stamps = <Duration>[];
+      final watch = Stopwatch()..start();
+      final sub = sim.positions.listen((_) => stamps.add(watch.elapsed));
+      // Eine Sekunde Abstand in der Aufzeichnung, zehnfach beschleunigt:
+      // 100 ms zwischen den Meldungen.
+      sim.start(loop: false, speedFactor: 10);
+      await Future<void>.delayed(const Duration(milliseconds: 450));
+      sim.stop();
+      await sub.cancel();
 
-    expect(stamps, hasLength(3));
-    expect(stamps[0].inMilliseconds, lessThan(50), reason: 'erste sofort');
-    final gap = (stamps[2] - stamps[0]).inMilliseconds;
-    expect(gap, inInclusiveRange(180, 320));
-  });
+      expect(stamps, hasLength(3));
+      expect(stamps[0].inMilliseconds, lessThan(50), reason: 'erste sofort');
+      final gap = (stamps[2] - stamps[0]).inMilliseconds;
+      expect(gap, inInclusiveRange(180, 320));
+    },
+  );
 
   test('Luecken in der Aufzeichnung werden gedeckelt', () async {
     final sim = GpsNmeaSimulatorService()
