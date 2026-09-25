@@ -2,7 +2,7 @@
 
 Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_local_map bei `eef48b5`). Die Abschnitte ab „Ziel“ beschreiben den Ausgangsplan; den aktuellen Stand zeigt der Abschnitt „Stand“.
 
-## Stand (2026-09-24, abends)
+## Stand (2026-09-25, abends)
 
 **Die Karte läuft in Carnine2**, auf beiden Pis: auf carnine-pc (Carnine2-Sitzung, Debos-Image) und auf jeep-pi
 (normales Debian, Backend dort nativ gebaut). Gegenüber dem Zeitplan unten sind wir damit rund vier Wochen voraus.
@@ -17,17 +17,28 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
   flüssig mit Drehung auf Zoom 16).
 - **Phase 3** (Backend): alle fünf RPCs des `NavigationService` (ADR-021) umgesetzt und gegen echtes
   Valhalla bestätigt. `GetReplayRoute` liefert die ganze Adnan-Tour (45,2 km, 20 Manöver). Valhalla 3.9.0
-  läuft auf beiden Pis als systemd-Dienst.
+  läuft auf beiden Pis als systemd-Dienst. Seit carnine2 v0.4.0 (`db67938` auf `feature/backend`):
+  **GPS-Maus** an der Seriellen (jeder NMEA-Empfänger, Baudrate einstellbar, udev-Link `/dev/gps`,
+  Wochen-Rollover-Korrektur), live auf dem Pi getestet; **Systemuhr aus GPS**, solange NTP nicht
+  synchronisiert ist (kein RTC im Auto); **Fahrtenbuch** mit rohem NMEA je Fahrt, live schaltbar über
+  das neue `rpc SetTrackRecording` (`NavigationStatus` Felder 5–7, rein additiv).
 - **Phase 4** (Kartenseite): läuft. Navigationsmodus-Umschaltung abgenommen. carnine2 bindet die Lib über
   eine **feste Marke** ein (`ref: local_map-v0.3.0`), nicht mehr über `master`; `scripts/styles.zip` liegt
   nicht mehr im Baum, `pub get` braucht kein `GIT_LFS_SKIP_SMUDGE` mehr.
   `feature/map-page` ist nach `feature/emb-cli` gemergt (`d3d9f2f`); dort stehen seit `eaaac26` auch
   `MapLayerStyle.backgroundColor` (`#0e0e0e`, kein heller Blitz beim Öffnen) und die Suche „genauer Name
   vor Präfix-Treffer“ im Backend. Die Kartenseite läuft auf carnine-pc und auf jeep-pi.
-  Offen (Carnine2-Sitzung): Stil zu dunkel, man sieht nur Straßen (carnine2 #28).
+  Der Stil ist für das 7-Zoll-Panel aufgehellt und versioniert (carnine2 #28 zu, `7a25193`).
+  carnine2 **v0.4.0** (`4d26100`) bringt Valhalla und Karten-Drop-in im Image mit; die Kartendaten kommen
+  weiter per Skript.
 - **Phase 5**: begonnen. Karte und Musik laufen auf carnine-pc gleichzeitig (homescreen ca. 90 % eines
   Kerns). Dauertest zum Einfrieren bestanden: 3 h 22 min Karte am Stück, nie eingefroren, 0 verlorene
-  Page-Flips, ~56 fps, RSS 160 MB. Offen: GPS-Maus im Auto, eigene Messetour, Speichermessung gegen 4 GB.
+  Page-Flips, ~56 fps. Ein zweiter Dauertest mit dem 0.3.0-Image zeigt kein Einfrieren und kein Leck
+  (homescreen flach bei 204–208 MB RSS). Die GPS-Maus läuft am Pi, noch nicht im Auto.
+  In Arbeit (Carnine2-Sitzung): KL15-Netzteil (AuPrV1_1) am Test-Pi – es sendet nur Text und reagiert noch
+  nicht auf Befehle. Es lässt beim Abschalten nur 15 s, das Herunterfahren dauert aber 29 s, weil
+  `valhalla.service` so lange zum Stoppen braucht.
+  Offen: Fahrt im Auto, eigene Messetour, Speichermessung gegen 4 GB.
 
 **Regel für Lib-Änderungen:** Jede Änderung, die carnine2 braucht, bekommt eine neue Marke
 `local_map-vX.Y.Z` mit Eintrag in `packages/local_map/CHANGELOG.md`. carnine2 wechselt die Marke bewusst.
