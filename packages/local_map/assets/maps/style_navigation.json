@@ -1,8 +1,9 @@
 {
   "version": 8,
   "name": "openmaptiles-offline-navigation",
-  "id": "openmaptiles-offline-navigation",
+  "id": "openmaptiles-offline-navigation-2",
   "metadata": {
+    "version": "2",
     "generator": "tilemaker-openmaptiles",
     "offline": true,
     "variant": "navigation"
@@ -222,7 +223,11 @@
       "minzoom": 8,
       "layout": {
         "symbol-placement": "line",
-        "text-field": "{name}",
+        "text-field": [
+          "coalesce",
+          ["get", "name:latin"],
+          ["get", "name"]
+        ],
         "text-size": 11
       },
       "paint": {
@@ -239,7 +244,11 @@
       "minzoom": 11,
       "layout": {
         "symbol-placement": "line",
-        "text-field": "{name}",
+        "text-field": [
+          "coalesce",
+          ["get", "name:latin"],
+          ["get", "name"]
+        ],
         "text-size": 11
       },
       "paint": {
@@ -255,7 +264,11 @@
       "source-layer": "place",
       "minzoom": 6,
       "layout": {
-        "text-field": "{name}",
+        "text-field": [
+          "coalesce",
+          ["get", "name:latin"],
+          ["get", "name"]
+        ],
         "text-size": 12
       },
       "paint": {
@@ -271,7 +284,11 @@
       "source-layer": "poi",
       "minzoom": 14,
       "layout": {
-        "text-field": "{name}",
+        "text-field": [
+          "coalesce",
+          ["get", "name:latin"],
+          ["get", "name"]
+        ],
         "text-size": 10
       },
       "paint": {
@@ -287,7 +304,11 @@
       "source-layer": "mountain_peak",
       "minzoom": 11,
       "layout": {
-        "text-field": "{name}",
+        "text-field": [
+          "coalesce",
+          ["get", "name:latin"],
+          ["get", "name"]
+        ],
         "text-size": 10
       },
       "paint": {

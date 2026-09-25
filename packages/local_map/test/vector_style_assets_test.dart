@@ -43,6 +43,29 @@ void main() {
     }
   });
 
+  // tilemaker schreibt Namen nur als `name:latin` (siehe
+  // preferred_language_attribute im process-openmaptiles.lua). Ein
+  // `{name}` zeichnet mit diesen Kacheln nichts - so fehlten bis 0.4.1 alle
+  // Orts-, Strassen- und Gewaessernamen.
+  test('Beschriftungen lesen name:latin', () async {
+    for (final assetPath in MapConfig.packageVectorStyleAssets) {
+      final style =
+          jsonDecode(await rootBundle.loadString(assetPath))
+              as Map<String, dynamic>;
+      for (final layer in (style['layers'] as List).cast<Map>()) {
+        final field = (layer['layout'] as Map?)?['text-field'];
+        if (field == null) continue;
+        final text = jsonEncode(field);
+        if (!text.contains('name')) continue; // etwa {housenumber}
+        expect(
+          text,
+          contains('name:latin'),
+          reason: '$assetPath, Ebene ${layer['id']}: $text',
+        );
+      }
+    }
+  });
+
   test('initialVectorStyleIndex liegt im gueltigen Bereich', () {
     expect(
       MapConfig.defaults.initialVectorStyleIndex,

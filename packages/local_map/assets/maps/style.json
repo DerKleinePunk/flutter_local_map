@@ -1,8 +1,9 @@
 {
   "version": 8,
   "name": "openmaptiles-offline-basic",
-  "id": "openmaptiles-offline-basic",
+  "id": "openmaptiles-offline-basic-2",
   "metadata": {
+    "version": "2",
     "generator": "tilemaker-openmaptiles",
     "offline": true
   },
@@ -112,7 +113,11 @@
       "minzoom": 8,
       "layout": {
         "symbol-placement": "line",
-        "text-field": "{name}",
+        "text-field": [
+          "coalesce",
+          ["get", "name:latin"],
+          ["get", "name"]
+        ],
         "text-size": 11
       },
       "paint": {
@@ -129,7 +134,11 @@
       "minzoom": 12,
       "layout": {
         "symbol-placement": "line",
-        "text-field": "{name}",
+        "text-field": [
+          "coalesce",
+          ["get", "name:latin"],
+          ["get", "name"]
+        ],
         "text-size": 10
       },
       "paint": {
@@ -145,7 +154,11 @@
       "source-layer": "place",
       "minzoom": 6,
       "layout": {
-        "text-field": "{name}",
+        "text-field": [
+          "coalesce",
+          ["get", "name:latin"],
+          ["get", "name"]
+        ],
         "text-size": 12
       },
       "paint": {
