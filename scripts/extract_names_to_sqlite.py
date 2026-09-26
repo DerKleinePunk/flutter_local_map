@@ -590,9 +590,9 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
         output_cursor.executemany(
             """
             INSERT INTO names (rowid, id, name, lat, lng, zoom, type, detail, source_field, context)
-            VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            pending_rows,
+            [(row[0],) + row for row in pending_rows],
         )
         inserted_rows += len(pending_rows)
         output_conn.commit()
