@@ -779,6 +779,13 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
     ).fetchone()[0]
     print(f"[ok] Created {output_db_path} with {final_count} searchable names")
 
+    # Back to a plain rollback journal. WAL is only for the bulk insert: a
+    # database that is copied around and opened read-only must not need
+    # -wal/-shm files next to it - a stale -wal from an older copy is laid
+    # over the new file and SQLite reports "database disk image is
+    # malformed" (seen on the Pi, 26.09.2026).
+    output_conn.execute("PRAGMA journal_mode = DELETE")
+
     input_conn.close()
     output_conn.close()
 
