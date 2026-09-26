@@ -55,7 +55,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Offline-Karte Hessen',
+      title: 'Offline-Karte',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
@@ -250,12 +250,12 @@ class _MapHomePageState extends State<MapHomePage> {
   void _showAboutDialog() {
     showAboutDialog(
       context: context,
-      applicationName: 'Offline-Karte Hessen',
+      applicationName: 'Offline-Karte',
       applicationVersion: '1.0.0',
       children: [
         const Text(
-          'Desktop-Anwendung zur Darstellung von '
-          'Offline-Kartendaten für die Region Hessen.',
+          'Anwendung zur Darstellung von Offline-Kartendaten '
+          'aus lokalen MBTiles-Dateien.',
         ),
         const SizedBox(height: 16),
         const Text(
@@ -314,7 +314,7 @@ class _MapHomePageState extends State<MapHomePage> {
         autofocus: true,
         child: Scaffold(
           appBar: AppBar(
-            title: const Text('Offline-Karte Hessen'),
+            title: const Text('Offline-Karte'),
             backgroundColor: Theme.of(context).colorScheme.inversePrimary,
             actions: [
               // semanticLabel, nicht nur tooltip: ohne Zeiger gibt es keinen

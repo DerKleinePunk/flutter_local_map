@@ -669,13 +669,24 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
                 else:
                     for name, lat, lng, zoom, layer_name, detail, source_field in records:
                         cell = SEARCH_CELL_DEG.get(layer_name, 0.01)
-                        key = (
-                            name.casefold(),
-                            layer_name,
-                            math.floor(lat / cell),
-                            math.floor(lng / cell),
-                        )
-                        known = candidates.get(key)
+                        folded = name.casefold()
+                        cell_lat = math.floor(lat / cell)
+                        cell_lng = math.floor(lng / cell)
+                        # Also the neighbouring cells: the same place from
+                        # two zoom levels lands a few hundred metres apart
+                        # (low zooms round coarsely), and a cell border
+                        # between them would keep both - "Zuerich" twice.
+                        known = None
+                        for d_lat in (0, -1, 1):
+                            for d_lng in (0, -1, 1):
+                                known = candidates.get(
+                                    (folded, layer_name, cell_lat + d_lat, cell_lng + d_lng)
+                                )
+                                if known is not None:
+                                    break
+                            if known is not None:
+                                break
+                        key = (folded, layer_name, cell_lat, cell_lng)
                         if known is None:
                             candidates[key] = [
                                 name, lat, lng, zoom, layer_name, detail, source_field, zoom
