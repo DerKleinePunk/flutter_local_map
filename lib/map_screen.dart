@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:local_map/local_map.dart';
 
+import 'route_format.dart';
+
 /// Die Karte mit der Bedienung dieser Demo-App.
 ///
 /// Hier entsteht, was ein Gastgeber der Karte selbst mitbringt: Suche,
@@ -301,11 +303,11 @@ class _MapScreenState extends State<MapScreen> {
       );
     }
     if (route != null) {
-      final km = route.distanceMeters / 1000;
-      final min = (route.durationSeconds / 60).round();
       return _Badge(
         icon: Icons.route,
-        label: '${km.toStringAsFixed(1)} km • $min min',
+        label:
+            '${formatDistance(route.distanceMeters)} • '
+            '${formatDuration(route.durationSeconds)}',
         tone: _Tone.primary,
       );
     }
@@ -504,15 +506,12 @@ class _ZoomBadge extends StatelessWidget {
   }
 }
 
-/// Nächstes Manöver mit Entfernung, darunter Restweg und Restzeit.
+/// Nächstes Manöver mit Entfernung, darunter Restweg, Restzeit und
+/// Ankunftszeit.
 class _ManeuverCard extends StatelessWidget {
   const _ManeuverCard({required this.progress});
 
   final RouteProgress progress;
-
-  static String _distance(double meters) => meters < 1000
-      ? '${(meters / 10).round() * 10} m'
-      : '${(meters / 1000).toStringAsFixed(1)} km';
 
   @override
   Widget build(BuildContext context) {
@@ -520,7 +519,6 @@ class _ManeuverCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final maneuver = progress.nextManeuver!;
     final toNext = progress.distanceToNextManeuverMeters ?? 0;
-    final minutes = (progress.remainingSeconds / 60).round();
 
     return Material(
       color: colorScheme.surface.withValues(alpha: 0.95),
@@ -531,7 +529,7 @@ class _ManeuverCard extends StatelessWidget {
         child: Row(
           children: [
             Text(
-              _distance(toNext),
+              formatDistance(toNext),
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w700,
                 color: colorScheme.primary,
@@ -550,7 +548,9 @@ class _ManeuverCard extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                   Text(
-                    'noch ${_distance(progress.remainingMeters)} • $minutes min',
+                    'noch ${formatDistance(progress.remainingMeters)} • '
+                    '${formatDuration(progress.remainingSeconds)} • '
+                    '${formatArrival(progress.remainingSeconds)}',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: colorScheme.onSurfaceVariant,
                     ),
