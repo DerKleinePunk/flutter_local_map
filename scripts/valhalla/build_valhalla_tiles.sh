@@ -30,6 +30,16 @@ fi
 
 DATA_FULL="$(realpath "$DATA")"
 
+# VALHALLA_BUILD_ADMINS=False nimmt eine fertige admin_data/admins.sqlite,
+# statt sie aus der .osm.pbf zu bauen. Noetig bei Auszuegen, die Landes-
+# grenzen abschneiden: im Geofabrik-DACH fehlen der Schweizer Grenze fuenf
+# Wege, Valhalla verwirft das ganze Land. Die Grenzen dann aus den
+# Laenderauszuegen bauen, siehe docs/valhalla-offline-setup.md.
+if [[ "${VALHALLA_BUILD_ADMINS:-True}" == "False" && ! -f "$DATA_FULL/admin_data/admins.sqlite" ]]; then
+    echo "ERROR: VALHALLA_BUILD_ADMINS=False, aber $DATA_FULL/admin_data/admins.sqlite fehlt." >&2
+    exit 1
+fi
+
 # Container-Laufzeit wie in tilemaker.sh: docker nur, wenn es wirklich
 # antwortet, sonst podman. Ueberschreibbar per CONTAINER_CMD.
 CONTAINER_CMD="${CONTAINER_CMD:-}"
@@ -77,7 +87,7 @@ echo ""
     -v "${DATA_FULL}:/custom_files" \
     -e use_tiles_ignore_pbf=False \
     -e force_rebuild=True \
-    -e build_admins=True \
+    -e build_admins="${VALHALLA_BUILD_ADMINS:-True}" \
     -e build_time_zones=True \
     -e serve_tiles=False \
     "$IMAGE"

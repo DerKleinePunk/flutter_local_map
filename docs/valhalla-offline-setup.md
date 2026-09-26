@@ -97,6 +97,45 @@ Hinweise:
 - Das Skript legt den resultierenden Extract direkt im Output-Ordner ab, damit der Container ihn spaeter unter `/custom_files` findet.
 - Eine leere oder kaputte `valhalla.json` wird entfernt, damit der Container sie selbst regeneriert.
 
+### Landesgrenzen bei Mehrländer-Auszügen (DACH)
+
+Valhalla ordnet jede Straße beim Bau einem Land zu und braucht dafür die
+Landesgrenze als geschlossenen Ring. Ein Auszug wie `dach-latest.osm.pbf`
+schneidet an den Grenzen und nimmt nicht jede Grenzlinie vollständig mit:
+Im DACH-Auszug vom 26.09.2026 fehlen der Schweizer Grenze fünf Wege, und
+Valhalla verwirft das Land (`Schweiz/Suisse/Svizzera/Svizra (51701) is
+degenerate`, ebenso der Kanton Waadt). Routen gehen trotzdem, es fehlen
+aber die landesspezifischen Regeln.
+
+Die Länderauszüge dagegen sind mit Rand um das Land geschnitten und
+enthalten die Grenze ganz. Daraus die Grenztabelle bauen und dem Kachelbau
+mitgeben:
+
+```bash
+cd <arbeitsverzeichnis>/boundaries
+# Laenderauszuege (Geofabrik oder der Spiegel download.openstreetmap.fr)
+wget https://download.openstreetmap.fr/extracts/europe/switzerland-latest.osm.pbf
+wget https://download.openstreetmap.fr/extracts/europe/austria-latest.osm.pbf
+for f in switzerland austria; do
+  osmium tags-filter -O -o $f-admin.osm.pbf $f-latest.osm.pbf r/boundary=administrative
+done
+osmium tags-filter -O -o dach-admin.osm.pbf ../dach-latest.osm.pbf r/boundary=administrative
+osmium merge -O -o admin-merged.osm.pbf dach-admin.osm.pbf switzerland-admin.osm.pbf austria-admin.osm.pbf
+chmod 777 .   # der Container schreibt als eigener Benutzer
+podman run --rm -v "$PWD:/data" --entrypoint valhalla_build_admins \
+  ghcr.io/gis-ops/docker-valhalla/valhalla:latest \
+  --inline-config '{"mjolnir":{"admin":"/data/admins.sqlite"}}' /data/admin-merged.osm.pbf
+sqlite3 admins.sqlite "select name from admins where admin_level=2"   # Schweiz muss dabei sein
+
+# Kacheln mit dieser Tabelle bauen
+mkdir -p ../valhalla-dach/admin_data && cp admins.sqlite ../valhalla-dach/admin_data/
+VALHALLA_BUILD_ADMINS=False ./scripts/valhalla/build_valhalla_tiles.sh -d ../valhalla-dach
+```
+
+Ob eine Grenze vollständig ist, zeigt `osmium getid -r -o ch.osm.pbf
+<datei> r51701 && osmium check-refs -r ch.osm.pbf` (`Ways in relations
+missing: 0`).
+
 ## 3) Runtime-Dateien auf Pi kopieren
 
 Auf dem Pi z. B. nach `/opt/valhalla`:
