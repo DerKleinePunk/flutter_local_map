@@ -44,6 +44,7 @@ class _MapScreenState extends State<MapScreen> {
     _routing = ValhallaRoutingService(baseUri: widget.config.valhallaBaseUri);
     _map = LocalMapController(
       routingProvider: _routing,
+      reverseGeocoder: _geocoder,
       positionSource: _gpsSimulator,
       mapController: widget.mapController,
     );
@@ -245,6 +246,15 @@ class _MapScreenState extends State<MapScreen> {
           left: 200,
           right: 200,
           child: _ManeuverCard(progress: _map.progress!),
+        )
+      else if (_map.route == null && _map.locationName != null)
+        Positioned(
+          bottom: 16,
+          left: 200,
+          right: 200,
+          child: IgnorePointer(
+            child: _LocationCard(location: _map.locationName!),
+          ),
         ),
     ];
   }
@@ -543,6 +553,59 @@ class _ManeuverCard extends StatelessWidget {
                       color: colorScheme.onSurfaceVariant,
                     ),
                   ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Wo man gerade ist, solange keine Zielführung läuft.
+class _LocationCard extends StatelessWidget {
+  const _LocationCard({required this.location});
+
+  final LocationName location;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final place = [?location.locality, ?location.district].join(' – ');
+    final title = location.street ?? place;
+
+    return Material(
+      color: colorScheme.surface.withValues(alpha: 0.95),
+      elevation: 4,
+      borderRadius: BorderRadius.circular(16),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(Icons.place, color: colorScheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    style: theme.textTheme.titleMedium,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (location.street != null && place.isNotEmpty)
+                    Text(
+                      place,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                 ],
               ),
             ),

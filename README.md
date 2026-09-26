@@ -311,6 +311,7 @@ Nach der Erzeugung von Vektor-MBTiles mit Tilemaker wird automatisch eine SQLite
 2. **Protobuf-Dekodierung**: Dekodiert das MVT-Protobuf-Format und extrahiert bekannte Name-Felder (`name`, `name:de`, `name:en`, `name:latin`) aus relevanten Layern.
 3. **Koordinaten-Transformation**: Berechnet aus der Feature-Geometrie eine repräsentative WGS84-Position mittels Web-Mercator-Projektion.
 4. **FTS5-Indizierung**: Erstellt einen Full-Text-Search-Index für schnelle Substring-Suches.
+5. **Rückwärtssuche**: Schreibt die Tabellen `reverse_names`, `reverse_places` (Ortspunkte) und `reverse_streets` (alle 100 m ein Punkt auf jeder benannten Straße aus z14). Die Suchtabellen behalten jeden Namen nur einmal je Art, für „wo bin ich?“ braucht es aber jede Hauptstraße. Die App zeigt damit ohne laufende Route Straße und Ort an.
 
 **Suchpriorisierung** in der App:
 

@@ -6,6 +6,9 @@ The MBTiles tile_data blobs are gzip-compressed Mapbox Vector Tiles (protobuf).
 This script decompresses each blob, decodes the MVT protobuf, and extracts
 known name fields from relevant layers into a SQLite FTS5 index.
 
+Alongside the search index it writes tables for reverse lookup (position ->
+place and street name), see REVERSE_* below.
+
 Usage:
   python extract_names_to_sqlite.py <input.mbtiles> <output.db> [--max-zoom N]
 
@@ -55,6 +58,31 @@ NAME_FIELDS = [
 
 BATCH_SIZE = 2000
 WORKER_BATCH_SIZE = 200  # tiles per parallel batch
+
+# Reverse lookup: which place and street is at a position.
+#
+# The search index keeps every name only once per layer, so it knows a single
+# "Hauptstrasse" for the whole country - useless for "where am I". The reverse
+# tables keep every occurrence instead:
+#   reverse_names    (id, name, type, detail)   - one row per distinct name
+#   reverse_places   (name_id, lat_e5, lng_e5)   - place nodes (towns, villages)
+#   reverse_streets  (name_id, lat_e5, lng_e5)   - points along named streets
+# Coordinates are degrees * 1e5 as INTEGER (~1 m), which SQLite stores in a
+# few bytes instead of eight. A plain B-tree index on (lat_e5, lng_e5) is
+# enough for the small boxes the app asks for, and needs no R*Tree module.
+#
+# Streets come only from z14 tiles: there every named street is present with
+# its full geometry, and one z14 tile is small enough (~1.6 km) that points on
+# the line are exact. A point every REVERSE_STREET_SPACING_M metres keeps the
+# error along the street below half that distance.
+REVERSE_STREET_ZOOM = 14
+REVERSE_STREET_SPACING_M = 100
+# Duplicates (the same street from a neighbouring tile's buffer, the same
+# place node on every zoom level) are dropped per grid cell, in 1e-5 degrees.
+REVERSE_STREET_CELL_E5 = 50  # ~55 m
+REVERSE_PLACE_CELL_E5 = 200  # ~220 m
+
+EARTH_RADIUS_M = 6371000.0
 
 # Tiles above this zoom level are skipped during extraction.
 # All place names, POIs, water names and major roads are already
@@ -123,7 +151,16 @@ def representative_tile_point(geometry):
         y = sum(point[1] for point in points) / len(points)
         return x, y
 
-    if geometry_type in {"LineString", "MultiLineString", "Polygon", "MultiPolygon"}:
+    if geometry_type == "LineString":
+        # A vertex in the middle of the line, so the point lies on the street
+        # itself - the centroid of a winding road can be far off it.
+        return tuple(points[len(points) // 2])
+
+    if geometry_type == "MultiLineString":
+        longest = max(coordinates, key=len)
+        return tuple(longest[len(longest) // 2])
+
+    if geometry_type in {"Polygon", "MultiPolygon"}:
         x = sum(point[0] for point in points) / len(points)
         y = sum(point[1] for point in points) / len(points)
         return x, y
@@ -139,6 +176,54 @@ def geometry_to_latlng(geometry, tile_x, tile_y, zoom, extent):
     point_x, point_y = point
     lon, lat = tile_pixel_to_lonlat(tile_x, tile_y, zoom, extent, point_x, point_y)
     return lat, lon
+
+
+def line_parts(geometry):
+    """The coordinate lists of a (Multi)LineString, empty for anything else."""
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates") or []
+    if geometry_type == "LineString":
+        return [coordinates]
+    if geometry_type == "MultiLineString":
+        return coordinates
+    return []
+
+
+def sample_line(part, transform, extent, spacing_m):
+    """Points every spacing_m metres along one line, inside the tile only.
+
+    Parts in the tile buffer belong to the neighbouring tile, which samples
+    them itself.
+    """
+    samples = []
+    previous = None
+    carried = 0.0
+    for pixel_x, pixel_y in part:
+        lon, lat = transform(pixel_x, pixel_y)
+        inside = 0 <= pixel_x <= extent and 0 <= pixel_y <= extent
+        if previous is None:
+            if inside:
+                samples.append((lat, lon))
+            previous = (lat, lon, inside)
+            continue
+        prev_lat, prev_lon, prev_inside = previous
+        dlat = math.radians(lat - prev_lat)
+        dlon = math.radians(lon - prev_lon) * math.cos(math.radians(lat))
+        length = EARTH_RADIUS_M * math.hypot(dlat, dlon)
+        position = spacing_m - carried
+        while position <= length:
+            f = position / length
+            if prev_inside or inside:
+                samples.append(
+                    (prev_lat + (lat - prev_lat) * f, prev_lon + (lon - prev_lon) * f)
+                )
+            position += spacing_m
+        carried = length - (position - spacing_m)
+        previous = (lat, lon, inside)
+    # The end point, so short streets between two samples are not lost.
+    if previous is not None and previous[2]:
+        samples.append((previous[0], previous[1]))
+    return samples
 
 
 def maybe_decompress_tile(blob):
@@ -176,8 +261,10 @@ def choose_detail(properties):
 def _decode_tile(args):
     """Worker: decode one MVT tile blob and return all extracted name records.
 
-    Returns (decode_error: bool, records: list[tuple]).
+    Returns (decode_error: bool, records: list[tuple], reverse: list[tuple]).
     Each record is (name, lat, lng, zoom, layer_name, detail, source_field).
+    Each reverse entry is (kind, name, detail, lat, lng) with kind "place" or
+    "street".
     """
     zoom, tile_x, tile_y_tms, blob = args
     tile_y = ((2 ** zoom) - 1) - tile_y_tms
@@ -188,9 +275,10 @@ def _decode_tile(args):
             decompressed, default_options={"geojson": False, "y_coord_down": True}
         )
     except Exception:
-        return True, []
+        return True, [], []
 
     records = []
+    reverse = []
     for layer_name in LAYER_PRIORITY:
         layer = decoded_tile.get(layer_name)
         if not layer:
@@ -207,10 +295,33 @@ def _decode_tile(args):
             if rp is None:
                 continue
             lat, lng = rp
+            detail = choose_detail(props)
             records.append(
-                (name, lat, lng, zoom, layer_name, choose_detail(props), source_field)
+                (name, lat, lng, zoom, layer_name, detail, source_field)
             )
-    return False, records
+            if layer_name == "place" and feature.get("geometry", {}).get("type") == "Point":
+                reverse.append(("place", name, detail, lat, lng))
+
+    # Streets for the reverse lookup. Autobahnen often carry only a ref
+    # ("A 5"), which is what a driver wants to see anyway.
+    streets = decoded_tile.get("transportation_name") if zoom == REVERSE_STREET_ZOOM else None
+    if streets:
+        extent = streets.get("extent", 4096)
+        transform = build_transformer(tile_x, tile_y, zoom, extent)
+        for feature in streets.get("features", []):
+            props = feature.get("properties", {})
+            name, _ = choose_name(props)
+            if not name:
+                ref = props.get("ref")
+                name = str(ref).strip() if ref is not None else None
+            if not name:
+                continue
+            detail = props.get("class")
+            detail = str(detail) if detail is not None else None
+            for part in line_parts(feature.get("geometry", {})):
+                for lat, lng in sample_line(part, transform, extent, REVERSE_STREET_SPACING_M):
+                    reverse.append(("street", name, detail, lat, lng))
+    return False, records, reverse
 
 
 def extract_names_from_mbtiles(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM):
@@ -231,6 +342,9 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
 
     output_cursor.execute("DROP TABLE IF EXISTS names")
     output_cursor.execute("DROP TABLE IF EXISTS names_meta")
+    output_cursor.execute("DROP TABLE IF EXISTS reverse_names")
+    output_cursor.execute("DROP TABLE IF EXISTS reverse_places")
+    output_cursor.execute("DROP TABLE IF EXISTS reverse_streets")
 
     output_cursor.execute(
         """
@@ -261,6 +375,26 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
         )
         """
     )
+    output_cursor.execute(
+        """
+        CREATE TABLE reverse_names (
+            id INTEGER PRIMARY KEY,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            detail TEXT
+        )
+        """
+    )
+    for table in ("reverse_places", "reverse_streets"):
+        output_cursor.execute(
+            f"""
+            CREATE TABLE {table} (
+                name_id INTEGER NOT NULL,
+                lat_e5 INTEGER NOT NULL,
+                lng_e5 INTEGER NOT NULL
+            )
+            """
+        )
 
     total_tiles = input_cursor.execute(
         "SELECT COUNT(*) AS count FROM tiles WHERE zoom_level <= ?",
@@ -279,6 +413,47 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
     next_id = 1
 
     pending_rows = []
+
+    reverse_name_ids = {}
+    reverse_seen = set()
+    pending_reverse_names = []
+    pending_reverse_points = {"place": [], "street": []}
+    reverse_counts = {"place": 0, "street": 0}
+
+    def add_reverse(kind, name, detail, lat, lng):
+        key = (name, kind, detail)
+        name_id = reverse_name_ids.get(key)
+        if name_id is None:
+            name_id = len(reverse_name_ids) + 1
+            reverse_name_ids[key] = name_id
+            pending_reverse_names.append((name_id, name, kind, detail))
+        lat_e5 = round(lat * 1e5)
+        lng_e5 = round(lng * 1e5)
+        cell = REVERSE_STREET_CELL_E5 if kind == "street" else REVERSE_PLACE_CELL_E5
+        cell_key = (name_id, lat_e5 // cell, lng_e5 // cell)
+        if cell_key in reverse_seen:
+            return
+        reverse_seen.add(cell_key)
+        pending_reverse_points[kind].append((name_id, lat_e5, lng_e5))
+
+    def flush_reverse_rows():
+        nonlocal pending_reverse_names
+        if pending_reverse_names:
+            output_cursor.executemany(
+                "INSERT INTO reverse_names (id, name, type, detail) VALUES (?, ?, ?, ?)",
+                pending_reverse_names,
+            )
+            pending_reverse_names = []
+        for kind, table in (("place", "reverse_places"), ("street", "reverse_streets")):
+            rows = pending_reverse_points[kind]
+            if rows:
+                output_cursor.executemany(
+                    f"INSERT INTO {table} (name_id, lat_e5, lng_e5) VALUES (?, ?, ?)",
+                    rows,
+                )
+                reverse_counts[kind] += len(rows)
+                pending_reverse_points[kind] = []
+        output_conn.commit()
 
     def flush_pending_rows():
         nonlocal inserted_rows, pending_rows
@@ -346,7 +521,7 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
 
             futures = [executor.submit(_decode_tile, arg) for arg in batch_args]
             for future in as_completed(futures):
-                decode_error, records = future.result()
+                decode_error, records, reverse = future.result()
                 processed_tiles += 1
                 if decode_error:
                     decode_failures += 1
@@ -360,9 +535,16 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
                             (next_id, name, lat, lng, zoom, layer_name, detail, source_field)
                         )
                         next_id += 1
+                    for kind, name, detail, lat, lng in reverse:
+                        add_reverse(kind, name, detail, lat, lng)
 
             if len(pending_rows) >= BATCH_SIZE:
                 flush_pending_rows()
+            if (
+                len(pending_reverse_points["street"]) + len(pending_reverse_points["place"])
+                >= BATCH_SIZE * 10
+            ):
+                flush_reverse_rows()
 
             if progress is not None:
                 progress.update(len(batch_args))
@@ -373,6 +555,18 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
                 )
 
     flush_pending_rows()
+    flush_reverse_rows()
+
+    # Indexes after the bulk insert - building them once is much faster than
+    # keeping them up to date row by row.
+    print("[info] Building reverse lookup indexes")
+    output_cursor.execute(
+        "CREATE INDEX reverse_places_pos ON reverse_places (lat_e5, lng_e5)"
+    )
+    output_cursor.execute(
+        "CREATE INDEX reverse_streets_pos ON reverse_streets (lat_e5, lng_e5)"
+    )
+    output_conn.commit()
 
     if progress is not None:
         progress.close()
@@ -385,6 +579,10 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
     print(f"[info] Decode failures: {decode_failures}")
     print(f"[info] Skipped geometries: {skipped_geometries}")
     print(f"[info] Extracted {inserted_rows} unique names")
+    print(
+        f"[info] Reverse lookup: {len(reverse_name_ids)} names, "
+        f"{reverse_counts['place']} place points, {reverse_counts['street']} street points"
+    )
 
     output_conn.commit()
     final_count = output_cursor.execute(

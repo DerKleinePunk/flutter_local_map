@@ -26,6 +26,16 @@ class _FakePositions implements PositionSource {
   Stream<PositionFix> get positions => controller.stream;
 }
 
+class _FakeReverse implements ReverseGeocoder {
+  final asked = <LatLng>[];
+
+  @override
+  Future<LocationName?> nameAt(LatLng position) async {
+    asked.add(position);
+    return LocationName(street: 'Strasse ${asked.length}');
+  }
+}
+
 GeocoderResult _place(String name, double lat, double lon) => GeocoderResult(
   name: name,
   location: LatLng(lat, lon),
@@ -142,6 +152,55 @@ void main() {
     map.dispose();
     // Nach dispose haengt der Controller nicht mehr an der Quelle.
     expect(source.controller.hasListener, isFalse);
+  });
+
+  test('ohne Route wird die Position benannt, erst nach 25 m neu', () async {
+    final source = _FakePositions();
+    final reverse = _FakeReverse();
+    final map = LocalMapController(
+      positionSource: source,
+      reverseGeocoder: reverse,
+    );
+    addTearDown(map.dispose);
+
+    Future<void> drive(double lat) async {
+      source.controller.add(PositionFix(position: LatLng(lat, 9)));
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    await drive(50);
+    expect(map.locationName?.street, 'Strasse 1');
+    await drive(50.0001); // ~11 m
+    expect(reverse.asked, hasLength(1));
+    await drive(50.0004); // ~44 m vom letzten Namen
+    expect(reverse.asked, hasLength(2));
+    expect(map.locationName?.street, 'Strasse 2');
+  });
+
+  test('mit Route ruht die Standortanzeige', () async {
+    final source = _FakePositions();
+    final reverse = _FakeReverse();
+    final map = LocalMapController(
+      positionSource: source,
+      reverseGeocoder: reverse,
+    );
+    addTearDown(map.dispose);
+
+    source.controller.add(const PositionFix(position: LatLng(50, 9)));
+    await Future<void>.delayed(Duration.zero);
+    expect(map.locationName, isNotNull);
+
+    map.setRoute(_result(10));
+    expect(map.locationName, isNull);
+    source.controller.add(const PositionFix(position: LatLng(50.01, 9)));
+    await Future<void>.delayed(Duration.zero);
+    expect(reverse.asked, hasLength(1), reason: 'mit Route keine Anfrage');
+
+    // Route weg: sofort neu benennen, ohne erst 25 m zu fahren.
+    map.setRoute(null);
+    await Future<void>.delayed(Duration.zero);
+    expect(reverse.asked, hasLength(2));
+    expect(map.locationName, isNotNull);
   });
 
   test('mit Route und Position gibt es Fortschritt', () async {

@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../api/position.dart';
+import '../api/reverse_geocoder.dart';
 import '../api/routing.dart';
 import '../navigation/heading_filter.dart';
 import '../navigation/route_progress.dart';
@@ -39,6 +40,7 @@ abstract interface class LocalMapViewHandle {
 class LocalMapController extends ChangeNotifier {
   LocalMapController({
     this.routingProvider,
+    this.reverseGeocoder,
     PositionSource? positionSource,
     MapController? mapController,
   }) : mapController = mapController ?? MapController(),
@@ -50,6 +52,15 @@ class LocalMapController extends ChangeNotifier {
 
   /// Liefert die Routen. Ohne ihn bleibt die Karte ohne Routing.
   final RoutingProvider? routingProvider;
+
+  /// Benennt die eigene Position für [locationName]. Ohne ihn bleibt
+  /// [locationName] leer.
+  final ReverseGeocoder? reverseGeocoder;
+
+  /// Erst nach so viel Bewegung wird die Position neu benannt. Ein
+  /// GPS-Empfänger meldet sich bis zu zehnmal je Sekunde, eine Straße
+  /// wechselt man seltener.
+  static const double _locationNameMinMoveMeters = 25;
 
   /// Die Kamera von flutter_map, für alles, was dieser Controller nicht
   /// selbst anbietet.
@@ -79,6 +90,9 @@ class LocalMapController extends ChangeNotifier {
   String? _activeStyleName;
   double _minZoom = 0;
   double _maxZoom = 22;
+  LocationName? _locationName;
+  LatLng? _locationNameAt;
+  bool _locationNameLookupRunning = false;
 
   final ValueNotifier<double> _zoom = ValueNotifier<double>(0);
 
@@ -134,6 +148,12 @@ class LocalMapController extends ChangeNotifier {
   /// Stand der Position auf der Route: nächstes Manöver, Restweg, Abstand.
   /// `null` ohne Route oder ohne Position.
   RouteProgress? get progress => _progress;
+
+  /// Wo die eigene Position liegt - Straße, Ort, Ortsteil. Wird nur ohne
+  /// [route] nachgeführt, denn während einer Zielführung zeigt die Karte das
+  /// nächste Manöver; mit einer Route ist es `null`. Braucht einen
+  /// [reverseGeocoder].
+  LocationName? get locationName => _locationName;
 
   /// Aktueller Zoom der Kamera.
   ValueListenable<double> get zoom => _zoom;
@@ -268,6 +288,13 @@ class LocalMapController extends ChangeNotifier {
     _tracker = route == null ? null : RouteTracker(route);
     final fix = _position;
     _progress = fix == null ? null : _tracker?.update(fix.position);
+    // Mit Route ruht die Anzeige; ohne soll die nächste Position sofort neu
+    // benannt werden, nicht erst nach 25 m.
+    _locationName = null;
+    _locationNameAt = null;
+    if (route == null && fix != null) {
+      _updateLocationName(fix.position);
+    }
   }
 
   void _onPosition(PositionFix fix) {
@@ -275,8 +302,37 @@ class LocalMapController extends ChangeNotifier {
     _position = fix;
     _headingFilter.update(fix);
     _progress = _tracker?.update(fix.position);
+    if (_route == null) {
+      _updateLocationName(fix.position);
+    }
     _notify();
     _view?.positionChanged(fix);
+  }
+
+  Future<void> _updateLocationName(LatLng position) async {
+    final geocoder = reverseGeocoder;
+    if (geocoder == null || _locationNameLookupRunning) return;
+    final last = _locationNameAt;
+    if (last != null &&
+        const Distance()(last, position) < _locationNameMinMoveMeters) {
+      return;
+    }
+    _locationNameLookupRunning = true;
+    try {
+      final name = await geocoder.nameAt(position);
+      // Inzwischen ist eine Route da - dann gilt die Anzeige nicht mehr.
+      if (_disposed || _route != null) return;
+      _locationNameAt = position;
+      if (name != _locationName) {
+        _locationName = name;
+        _notify();
+      }
+    } catch (_) {
+      // Die Anzeige ist ein Zusatz. Schlägt sie fehl, bleibt die alte stehen,
+      // und die nächste Position versucht es erneut.
+    } finally {
+      _locationNameLookupRunning = false;
+    }
   }
 
   void _refollow() {

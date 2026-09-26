@@ -155,6 +155,7 @@ selbst liefert (etwa aus einem eigenen Backend), implementiert:
 | `RoutingProvider` | `ValhallaRoutingService` (HTTP) | `route(start: …, end: …)` → `RoutingResult` mit Geometrie und Manövern; ohne `start` ab der eigenen Position. `isAvailable()` für die Anzeige |
 | `PositionSource` | `GpsNmeaSimulatorService` (NMEA-Aufzeichnung) | `Stream<PositionFix>` mit Position, Kurs, Geschwindigkeit |
 | `PlaceSearch` | `OfflineGeocoder` (SQLite/FTS5) | `searchPlaces(query, near: …)` für `PlaceSearchBar`; mit `near` zuerst Treffer in der Nähe |
+| `ReverseGeocoder` | `OfflineGeocoder` (SQLite) | `nameAt(position)` → `LocationName` mit Straße, Ort und Ortsteil; füllt `LocalMapController.locationName` |
 
 Eine fertig berechnete Route – etwa vom eigenen Backend oder per
 Map-Matching aus einer Aufzeichnung (`ValhallaRoutingService.routeAlongTrace`)
@@ -260,6 +261,14 @@ Die mitgelieferten Styles liegen unter
 Demo-App legt sie neben die MBTiles-Datei (aus `karte.mbtiles` wird
 `karte_names.db`); `MapView` selbst braucht sie nicht.
 
+Dieselbe Datenbank beantwortet auch „wo bin ich?“. Wer dem
+`LocalMapController` einen `reverseGeocoder` mitgibt, findet in
+`locationName` die Straße, den Ort und den Ortsteil zur eigenen Position.
+Nachgeführt wird der Wert nur ohne Route, also außerhalb der Zielführung, und
+erst nach 25 m Bewegung. Dafür braucht die Datenbank die Tabellen `reverse_*`,
+die das Skript seit September 2026 anlegt. Mit einer älteren Datenbank bleibt
+`locationName` leer, die Suche funktioniert weiter.
+
 ## Öffentliche API
 
 `package:local_map/local_map.dart` exportiert:
@@ -267,7 +276,8 @@ Demo-App legt sie neben die MBTiles-Datei (aus `karte.mbtiles` wird
 - **Setup:** `LocalMap`, `MapConfig`, `MapStorageLocation`
 - **Steuerung:** `LocalMapController`, `MapLayerStyle`
 - **Navigation:** `RouteTracker`, `RouteProgress`, `HeadingFilter`
-- **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`
+- **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`,
+  `ReverseGeocoder` mit `LocationName`
 - **Widgets:** `MapView`, `DownloadOverlay`, `PlaceSearchBar`,
   `StorageSettingsDialog`, dazu ihre Texte `DownloadOverlayTexts`,
   `PlaceSearchTexts`, `StorageSettingsTexts` und `DownloadStatus`

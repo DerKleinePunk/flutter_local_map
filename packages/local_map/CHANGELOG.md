@@ -1,5 +1,13 @@
 # Changelog
 
+## Unveröffentlicht
+
+- Neue Schnittstelle `ReverseGeocoder` mit `LocationName` (Straße, Ort,
+  Ortsteil). `OfflineGeocoder` implementiert sie über die neuen
+  `reverse_*`-Tabellen der Namensdatenbank.
+- `LocalMapController` nimmt optional einen `reverseGeocoder` und führt ohne
+  Route `locationName` nach, sobald man sich 25 m bewegt hat.
+
 ## 0.4.1
 
 - Die mitgelieferten Vektorstyles beschriften jetzt: Sie lesen die Namen
