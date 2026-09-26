@@ -120,8 +120,16 @@ emb cross . --target rpi4-trixie --build --backend drm-kms-egl \
     -w /home/punky/develop/emb-workspace
 
 rsync -a --delete <runnable-pfad>/ jeep-pi:~/flutter-sample/
+# --delete nimmt die GPS-Aufzeichnung mit, "GPS Sim laden" meldet dann
+# "Keine GPS-Tourdatei gefunden". Nach jedem rsync neu hinlegen:
+ssh jeep-pi 'mkdir -p ~/flutter-sample/scripts/GpsTest'
+rsync -a scripts/GpsTest/GPS-Adnan-Tour.txt jeep-pi:flutter-sample/scripts/GpsTest/
 ssh jeep-pi 'cd ~/flutter-sample && ./homescreen -b . -f -t Adwaita'
 ```
+
+Zum Bedienen per MCP (siehe unten) mit `-D BUILD_ACCESSIBILITY=ON -D BUILD_MCP=ON` bauen (beim ersten Mal `--update-lock`) und mit `--enable-mcp` starten. Auf dem Pi gibt es **kein tmux**: im Hintergrund starten mit `setsid nohup ./homescreen -b . -f -t Adwaita --enable-mcp > /tmp/hs.log 2>&1 < /dev/null &`, den Socket unter `/run/user/1000/ivi-homescreen/mcp.sock` per `curl` auf dem Pi ansprechen.
+
+Der GPS-Chip heißt nach dem Laden `GPS Sim an (N)` bzw. `GPS Sim aus (N)` und **nennt den Zustand, nicht die Aktion**: ein Tipp auf `GPS Sim an` schaltet die Simulation aus. Der erste Tipp auf `GPS Sim laden` lädt und startet zugleich.
 
 - **`-f` ist Pflicht.** `Size: 1920 x 720` im Log ist der Default der View-Konfiguration, nicht der Scanout-Modus. Ohne `-f` bekommst du ein falsches Bild und misst Unsinn.
 - **`-d`** schaltet das Backend-Debuglog dazu. Dann zaehlen `[DrmCompositor] LayerScene commit`-Zeilen — hoeren sie auf, wird nicht mehr gezeichnet (das ist das bekannte Einfrieren, kein Absturz; siehe Memory `pi-freeze-reproduction`).
