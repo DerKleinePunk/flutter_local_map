@@ -22,6 +22,9 @@
 - `GeocoderResult.searchRank` ersetzt die feste Typ-Rangfolge,
   `typePriority` gibt ihn weiter. Benannte Stellen ohne Einwohner
   (`locality`, Plätze, Felder) zählen wie Straßen.
+- `GeocoderResult.isRegion` für Gebiete (Bundesland, Kanton, Kreis …);
+  `PlaceSearchBar` nennt sie „Gebiet“ statt „Ort“ (`PlaceSearchTexts.region`).
+  Gebiete tragen keinen Ortsbezug mehr.
 - Suche auf dem Pi 4 mit DACH (5,3 Mio. Namen) unter 180 ms statt bis zu
   3,4 s: Typ und Rasterfeld stehen im Suchindex, kurze Eingaben nutzen den
   Präfix-Index. Das braucht eine Namensdatenbank mit der Spalte `cell`;

@@ -224,6 +224,13 @@ void main() {
         area: 'Fulda',
       ),
       GeocoderResult(
+        name: 'Zürich',
+        location: const LatLng(47.4, 8.6),
+        zoom: 8,
+        type: 'place',
+        detail: 'state',
+      ),
+      GeocoderResult(
         name: 'Neustadt',
         location: const LatLng(50.8500, 9.1200),
         zoom: 12,
@@ -259,6 +266,7 @@ void main() {
     expect(subtitles, [
       'Straße · Alsfeld · 110 m',
       'Straße · Fulda · 37 km',
+      'Gebiet · 376 km',
       'Ort · bei Marburg · 15 km',
     ]);
   });

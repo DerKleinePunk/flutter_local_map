@@ -132,6 +132,12 @@ LOCALITY_CLASSES = {
     "isolated_dwelling": (0.4, 500, 0),
     "farm": (0.4, 500, 0),
 }
+# Areas get no context: the nearest village to the centre of a canton or a
+# state says nothing ("Zuerich bei Wangen bei Duebendorf").
+AREA_CLASSES = {
+    "country", "state", "province", "region", "county", "district",
+    "canton", "borough", "continent", "archipelago", "island",
+}
 # A place's own context is a larger place nearby ("Neustadt bei Marburg").
 PLACE_CONTEXT_RADIUS_M = 30000
 LOCALITY_GRID_DEG = 0.2
@@ -330,6 +336,8 @@ class ContextFinder:
 
     def for_place(self, name, detail, lat, lng):
         """For a place: a larger place nearby; for a quarter: its town."""
+        if detail in AREA_CLASSES:
+            return None
         own = LOCALITY_CLASSES.get(detail)
         if own is None:
             # Quarters, fields, localities: the town they are part of.

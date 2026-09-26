@@ -50,6 +50,25 @@ class GeocoderResult {
     _ => 99,
   };
 
+  /// Ob der Treffer ein Gebiet ist - Land, Bundesland, Kanton, Kreis - und
+  /// kein Ort. Gebiete tragen keinen [area].
+  bool get isRegion => type == 'place' && _regionClasses.contains(detail);
+
+  /// Wie AREA_CLASSES in scripts/extract_names_to_sqlite.py.
+  static const Set<String> _regionClasses = {
+    'country',
+    'state',
+    'province',
+    'region',
+    'county',
+    'district',
+    'canton',
+    'borough',
+    'continent',
+    'archipelago',
+    'island',
+  };
+
   static const Set<String> _unpopulatedPlaces = {
     'locality',
     'square',

@@ -18,6 +18,11 @@ class PlaceSearchTexts {
   final String water;
   final String street;
 
+  /// Statt [place] für Gebiete wie Bundesland oder Kanton
+  /// ([GeocoderResult.isRegion]), damit "Zürich" der Kanton und "Zürich"
+  /// die Stadt auseinanderzuhalten sind.
+  final String region;
+
   /// Vor dem größeren Ort, den ein Ort als [GeocoderResult.area] mitbringt:
   /// "Neustadt · bei Marburg".
   final String near;
@@ -33,6 +38,7 @@ class PlaceSearchTexts {
     this.mountainPeak = 'Peak',
     this.water = 'Water',
     this.street = 'Street',
+    this.region = 'Region',
     this.near = 'near',
     this.decimalSeparator = '.',
   });
@@ -44,6 +50,7 @@ class PlaceSearchTexts {
     mountainPeak: 'Berg',
     water: 'Gewässer',
     street: 'Straße',
+    region: 'Gebiet',
     near: 'bei',
     decimalSeparator: ',',
   );
@@ -205,7 +212,11 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
   /// "Straße · Alsfeld · 3,2 km" - Typ, Ort und Entfernung, damit sich
   /// gleichnamige Treffer unterscheiden lassen.
   String _subtitle(GeocoderResult result) {
-    final parts = <String>[widget.texts.typeLabel(result.type)];
+    final parts = <String>[
+      result.isRegion
+          ? widget.texts.region
+          : widget.texts.typeLabel(result.type),
+    ];
     if (result.type == 'poi' && result.detail != null) {
       parts.add(result.detail!);
     }
