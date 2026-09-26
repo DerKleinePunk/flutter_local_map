@@ -180,6 +180,13 @@ cd scripts
 # Hessen (BBox)
 ./tilemaker.sh hessen
 
+# Deutschland, Oesterreich, Schweiz (eigener Geofabrik-Auszug)
+# Erzeugt dach.mbtiles und dach_names.db
+./tilemaker.sh dach
+
+# Dazu die Valhalla-Routing-Kacheln (in valhalla-<region>/, dauert Stunden)
+./tilemaker.sh dach valhalla
+
 # Vektor + Raster (zweite Datei mit PNG-Tiles)
 ./tilemaker.sh raster
 
@@ -201,6 +208,10 @@ FORCE_REBUILD=1 ./tilemaker.sh raster
 FORCE_REBUILD=1 ./tilemaker.sh vogelsberg raster
 FORCE_REBUILD=1 ./tilemaker.sh braunschweig raster
 ```
+
+Jeder Schritt (download, tilemaker, namen, raster, valhalla, gesamt) landet mit
+Dauer und Status in `build-times.log` im Arbeitsverzeichnis. Die Datei wächst
+über alle Läufe hinweg, so lassen sich Bauzeiten vergleichen.
 
 ## Hoehenlinien (Konturlinien)
 

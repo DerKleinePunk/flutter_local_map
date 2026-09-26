@@ -127,11 +127,14 @@ if [[ -n "$BBOX" ]]; then
   osmium extract -b "$BBOX" "$INPUT_PBF" -o "$EXTRACT_PBF" --overwrite
 else
   echo "[1/4] Using input extract directly"
-  cp "$INPUT_PBF" "$EXTRACT_PBF"
+  # Hardlink statt Kopie, wo es geht: bei Deutschland und DACH spart das
+  # je 5-6 GB. Das Quellformat wird nie beschrieben, der Link ist sicher.
+  ln -f "$INPUT_PBF" "$EXTRACT_PBF" 2>/dev/null || cp "$INPUT_PBF" "$EXTRACT_PBF"
 fi
 
 # Keep a root-level PBF so the GIS-OPS runtime image can auto-build if no prebuilt tiles exist.
-cp "$EXTRACT_PBF" "$OUTPUT_DIR/${REGION}.osm.pbf"
+ln -f "$EXTRACT_PBF" "$OUTPUT_DIR/${REGION}.osm.pbf" 2>/dev/null \
+  || cp "$EXTRACT_PBF" "$OUTPUT_DIR/${REGION}.osm.pbf"
 mkdir -p "$OUTPUT_DIR/transit_tiles"
 
 # Remove broken/stale config files. This image generates/updates valhalla.json itself.

@@ -30,6 +30,21 @@ fi
 
 DATA_FULL="$(realpath "$DATA")"
 
+# Container-Laufzeit wie in tilemaker.sh: docker nur, wenn es wirklich
+# antwortet, sonst podman. Ueberschreibbar per CONTAINER_CMD.
+CONTAINER_CMD="${CONTAINER_CMD:-}"
+if [[ -z "$CONTAINER_CMD" ]]; then
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        CONTAINER_CMD="docker"
+    elif command -v podman >/dev/null 2>&1; then
+        CONTAINER_CMD="podman"
+    else
+        echo "ERROR: Weder docker noch podman ist erreichbar." >&2
+        exit 1
+    fi
+fi
+echo "Container-Laufzeit: $CONTAINER_CMD"
+
 # Voraussetzungen pruefen
 if ! ls "$DATA_FULL"/*.osm.pbf &>/dev/null; then
     echo "ERROR: Keine .osm.pbf-Datei in $DATA_FULL gefunden. Tile-Build nicht moeglich." >&2
@@ -46,18 +61,18 @@ if [[ -f "$CONFIG_PATH" && ! -s "$CONFIG_PATH" ]]; then
 fi
 
 echo "Stopping leftover build container (if any): $NAME"
-docker rm -f "$NAME" 2>/dev/null || true
+"$CONTAINER_CMD" rm -f "$NAME" 2>/dev/null || true
 
 echo ""
-echo "Pulling Docker image: $IMAGE"
-docker pull "$IMAGE"
+echo "Pulling image: $IMAGE"
+"$CONTAINER_CMD" pull "$IMAGE"
 
 echo ""
 echo "Starting Valhalla tile build from PBF in $DATA_FULL"
 echo "(serve_tiles=False  ->  Container exits when build is done)"
 echo ""
 
-docker run --rm \
+"$CONTAINER_CMD" run --rm \
     --name "$NAME" \
     -v "${DATA_FULL}:/custom_files" \
     -e use_tiles_ignore_pbf=False \

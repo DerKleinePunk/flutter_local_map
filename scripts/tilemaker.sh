@@ -3,14 +3,46 @@ set -euo pipefail
 
 SCRIPT_START_TS="$(date +%s)"
 
+_format_duration() {
+  local elapsed="$1"
+  printf '%02d:%02d:%02d' $((elapsed / 3600)) $(((elapsed % 3600) / 60)) $((elapsed % 60))
+}
+
+# Jeder Schritt landet mit Dauer in $TIMES_LOG im Arbeitsverzeichnis. Die
+# Datei waechst ueber alle Laeufe, damit sich Bauzeiten verschiedener
+# Regionen und Staende vergleichen lassen.
+_log_time() {
+  local step="$1" elapsed="$2" status="${3:-ok}"
+  printf '[time] %s: %s\n' "$step" "$(_format_duration "$elapsed")"
+  if [ -n "${TIMES_LOG:-}" ]; then
+    printf '%s\t%s\t%s\t%s\t%s\n' "$(date '+%F %T')" "${REGION:-?}" \
+      "$step" "$(_format_duration "$elapsed")" "$status" >> "$TIMES_LOG"
+  fi
+}
+
+STEP_NAME=""
+STEP_START_TS=0
+
+_step_begin() {
+  STEP_NAME="$1"
+  STEP_START_TS="$(date +%s)"
+  echo "[time] Start $STEP_NAME: $(date '+%F %T')"
+}
+
+_step_end() {
+  _log_time "$STEP_NAME" $(($(date +%s) - STEP_START_TS))
+  STEP_NAME=""
+}
+
 print_runtime() {
-  local end_ts elapsed hours minutes seconds
-  end_ts="$(date +%s)"
-  elapsed=$((end_ts - SCRIPT_START_TS))
-  hours=$((elapsed / 3600))
-  minutes=$(((elapsed % 3600) / 60))
-  seconds=$((elapsed % 60))
-  printf '[time] Laufzeit: %02d:%02d:%02d\n' "$hours" "$minutes" "$seconds"
+  local rc=$?
+  # Ein abgebrochener Schritt wird mit seiner Dauer bis zum Abbruch notiert.
+  if [ -n "$STEP_NAME" ]; then
+    _log_time "$STEP_NAME" $(($(date +%s) - STEP_START_TS)) "abgebrochen"
+  fi
+  local status="ok"
+  [ "$rc" -eq 0 ] || status="fehler($rc)"
+  _log_time "gesamt" $(($(date +%s) - SCRIPT_START_TS)) "$status"
 }
 
 trap print_runtime EXIT
@@ -29,17 +61,24 @@ WORK_DIR="${TILEMAKER_WORK_DIR:-$PROJECT_ROOT/map/tiles-germany}"
 mkdir -p "$WORK_DIR"
 cd "$WORK_DIR"
 
-PBF_FILE="germany-latest.osm.pbf"
+TIMES_LOG="$WORK_DIR/build-times.log"
+if [ ! -f "$TIMES_LOG" ]; then
+  printf 'zeitpunkt\tregion\tschritt\tdauer\tstatus\n' > "$TIMES_LOG"
+fi
+
 WATER_ZIP="water-polygons-split-4326.zip"
 COASTLINE_DIR="coastline"
 
 show_usage() {
-  echo "Nutzung: ./tilemaker.sh [vogelsberg|braunschweig|hessen] [raster|--raster]"
+  echo "Nutzung: ./tilemaker.sh [vogelsberg|braunschweig|hessen|dach] [valhalla] [raster|--raster]"
   echo ""
   echo "  ohne Parameter:    Germany Vector-MBTiles"
+  echo "  dach:              Deutschland, Oesterreich, Schweiz (eigener"
+  echo "                     Geofabrik-Auszug, ~6 GB)"
   echo "  vogelsberg:        Testgebiet Fulda/Vogelsberg (BBox)"
   echo "  braunschweig:      Braunschweig mit Umland (BBox)"
   echo "  hessen:            Hessen (BBox)"
+  echo "  valhalla:          zusaetzlich die Routing-Kacheln bauen (dauert Stunden)"
   echo "  raster|--raster:   zusaetzlich Raster-MBTiles aus Vektor-MBTiles erzeugen"
   echo "                     benoetigt gueltiges styles.zip (z. B. scripts/styles.zip),"
   echo "                     holen mit: git restore --source=1da5f2b scripts/styles.zip"
@@ -64,6 +103,8 @@ show_usage() {
   echo "  RASTER_MIN_RENDERER_POOL_SIZES (z. B. 24 oder 24,12,6)"
   echo "  RASTER_CONTOURS (Dateiname einer Konturlinien-MBTiles in map/tiles-germany/,"
   echo "                   z. B. vogelsberg_contours.mbtiles – werden in Raster-Tiles eingebacken)"
+  echo ""
+  echo "Die Dauer jedes Schritts steht in build-times.log im Arbeitsverzeichnis."
 }
 
 # Vogelsberg: Testgebiet rund um Fulda / Vogelsberg
@@ -79,6 +120,7 @@ HESSEN_BBOX="7.7726,49.3963,10.2358,51.6569"
 
 BBOX_ARG=()
 GENERATE_RASTER=0
+BUILD_VALHALLA=0
 REGION="germany"
 
 for arg in "$@"; do
@@ -92,8 +134,14 @@ for arg in "$@"; do
     hessen)
       REGION="hessen"
       ;;
+    dach)
+      REGION="dach"
+      ;;
     raster|--raster)
       GENERATE_RASTER=1
+      ;;
+    valhalla)
+      BUILD_VALHALLA=1
       ;;
     -h|--help)
       show_usage
@@ -161,13 +209,27 @@ case "$REGION" in
     BBOX_ARG+=(--bbox "$HESSEN_BBOX")
     OUTPUT_MBTILES="hessen.mbtiles"
     ;;
+  dach)
+    # Keine BBox: Geofabrik schneidet DACH selbst entlang der Landesgrenzen
+    # aus, eine BBox um die drei Laender braechte halb Tschechien und
+    # Norditalien mit.
+    echo "[region] DACH (Deutschland, Oesterreich, Schweiz)"
+    OUTPUT_MBTILES="dach.mbtiles"
+    ;;
   *)
     OUTPUT_MBTILES="germany.mbtiles"
     ;;
 esac
 
-# Deutschland PBF (~4 GB)
-PBF_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+# Quelldaten: DACH (~6 GB) als eigener Auszug, alle anderen Regionen werden
+# aus Deutschland (~4,6 GB) ausgeschnitten.
+if [ "$REGION" = "dach" ]; then
+  PBF_FILE="dach-latest.osm.pbf"
+  PBF_URL="https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+else
+  PBF_FILE="germany-latest.osm.pbf"
+  PBF_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+fi
 PBF_MD5_URL="${PBF_URL}.md5"
 PBF_MD5_FILE="${PBF_FILE}.md5"
 
@@ -202,9 +264,12 @@ _check_pbf_md5() {
 # darueber. Ein Fehlschlag kostet so nie die vorhandene Datei - bei 4,6 GB
 # ist das der Unterschied zwischen "nochmal probieren" und "nochmal laden".
 _download_pbf() {
+  local start_ts
+  start_ts="$(date +%s)"
   echo "[download] Lade $PBF_FILE herunter"
   wget -O "$PBF_FILE.part" "$PBF_URL"
   mv -f "$PBF_FILE.part" "$PBF_FILE"
+  _log_time "download" $(($(date +%s) - start_ts))
 }
 
 if [ "${SKIP_PBF_MD5:-0}" = "1" ]; then
@@ -334,6 +399,7 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
   cp -f "$PROJECT_ROOT/scripts/tilemaker/process-openmaptiles.lua" \
         "$WORK_DIR/tilemaker-process.lua"
 
+  _step_begin "tilemaker"
   "$CONTAINER_CMD" run "${TTY_ARG[@]}" --rm --pull always \
     -w /data \
     -v "$WORK_DIR:/data" \
@@ -347,6 +413,7 @@ if [ "$NEEDS_VECTOR_BUILD" = "1" ]; then
       "${TILEMAKER_REBUILD_ARG[@]}" \
       "${BBOX_ARG[@]}" \
       --store /data/temp
+  _step_end
 fi
 
 # Ensure a local virtualenv exists for Python tooling.
@@ -392,6 +459,7 @@ else
   fi
 
   echo "[names] Extrahiere suchbare Namen aus $OUTPUT_MBTILES"
+  _step_begin "namen"
   if "$PYTHON_BIN" "$SCRIPT_DIR/extract_names_to_sqlite.py" \
       "$WORK_DIR/$OUTPUT_MBTILES" \
       "$WORK_DIR/$NAMES_DB_OUTPUT"; then
@@ -399,6 +467,7 @@ else
   else
     echo "[warning] Namen-Extraktion fehlgeschlagen, fortfahren..."
   fi
+  _step_end
 fi
 
 if [ "$GENERATE_RASTER" = "1" ]; then
@@ -428,6 +497,7 @@ if [ "$GENERATE_RASTER" = "1" ]; then
   fi
 
   echo "[raster] Erzeuge $RASTER_OUTPUT aus $OUTPUT_MBTILES"
+  _step_begin "raster"
   "$PYTHON_BIN" "$SCRIPT_DIR/render_raster.py" \
     "$OUTPUT_MBTILES" \
     "$RASTER_OUTPUT" \
@@ -438,15 +508,26 @@ if [ "$GENERATE_RASTER" = "1" ]; then
     "${MAX_RENDERER_POOL_SIZES_ARG[@]}" \
     "${MIN_RENDERER_POOL_SIZES_ARG[@]}" \
     "${CONTOURS_ARG[@]}"
+  _step_end
 fi
 
-# Build Valhalla routing tiles
-echo "[valhalla] Starte Valhalla-Tile-Generierung"
+# Valhalla bekommt ein eigenes Verzeichnis je Region: das GIS-OPS-Image baut
+# aus JEDER .osm.pbf, die es in seinem Datenverzeichnis findet, und im
+# Arbeitsverzeichnis liegen mehrere (Deutschland, DACH, Ausschnitte).
+VALHALLA_DIR="$WORK_DIR/valhalla-$REGION"
+echo "[valhalla] Bereite Valhalla-Daten in $VALHALLA_DIR vor"
 if [ -f "$SCRIPT_DIR/valhalla/build_valhalla_from_pbf.sh" ]; then
   bash "$SCRIPT_DIR/valhalla/build_valhalla_from_pbf.sh" \
     --input "$WORK_DIR/$PBF_FILE" \
-    --output "$WORK_DIR" \
+    --output "$VALHALLA_DIR" \
     --region "$REGION"
 else
   echo "[warning] $SCRIPT_DIR/valhalla/build_valhalla_from_pbf.sh nicht gefunden"
+fi
+
+if [ "$BUILD_VALHALLA" = "1" ]; then
+  _step_begin "valhalla"
+  CONTAINER_CMD="$CONTAINER_CMD" \
+    bash "$SCRIPT_DIR/valhalla/build_valhalla_tiles.sh" -d "$VALHALLA_DIR"
+  _step_end
 fi
