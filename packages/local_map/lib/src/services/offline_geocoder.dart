@@ -36,7 +36,11 @@ class GeocoderResult {
   /// Rang in der Trefferliste, kleiner = weiter oben: Orte, POIs, Berge,
   /// Gewässer, Straßen. Bushaltestellen stehen hinter den Straßen - sie
   /// heißen oft wie die Straße, und wer "Hauptstraße" tippt, meint die.
+  /// Benannte Stellen ohne Einwohner (`locality` - Flurnamen, oft auch nur
+  /// ein Straßenname als Punkt - Plätze, Felder) zählen wie Straßen; sonst
+  /// schlägt eine "Bahnhofstrasse" im Simmental die in Zürich.
   int get searchRank => switch (type) {
+    'place' when _unpopulatedPlaces.contains(detail) => 4,
     'place' => 0,
     'poi' when detail == 'bus' => 5,
     'poi' => 1,
@@ -44,6 +48,15 @@ class GeocoderResult {
     'water_name' => 3,
     'transportation_name' => 4,
     _ => 99,
+  };
+
+  static const Set<String> _unpopulatedPlaces = {
+    'locality',
+    'square',
+    'field',
+    'plot',
+    'allotments',
+    'city_block',
   };
 
   @override
@@ -64,6 +77,15 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
   String? _currentNamesDb;
   bool _hasReverseTables = false;
   bool _hasArea = false;
+
+  /// Ob die Suchtabelle den Typ und ein Rasterfeld im Index hat (seit
+  /// September 2026). Nur dann gibt es die Umkreissuche, und der Typfilter
+  /// steht im MATCH-Ausdruck.
+  bool _hasGrid = false;
+
+  /// Kantenlänge der Rasterfelder in Grad, wie SEARCH_GRID_DEG in
+  /// scripts/extract_names_to_sqlite.py.
+  static const double _gridDegrees = 0.5;
 
   /// Treffer aus diesem Umkreis kommen mit `near` vor dem Rest des Landes.
   static const double _nearRadiusMeters = 50000;
@@ -143,7 +165,7 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
     // Hauptstraßen eine beliebige Auswahl heraus.
     final trimmed = query.trim();
     final candidates = <GeocoderResult>[];
-    if (near != null && _hasArea && trimmed.length >= _nearMinChars) {
+    if (near != null && _hasGrid && trimmed.length >= _nearMinChars) {
       candidates.addAll(await _searchNear(trimmed, near, limit: limit * 10));
     }
     final seen = {for (final r in candidates) _identity(r)};
@@ -250,6 +272,8 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
       // Mit dem Ortsbezug kam auch rowid = id, auf dem die Umkreissuche
       // aufbaut.
       _hasArea = columns.any((c) => c['name'] == 'context');
+      final ftsColumns = await _database!.rawQuery('PRAGMA table_info(names)');
+      _hasGrid = ftsColumns.any((c) => c['name'] == 'cell');
       if (!_hasReverseTables) {
         MapErrorHandler.logInfo(
           'Namensdatenbank ohne reverse_*-Tabellen, keine Anzeige des '
@@ -433,27 +457,31 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
     final expression = _matchExpression(query);
     if (db == null || expression == null) return [];
 
-    // Ohne [near] genügt die FTS-Tabelle. Mit [near] geht es über
-    // names_meta (rowid = id): erst die Textsuche, dann je Treffer per
-    // Primärschlüssel die Position prüfen. Umgekehrt - FTS5 die ids eines
-    // Umkreises reichen - prüft FTS5 jede id einzeln: 16 s statt 10 ms.
-    final source = near == null
-        ? 'names f'
-        : 'names f JOIN names_meta m ON m.id = f.rowid';
-    final t = near == null ? 'f' : 'm';
-    final where = StringBuffer('f.names MATCH ?');
-    final args = <Object?>[expression];
+    // Gemessen auf dem Pi 4 mit DACH (5,3 Mio. Namen): Typ und Umkreis
+    // gehören in den MATCH-Ausdruck, dann erledigt sie der Index. Als
+    // "type = ?" oder als Lat/Lng-Filter hinter der Textsuche prüft SQLite
+    // jeden Treffer einzeln - "Hau" in der Nähe 2,2 s statt 134 ms.
+    final match = StringBuffer(expression);
+    final where = StringBuffer();
+    final args = <Object?>[];
     if (type != null) {
-      where.write(' AND $t.type = ?');
-      args.add(type);
+      if (_hasGrid) {
+        match.write(' AND type : "${type.replaceAll('"', '""')}"');
+      } else {
+        where.write(' AND type = ?');
+        args.add(type);
+      }
     }
     var order = '';
-    if (near != null) {
+    if (near != null && _hasGrid) {
       const metersPerDegree = 111195.0;
       final cosLat = math.cos(near.latitude * math.pi / 180);
       final dLat = _nearRadiusMeters / metersPerDegree;
       final dLng = dLat / math.max(cosLat, 0.01);
-      where.write(' AND m.lat BETWEEN ? AND ? AND m.lng BETWEEN ? AND ?');
+      match.write(
+        ' AND cell : (${_cellsAround(near, dLat, dLng).join(' OR ')})',
+      );
+      where.write(' AND lat BETWEEN ? AND ? AND lng BETWEEN ? AND ?');
       args.addAll([
         near.latitude - dLat,
         near.latitude + dLat,
@@ -461,8 +489,8 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
         near.longitude + dLng,
       ]);
       order =
-          ' ORDER BY (m.lat - ?) * (m.lat - ?) + '
-          '(m.lng - ?) * (m.lng - ?) * ${cosLat * cosLat}';
+          ' ORDER BY (lat - ?) * (lat - ?) + '
+          '(lng - ?) * (lng - ?) * ${cosLat * cosLat}';
       args.addAll([
         near.latitude,
         near.latitude,
@@ -471,13 +499,13 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
       ]);
     }
     args.add(limit);
-    final area = _hasArea ? '$t.context' : 'NULL AS context';
+    final area = _hasArea ? 'context' : 'NULL AS context';
 
     try {
       final results = await db.rawQuery(
-        'SELECT $t.id, $t.name, $t.lat, $t.lng, $t.zoom, $t.type, $t.detail, '
-        '$area FROM $source WHERE $where$order LIMIT ?',
-        args,
+        'SELECT id, name, lat, lng, zoom, type, detail, $area FROM names '
+        'WHERE names MATCH ?$where$order LIMIT ?',
+        [match.toString(), ...args],
       );
       return results
           .map(
@@ -498,6 +526,26 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
       MapErrorHandler.logError('Search error: $e', context: 'geocoder');
       return [];
     }
+  }
+
+  /// Die Rasterfelder, die das Rechteck um [center] berühren, als Wörter
+  /// des Suchindex ("g281x378").
+  static List<String> _cellsAround(LatLng center, double dLat, double dLng) {
+    int row(double lat) => ((lat + 90) / _gridDegrees).floor();
+    int col(double lng) => ((lng + 180) / _gridDegrees).floor();
+    return [
+      for (
+        var r = row(center.latitude - dLat);
+        r <= row(center.latitude + dLat);
+        r++
+      )
+        for (
+          var c = col(center.longitude - dLng);
+          c <= col(center.longitude + dLng);
+          c++
+        )
+          'g${r}x$c',
+    ];
   }
 
   static (String, String, double, double) _identity(GeocoderResult r) =>
@@ -573,6 +621,7 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
     _currentNamesDb = null;
     _hasReverseTables = false;
     _hasArea = false;
+    _hasGrid = false;
   }
 
   /// Check if database is initialized

@@ -20,7 +20,12 @@
   die Reihenfolge der Suche bei und zeigt „Typ · Ort · Entfernung“ statt
   Klasse und Zoom. Neue Texte `PlaceSearchTexts.near` und `decimalSeparator`.
 - `GeocoderResult.searchRank` ersetzt die feste Typ-Rangfolge,
-  `typePriority` gibt ihn weiter.
+  `typePriority` gibt ihn weiter. Benannte Stellen ohne Einwohner
+  (`locality`, Plätze, Felder) zählen wie Straßen.
+- Suche auf dem Pi 4 mit DACH (5,3 Mio. Namen) unter 180 ms statt bis zu
+  3,4 s: Typ und Rasterfeld stehen im Suchindex, kurze Eingaben nutzen den
+  Präfix-Index. Das braucht eine Namensdatenbank mit der Spalte `cell`;
+  ältere suchen weiter landesweit.
 
 ## 0.4.1
 

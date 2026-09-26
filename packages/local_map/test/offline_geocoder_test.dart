@@ -229,8 +229,8 @@ void main() {
   });
 }
 
-/// Eine Namensdatenbank im heutigen Schema: Ortsbezug in `context`,
-/// Positionsindex, rowid = id. [far] Hauptstraßen liegen weit im Norden, die
+/// Eine Namensdatenbank im heutigen Schema: Ortsbezug in `context`, Typ und
+/// Rasterfeld (`cell`) im Suchindex, rowid = id. [far] Hauptstraßen liegen weit im Norden, die
 /// Alsfelder kommt als letzte - ohne Umkreissuche fiele sie aus dem Limit.
 String _createAreaDb(Directory dir, {int far = 200}) {
   final path = '${dir.path}/area_names.db';
@@ -238,7 +238,8 @@ String _createAreaDb(Directory dir, {int far = 200}) {
   db.execute('''
     CREATE VIRTUAL TABLE names USING fts5(
       id UNINDEXED, name, lat UNINDEXED, lng UNINDEXED, zoom UNINDEXED,
-      type UNINDEXED, detail, source_field UNINDEXED, context)
+      type, detail, source_field UNINDEXED, context, cell,
+      prefix='1 2 3')
   ''');
   db.execute('''
     CREATE TABLE names_meta (id INTEGER PRIMARY KEY, name TEXT NOT NULL,
@@ -261,10 +262,13 @@ String _createAreaDb(Directory dir, {int far = 200}) {
       'source_field, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       row,
     );
+    // Rasterfeld wie grid_cell() in scripts/extract_names_to_sqlite.py.
+    final cell =
+        'g${((lat + 90) / 0.5).floor()}x${((lng + 180) / 0.5).floor()}';
     db.execute(
       'INSERT INTO names (rowid, id, name, lat, lng, zoom, type, detail, '
-      'source_field, context) VALUES (?1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)',
-      row,
+      'source_field, context, cell) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [row.first, ...row, cell],
     );
   }
 
@@ -284,6 +288,7 @@ String _createAreaDb(Directory dir, {int far = 200}) {
   add('Hauptstraße', 50.7505, 9.2705, 'poi', 'bus', 'Alsfeld');
   add('Hauptstraße', 50.7504, 9.2704, 'poi', 'information', 'Alsfeld');
   add('Alsfelder Hof', 53.5, 9.0, 'poi', 'hotel', 'Nordort 0');
+  add('Hauptstraße', 53.5, 9.1, 'place', 'locality', 'Nordort 10');
   add('Hauptbahnhof', 50.107, 8.663, 'poi', 'railway', 'Frankfurt am Main');
   add('Hauptbahnhof', 49.999, 8.259, 'transportation_name', 'minor', 'Mainz');
   add('Fulda-Galerie', 50.74, 9.26, 'place', 'suburb', 'Alsfeld');

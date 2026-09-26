@@ -89,6 +89,21 @@ REVERSE_PLACE_CELL_E5 = 200  # ~220 m
 
 EARTH_RADIUS_M = 6371000.0
 
+# Search index layout, measured on the Pi 4 with DACH (5.3 M names):
+# - prefix='1 2 3': a short input like "H" otherwise merges the lists of
+#   every word starting with h - 3.4 s instead of 12 ms.
+# - type is an indexed column, so the app filters by type inside MATCH;
+#   "type = ?" after the match walks all hits of a rare type.
+# - cell is a coarse grid token ("g281x378", SEARCH_GRID_DEG degrees), so the
+#   nearby search is "word AND one of the cells around me" inside the index
+#   instead of checking every hit's position - 2.2 s instead of 134 ms for
+#   "Hau". Keep SEARCH_GRID_DEG in step with OfflineGeocoder._gridDegrees.
+SEARCH_GRID_DEG = 0.5
+
+
+def grid_cell(lat, lng):
+    return f"g{int((lat + 90) / SEARCH_GRID_DEG)}x{int((lng + 180) / SEARCH_GRID_DEG)}"
+
 # Search index: duplicates are dropped per grid cell (degrees), so the same
 # feature from several zoom levels and neighbouring tiles counts once, but
 # every town keeps its own "Hauptstrasse" and "Bahnhof".
@@ -462,10 +477,12 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
             lat UNINDEXED,
             lng UNINDEXED,
             zoom UNINDEXED,
-            type UNINDEXED,
+            type,
             detail,
             source_field UNINDEXED,
-            context
+            context,
+            cell,
+            prefix='1 2 3'
         )
         """
     )
@@ -583,16 +600,12 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
             """,
             pending_rows,
         )
-        # rowid = id, so the app can join a text match to names_meta and
-        # filter it by position there (nearby first). The other way round -
-        # handing FTS5 the ids of a names_meta range - makes FTS5 test every
-        # id against the match: 16 s instead of 10 ms on Hessen.
         output_cursor.executemany(
             """
-            INSERT INTO names (rowid, id, name, lat, lng, zoom, type, detail, source_field, context)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO names (rowid, id, name, lat, lng, zoom, type, detail, source_field, context, cell)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            [(row[0],) + row for row in pending_rows],
+            [(row[0],) + row + (grid_cell(row[2], row[3]),) for row in pending_rows],
         )
         inserted_rows += len(pending_rows)
         output_conn.commit()
@@ -709,6 +722,10 @@ def _extract(mbtiles_path, output_db_path, max_zoom=MAX_EXTRACTION_ZOOM, workers
             flush_pending_rows()
     flush_pending_rows()
     merged = None
+
+    print("[info] Optimizing search index")
+    output_cursor.execute("INSERT INTO names(names) VALUES('optimize')")
+    output_conn.commit()
 
     # Indexes after the bulk insert - building them once is much faster than
     # keeping them up to date row by row.
