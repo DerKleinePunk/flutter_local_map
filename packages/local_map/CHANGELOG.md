@@ -1,6 +1,10 @@
 # Changelog
 
-## Unveröffentlicht
+## 0.5.0
+
+Braucht für Standortanzeige, Ortsbezug und Umkreissuche eine Namensdatenbank
+aus `scripts/extract_names_to_sqlite.py` ab diesem Stand. Mit einer älteren
+läuft alles wie in 0.4.1.
 
 - Neue Schnittstelle `ReverseGeocoder` mit `LocationName` (Straße, Ort,
   Ortsteil). `OfflineGeocoder` implementiert sie über die neuen

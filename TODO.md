@@ -6,7 +6,7 @@ Den Stand der Einbindung in Carnine2 fuehrt
 [docs/plan-carnine2-integration.md](docs/plan-carnine2-integration.md), die
 Aenderungen an der Bibliothek
 [packages/local_map/CHANGELOG.md](packages/local_map/CHANGELOG.md) (zuletzt
-`local_map-v0.4.1`). Hier stehen die offenen Punkte der Karte selbst.
+`local_map-v0.5.0`). Hier stehen die offenen Punkte der Karte selbst.
 
 ### Was sich geaendert hat (bis 2026-09-22)
 

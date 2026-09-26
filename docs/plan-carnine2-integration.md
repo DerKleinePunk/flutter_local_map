@@ -14,7 +14,10 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
   Suchfeld, Download-Overlay und Speicherort-Dialog übersetzbar (`PlaceSearchTexts` usw., englische
   Vorgabe, `.german`). Carnine2 nutzt diese drei nicht und bleibt auf 0.3.0. `local_map-v0.4.1` bringt die
   Beschriftung der mitgelieferten Styles (`name:latin`, nach §8.11 in carnine2); Carnine2 hat einen eigenen Style
-  und braucht die Marke nicht.
+  und braucht die Marke nicht. `local_map-v0.5.0` (26.09.) bringt die Standortanzeige ohne Route
+  (`ReverseGeocoder`, `LocalMapController.locationName`) und eine Suche mit Ortsbezug (`GeocoderResult.area`,
+  Umkreis zuerst), die auf dem Pi 4 mit DACH unter 180 ms bleibt. Beides braucht eine neu gebaute
+  Namensdatenbank.
 - **Phase 2** (Navigationsmodus): fertig und auf dem Panel abgenommen (Route auf der gefahrenen Strecke,
   flüssig mit Drehung auf Zoom 16).
 - **Phase 3** (Backend): alle fünf RPCs des `NavigationService` (ADR-021) umgesetzt und gegen echtes
