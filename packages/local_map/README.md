@@ -261,6 +261,13 @@ Die mitgelieferten Styles liegen unter
 Demo-App legt sie neben die MBTiles-Datei (aus `karte.mbtiles` wird
 `karte_names.db`); `MapView` selbst braucht sie nicht.
 
+Jeder Name steht darin einmal je Ort, nicht einmal im ganzen Land, und
+trägt den Ort als `GeocoderResult.area` mit. Mit `near` kommen zuerst die
+Treffer im Umkreis. `PlaceSearchBar` nimmt dafür `nearPosition`, ohne diese
+Angabe die Kartenmitte, und zeigt Typ, Ort und Entfernung an („Straße ·
+Alsfeld · 3,2 km“). Name und Ort lassen sich zusammen eingeben:
+„Hauptstraße Alsfeld“.
+
 Dieselbe Datenbank beantwortet auch „wo bin ich?“. Wer dem
 `LocalMapController` einen `reverseGeocoder` mitgibt, findet in
 `locationName` die Straße, den Ort und den Ortsteil zur eigenen Position.

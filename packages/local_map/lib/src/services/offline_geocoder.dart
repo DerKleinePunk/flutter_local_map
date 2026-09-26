@@ -17,16 +17,37 @@ class GeocoderResult {
   final String type; // 'place', 'poi', 'mountain_peak'
   final String? detail;
 
+  /// Der Ort, zu dem der Treffer gehört - bei Straßen, POIs und Gewässern der
+  /// Ort, in dem sie liegen, bei einem Ort der größere Ort in der Nähe
+  /// ("Neustadt" bei "Marburg"). Erst damit lassen sich die tausend
+  /// Hauptstraßen auseinanderhalten. `null` bei Namensdatenbanken von vor
+  /// September 2026 und wo kein Ort in der Nähe ist.
+  final String? area;
+
   GeocoderResult({
     required this.name,
     required this.location,
     required this.zoom,
     required this.type,
     this.detail,
+    this.area,
   });
 
+  /// Rang in der Trefferliste, kleiner = weiter oben: Orte, POIs, Berge,
+  /// Gewässer, Straßen. Bushaltestellen stehen hinter den Straßen - sie
+  /// heißen oft wie die Straße, und wer "Hauptstraße" tippt, meint die.
+  int get searchRank => switch (type) {
+    'place' => 0,
+    'poi' when detail == 'bus' => 5,
+    'poi' => 1,
+    'mountain_peak' => 2,
+    'water_name' => 3,
+    'transportation_name' => 4,
+    _ => 99,
+  };
+
   @override
-  String toString() => '$name ($type)';
+  String toString() => area == null ? '$name ($type)' : '$name, $area ($type)';
 }
 
 /// [PlaceSearch] und [ReverseGeocoder] über eine lokale Namensdatenbank
@@ -42,6 +63,23 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
   Database? _database;
   String? _currentNamesDb;
   bool _hasReverseTables = false;
+  bool _hasArea = false;
+
+  /// Treffer aus diesem Umkreis kommen mit `near` vor dem Rest des Landes.
+  static const double _nearRadiusMeters = 50000;
+
+  /// Erst ab so vielen Zeichen wird im Umkreis gesucht. Ein einzelner
+  /// Buchstabe trifft bei DACH Hunderttausende Namen, die alle nach
+  /// Entfernung sortiert werden müssten - das dauert auf dem Pi Sekunden.
+  static const int _nearMinChars = 3;
+
+  static const List<String> _typePriority = [
+    'place',
+    'poi',
+    'mountain_peak',
+    'water_name',
+    'transportation_name',
+  ];
 
   /// Wie weit eine Straße höchstens weg sein darf, um als "die Straße, auf
   /// der man ist" zu gelten. Die Punkte liegen alle 100 m auf der Linie,
@@ -89,10 +127,10 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
 
   OfflineGeocoder();
 
-  /// Die Rangfolge der Typen bleibt. Innerhalb eines Typs kommen Namen, die
-  /// genau der Eingabe entsprechen, vor denen, die nur so anfangen ("Fulda"
-  /// vor "Fulda-Galerie"). Mit [near] wird danach jeweils nach Entfernung
-  /// sortiert.
+  /// Namen, die genau der Eingabe entsprechen, kommen vor denen, die nur so
+  /// anfangen ("Fulda" vor "Fulda-Galerie"), jeweils in der Rangfolge der
+  /// Typen ([GeocoderResult.searchRank]). Mit [near] wird danach nach
+  /// Entfernung sortiert.
   @override
   Future<List<GeocoderResult>> searchPlaces(
     String query, {
@@ -100,29 +138,59 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
     LatLng? near,
   }) async {
     // FTS liefert Treffer ohne Ortsbezug und ohne Rangfolge. Mehr holen,
-    // damit der genaue und die nahen Treffer ueberhaupt dabei sind.
+    // damit der genaue und die nahen Treffer ueberhaupt dabei sind - mit
+    // [near] zuerst die aus der Umgebung, sonst fiele von tausend
+    // Hauptstraßen eine beliebige Auswahl heraus.
     final trimmed = query.trim();
-    final candidates = await searchPrioritized(trimmed, limit: limit * 10);
-    final wanted = trimmed.toLowerCase();
-    const distance = Distance();
-    final byType = <String, List<GeocoderResult>>{};
-    for (final r in candidates) {
-      byType.putIfAbsent(r.type, () => []).add(r);
+    final candidates = <GeocoderResult>[];
+    if (near != null && _hasArea && trimmed.length >= _nearMinChars) {
+      candidates.addAll(await _searchNear(trimmed, near, limit: limit * 10));
     }
+    final seen = {for (final r in candidates) _identity(r)};
+    for (final r in await searchPrioritized(trimmed, limit: limit * 10)) {
+      if (seen.add(_identity(r))) candidates.add(r);
+    }
+    final wanted = trimmed.toLowerCase();
+    bool isExact(GeocoderResult r) {
+      final name = r.name.toLowerCase();
+      return name == wanted ||
+          (r.area != null && '$name ${r.area!.toLowerCase()}' == wanted);
+    }
+
+    const distance = Distance();
+    // Ein POI, der genau wie eine Straße im selben Ort heißt - Haltestelle,
+    // Infotafel, Parkplatz "Hauptstraße" -, kommt hinter die Straßen. Nur im
+    // selben Ort: eine Straße "Hauptbahnhof" in Mainz soll den Frankfurter
+    // Hauptbahnhof nicht verdrängen.
+    String streetKey(GeocoderResult r) => '${r.name.toLowerCase()}|${r.area}';
+    final streets = {
+      for (final r in candidates)
+        if (r.type == 'transportation_name') streetKey(r),
+    };
+    int rankOf(GeocoderResult r) =>
+        r.type == 'poi' && streets.contains(streetKey(r)) ? 5 : r.searchRank;
+    // Erst alle genauen Treffer, dann die, die nur so anfangen oder das Wort
+    // enthalten - sonst schlägt "Spielplatz Hauptstraße" (POI) die Straße.
+    // Innerhalb davon nach Rang, dann nach Nähe.
     final ordered = <GeocoderResult>[];
-    for (final group in byType.values) {
-      final exact = group.where((r) => r.name.toLowerCase() == wanted).toList();
-      final rest = group.where((r) => r.name.toLowerCase() != wanted).toList();
-      for (final part in [exact, rest]) {
+    for (final exact in [true, false]) {
+      final byRank = <int, List<GeocoderResult>>{};
+      for (final r in candidates) {
+        if (isExact(r) == exact) {
+          byRank.putIfAbsent(rankOf(r), () => []).add(r);
+        }
+      }
+      for (final rank in byRank.keys.toList()..sort()) {
+        final group = byRank[rank]!;
         if (near != null) {
-          part.sort(
+          group.sort(
             (a, b) => distance(
               near,
               a.location,
             ).compareTo(distance(near, b.location)),
           );
         }
-        ordered.addAll(part);
+        ordered.addAll(group);
       }
     }
     return ordered.take(limit).toList();
@@ -176,6 +244,12 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
         "AND name IN ('reverse_places_pos', 'reverse_streets_pos')",
       );
       _hasReverseTables = reverse.length == 2;
+      final columns = await _database!.rawQuery(
+        'PRAGMA table_info(names_meta)',
+      );
+      // Mit dem Ortsbezug kam auch rowid = id, auf dem die Umkreissuche
+      // aufbaut.
+      _hasArea = columns.any((c) => c['name'] == 'context');
       if (!_hasReverseTables) {
         MapErrorHandler.logInfo(
           'Namensdatenbank ohne reverse_*-Tabellen, keine Anzeige des '
@@ -310,33 +384,113 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
   }
 
   /// Search for places by name using FTS5
-  Future<List<GeocoderResult>> search(String query, {int limit = 20}) async {
-    if (_database == null) {
-      return [];
+  Future<List<GeocoderResult>> search(String query, {int limit = 20}) =>
+      _match(query, limit: limit);
+
+  /// Get names by type (place, poi, mountain_peak)
+  Future<List<GeocoderResult>> searchByType(
+    String query, {
+    required String type,
+    int limit = 20,
+  }) => _match(query, type: type, limit: limit);
+
+  /// Treffer im Umkreis von [near], je Typ nach Entfernung sortiert.
+  Future<List<GeocoderResult>> _searchNear(
+    String query,
+    LatLng near, {
+    required int limit,
+  }) async {
+    final results = <GeocoderResult>[];
+    for (final type in _typePriority) {
+      results.addAll(await _match(query, type: type, limit: limit, near: near));
     }
+    return results;
+  }
+
+  /// Der FTS5-Ausdruck zu einer Eingabe: jedes Wort als Präfix, irgendwo in
+  /// Name oder Ort, aber mindestens eines im Namen. So findet "Hauptstraße
+  /// Alsfeld" die Hauptstraße in Alsfeld, "Alsfeld" allein aber nicht jede
+  /// Straße dort. Die Wörter stehen in Anführungszeichen, damit Bindestriche
+  /// und Klammern keine FTS-Syntax sind.
+  String? _matchExpression(String query) {
+    final words = query
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .map((w) => '"${w.replaceAll('"', '""')}"*')
+        .toList();
+    if (words.isEmpty) return null;
+    if (words.length == 1 || !_hasArea) return 'name : (${words.join(' ')})';
+    return '(${words.join(' ')}) AND (${words.map((w) => 'name : $w').join(' OR ')})';
+  }
+
+  Future<List<GeocoderResult>> _match(
+    String query, {
+    String? type,
+    required int limit,
+    LatLng? near,
+  }) async {
+    final db = _database;
+    final expression = _matchExpression(query);
+    if (db == null || expression == null) return [];
+
+    // Ohne [near] genügt die FTS-Tabelle. Mit [near] geht es über
+    // names_meta (rowid = id): erst die Textsuche, dann je Treffer per
+    // Primärschlüssel die Position prüfen. Umgekehrt - FTS5 die ids eines
+    // Umkreises reichen - prüft FTS5 jede id einzeln: 16 s statt 10 ms.
+    final source = near == null
+        ? 'names f'
+        : 'names f JOIN names_meta m ON m.id = f.rowid';
+    final t = near == null ? 'f' : 'm';
+    final where = StringBuffer('f.names MATCH ?');
+    final args = <Object?>[expression];
+    if (type != null) {
+      where.write(' AND $t.type = ?');
+      args.add(type);
+    }
+    var order = '';
+    if (near != null) {
+      const metersPerDegree = 111195.0;
+      final cosLat = math.cos(near.latitude * math.pi / 180);
+      final dLat = _nearRadiusMeters / metersPerDegree;
+      final dLng = dLat / math.max(cosLat, 0.01);
+      where.write(' AND m.lat BETWEEN ? AND ? AND m.lng BETWEEN ? AND ?');
+      args.addAll([
+        near.latitude - dLat,
+        near.latitude + dLat,
+        near.longitude - dLng,
+        near.longitude + dLng,
+      ]);
+      order =
+          ' ORDER BY (m.lat - ?) * (m.lat - ?) + '
+          '(m.lng - ?) * (m.lng - ?) * ${cosLat * cosLat}';
+      args.addAll([
+        near.latitude,
+        near.latitude,
+        near.longitude,
+        near.longitude,
+      ]);
+    }
+    args.add(limit);
+    final area = _hasArea ? '$t.context' : 'NULL AS context';
 
     try {
-      // Escape FTS5 query special characters
-      final escapedQuery = query.replaceAll('"', '""');
-
-      final results = await _database!.rawQuery(
-        '''
-        SELECT id, name, lat, lng, zoom, type, detail
-        FROM names
-        WHERE names MATCH ?
-        LIMIT ?
-        ''',
-        ['$escapedQuery*', limit],
+      final results = await db.rawQuery(
+        'SELECT $t.id, $t.name, $t.lat, $t.lng, $t.zoom, $t.type, $t.detail, '
+        '$area FROM $source WHERE $where$order LIMIT ?',
+        args,
       );
-
       return results
           .map(
             (row) => GeocoderResult(
               name: row['name'] as String,
-              location: LatLng(row['lat'] as double, row['lng'] as double),
+              location: LatLng(
+                (row['lat'] as num).toDouble(),
+                (row['lng'] as num).toDouble(),
+              ),
               zoom: row['zoom'] as int,
               type: row['type'] as String,
               detail: row['detail'] as String?,
+              area: row['context'] as String?,
             ),
           )
           .toList();
@@ -346,45 +500,8 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
     }
   }
 
-  /// Get names by type (place, poi, mountain_peak)
-  Future<List<GeocoderResult>> searchByType(
-    String query, {
-    required String type,
-    int limit = 20,
-  }) async {
-    if (_database == null) {
-      return [];
-    }
-
-    try {
-      final escapedQuery = query.replaceAll('"', '""');
-
-      final results = await _database!.rawQuery(
-        '''
-        SELECT id, name, lat, lng, zoom, type, detail
-        FROM names
-        WHERE names MATCH ? AND type = ?
-        LIMIT ?
-        ''',
-        ['$escapedQuery*', type, limit],
-      );
-
-      return results
-          .map(
-            (row) => GeocoderResult(
-              name: row['name'] as String,
-              location: LatLng(row['lat'] as double, row['lng'] as double),
-              zoom: row['zoom'] as int,
-              type: row['type'] as String,
-              detail: row['detail'] as String?,
-            ),
-          )
-          .toList();
-    } catch (e) {
-      MapErrorHandler.logError('Search by type error: $e', context: 'geocoder');
-      return [];
-    }
-  }
+  static (String, String, double, double) _identity(GeocoderResult r) =>
+      (r.name, r.type, r.location.latitude, r.location.longitude);
 
   /// Search with type prioritization: place > poi > mountain_peak > water_name > transportation_name
   /// Returns results ordered by type priority, then by name
@@ -397,16 +514,9 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
     }
 
     try {
-      const typePriority = [
-        'place',
-        'poi',
-        'mountain_peak',
-        'water_name',
-        'transportation_name',
-      ];
       final allResults = <GeocoderResult>[];
 
-      for (final type in typePriority) {
+      for (final type in _typePriority) {
         if (allResults.length >= limit) break;
         final typeResults = await searchByType(
           query,
@@ -462,6 +572,7 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
     _database = null;
     _currentNamesDb = null;
     _hasReverseTables = false;
+    _hasArea = false;
   }
 
   /// Check if database is initialized

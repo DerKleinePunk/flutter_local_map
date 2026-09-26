@@ -204,4 +204,62 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
   });
+
+  testWidgets('Unterzeile nennt Ort und Entfernung, Reihenfolge bleibt', (
+    WidgetTester tester,
+  ) async {
+    Future<List<GeocoderResult>> fakeSearch(String query, int limit) async => [
+      GeocoderResult(
+        name: 'Hauptstraße',
+        location: const LatLng(50.7510, 9.2700),
+        zoom: 14,
+        type: 'transportation_name',
+        area: 'Alsfeld',
+      ),
+      GeocoderResult(
+        name: 'Hauptstraße',
+        location: const LatLng(50.5500, 9.6800),
+        zoom: 14,
+        type: 'transportation_name',
+        area: 'Fulda',
+      ),
+      GeocoderResult(
+        name: 'Neustadt',
+        location: const LatLng(50.8500, 9.1200),
+        zoom: 12,
+        type: 'place',
+        detail: 'town',
+        area: 'Marburg',
+      ),
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PlaceSearchBar(
+            mapController: MapController(),
+            geocoder: OfflineGeocoder(),
+            texts: PlaceSearchTexts.german,
+            searchDelegate: fakeSearch,
+            nearPosition: () => const LatLng(50.7500, 9.2700),
+          ),
+        ),
+      ),
+    );
+
+    await tester.enterText(find.byType(TextField), 'h');
+    await tester.pump();
+    await tester.pump();
+
+    // Genau in der Reihenfolge der Suche - sie sortiert schon.
+    final subtitles = tester
+        .widgetList<ListTile>(find.byType(ListTile))
+        .map((t) => (t.subtitle! as Text).data)
+        .toList();
+    expect(subtitles, [
+      'Straße · Alsfeld · 110 m',
+      'Straße · Fulda · 37 km',
+      'Ort · bei Marburg · 15 km',
+    ]);
+  });
 }

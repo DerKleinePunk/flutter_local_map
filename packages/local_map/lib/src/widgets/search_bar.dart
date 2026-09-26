@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import '../api/place_search.dart';
 import '../services/offline_geocoder.dart';
 
@@ -17,6 +18,13 @@ class PlaceSearchTexts {
   final String water;
   final String street;
 
+  /// Vor dem größeren Ort, den ein Ort als [GeocoderResult.area] mitbringt:
+  /// "Neustadt · bei Marburg".
+  final String near;
+
+  /// Trenner in Entfernungen wie "3.2 km".
+  final String decimalSeparator;
+
   const PlaceSearchTexts({
     this.hintText = 'Search place...',
     this.searchFailed = 'Search failed',
@@ -25,6 +33,8 @@ class PlaceSearchTexts {
     this.mountainPeak = 'Peak',
     this.water = 'Water',
     this.street = 'Street',
+    this.near = 'near',
+    this.decimalSeparator = '.',
   });
 
   static const german = PlaceSearchTexts(
@@ -34,6 +44,8 @@ class PlaceSearchTexts {
     mountainPeak: 'Berg',
     water: 'Gewässer',
     street: 'Straße',
+    near: 'bei',
+    decimalSeparator: ',',
   );
 
   /// Bezeichnung für [GeocoderResult.type]; unbekannte Typen bleiben roh.
@@ -52,15 +64,9 @@ extension GeocoderResultExtension on GeocoderResult {
   /// Englische Bezeichnung des Typs, siehe [PlaceSearchTexts.typeLabel].
   String get typeLabel => const PlaceSearchTexts().typeLabel(type);
 
-  /// Get type priority for sorting (lower = higher priority)
-  int get typePriority => switch (type) {
-    'place' => 0,
-    'poi' => 1,
-    'mountain_peak' => 2,
-    'water_name' => 3,
-    'transportation_name' => 4,
-    _ => 99,
-  };
+  /// Get type priority for sorting (lower = higher priority), siehe
+  /// [GeocoderResult.searchRank].
+  int get typePriority => searchRank;
 }
 
 class PlaceSearchBar extends StatefulWidget {
@@ -81,6 +87,11 @@ class PlaceSearchBar extends StatefulWidget {
   final void Function(MapController controller, GeocoderResult result)?
   moveToResult;
 
+  /// Die Position, nach der die Treffer sortiert werden - die nahen zuerst,
+  /// sonst ist unter tausend Hauptstraßen die eigene kaum zu finden. Liefert
+  /// sie `null` oder fehlt sie, gilt die Kartenmitte.
+  final LatLng? Function()? nearPosition;
+
   const PlaceSearchBar({
     super.key,
     required this.mapController,
@@ -94,6 +105,7 @@ class PlaceSearchBar extends StatefulWidget {
     this.onPlaceSelected,
     this.onSuggestionPointerDown,
     this.moveToResult,
+    this.nearPosition,
   });
 
   @override
@@ -106,6 +118,7 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
   bool _isLoading = false;
   bool _showSuggestions = false;
   bool _isSelectingSuggestion = false;
+  LatLng? _near;
   final FocusNode _focusNode = FocusNode();
 
   @override
@@ -151,20 +164,19 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
     });
 
     try {
-      final results =
+      final near = widget.nearPosition?.call() ?? _mapCenter();
+      final found =
           await (widget.searchDelegate?.call(query, 15) ??
-              widget.geocoder.searchPlaces(query, limit: 15));
+              widget.geocoder.searchPlaces(query, limit: 15, near: near));
 
-      // Results are already sorted by searchPrioritized, but ensure consistency
-      results.sort(
-        (a, b) => a.typePriority.compareTo(b.typePriority) == 0
-            ? a.name.compareTo(b.name)
-            : a.typePriority.compareTo(b.typePriority),
-      );
+      // Keine eigene Sortierung: PlaceSearch liefert die wichtigsten Treffer
+      // zuerst, nach Typ, Genauigkeit und Nähe. Eine Sortierung hier kennt
+      // nur den Typ und würfe das durcheinander.
 
       if (mounted) {
         setState(() {
-          _suggestions = results;
+          _near = near;
+          _suggestions = found;
           _isLoading = false;
         });
       }
@@ -179,6 +191,42 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
         );
       }
     }
+  }
+
+  LatLng? _mapCenter() {
+    try {
+      return widget.mapController.camera.center;
+    } catch (_) {
+      // Die Karte ist noch nicht gezeichnet, es gibt keine Kamera.
+      return null;
+    }
+  }
+
+  /// "Straße · Alsfeld · 3,2 km" - Typ, Ort und Entfernung, damit sich
+  /// gleichnamige Treffer unterscheiden lassen.
+  String _subtitle(GeocoderResult result) {
+    final parts = <String>[widget.texts.typeLabel(result.type)];
+    if (result.type == 'poi' && result.detail != null) {
+      parts.add(result.detail!);
+    }
+    final area = result.area;
+    if (area != null) {
+      parts.add(result.type == 'place' ? '${widget.texts.near} $area' : area);
+    }
+    final near = _near;
+    if (near != null) {
+      parts.add(_formatDistance(const Distance()(near, result.location)));
+    }
+    return parts.join(' · ');
+  }
+
+  String _formatDistance(double meters) {
+    if (meters < 1000) return '${(meters / 10).round() * 10} m';
+    if (meters < 10000) {
+      final km = (meters / 1000).toStringAsFixed(1);
+      return '${km.replaceAll('.', widget.texts.decimalSeparator)} km';
+    }
+    return '${(meters / 1000).round()} km';
   }
 
   void _selectPlace(GeocoderResult result) {
@@ -280,13 +328,6 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
                         itemCount: _suggestions.length,
                         itemBuilder: (context, index) {
                           final result = _suggestions[index];
-                          final subtitle = StringBuffer(
-                            widget.texts.typeLabel(result.type),
-                          );
-                          if (result.detail != null) {
-                            subtitle.write(' • ${result.detail}');
-                          }
-                          subtitle.write(' • z${result.zoom}');
                           return Listener(
                             behavior: HitTestBehavior.opaque,
                             onPointerDown: (_) {
@@ -300,7 +341,7 @@ class _PlaceSearchBarState extends State<PlaceSearchBar> {
                               leading: _getTypeIcon(result.type),
                               title: Text(result.name),
                               subtitle: Text(
-                                subtitle.toString(),
+                                _subtitle(result),
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),

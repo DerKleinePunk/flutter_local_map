@@ -7,6 +7,20 @@
   `reverse_*`-Tabellen der Namensdatenbank.
 - `LocalMapController` nimmt optional einen `reverseGeocoder` und führt ohne
   Route `locationName` nach, sobald man sich 25 m bewegt hat.
+- `GeocoderResult.area`: der Ort, zu dem ein Treffer gehört (bei Orten der
+  größere Ort in der Nähe). Die Namensdatenbank kennt Namen jetzt einmal je
+  Ort statt einmal im ganzen Land, gleichnamige Straßen und Bahnhöfe
+  unterscheidet erst `area`.
+- `searchPlaces` mit `near` sucht zuerst im Umkreis von 50 km (ab drei
+  Zeichen), dann landesweit. Genaue Treffer stehen vor Teiltreffern, POIs,
+  die wie eine Straße im selben Ort heißen, hinter den Straßen. „Hauptstraße
+  Alsfeld“ findet Name und Ort zusammen. Bindestriche in der Eingabe führen
+  nicht mehr zu einem FTS-Syntaxfehler.
+- `PlaceSearchBar` sucht nahe `nearPosition` (Vorgabe: Kartenmitte), behält
+  die Reihenfolge der Suche bei und zeigt „Typ · Ort · Entfernung“ statt
+  Klasse und Zoom. Neue Texte `PlaceSearchTexts.near` und `decimalSeparator`.
+- `GeocoderResult.searchRank` ersetzt die feste Typ-Rangfolge,
+  `typePriority` gibt ihn weiter.
 
 ## 0.4.1
 
