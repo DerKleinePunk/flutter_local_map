@@ -10,6 +10,12 @@ ExecStart=/opt/valhalla/bin/valhalla_service /home/pi/valhalla-data/valhalla.jso
 Restart=on-failure
 RestartSec=5
 Nice=5
+# SIGTERM beendet valhalla_service erst nach rund 29 s, SIGINT sofort und
+# sauber (gemessen von der Carnine2-Sitzung auf carnine-pc und hier auf
+# jeep-pi, 26.09.2026). TimeoutStopSec und KillMode sind das Sicherheitsnetz.
+KillSignal=SIGINT
+TimeoutStopSec=3
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target
