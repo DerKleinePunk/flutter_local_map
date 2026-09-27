@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.5.3
+
+- `MapConfig.prefetchAheadSeconds`: Vorab-Laden in Fahrtrichtung (nur
+  Raster-Modus), `0` = aus (Default). Nur bei einem GPS-Fix mit Kurs und
+  über 3 m/s; Kacheln der nächsten Sekunden geradeaus, je Fix höchstens 12,
+  die sichtbaren ausgenommen. Sie laufen nachrangig durch das Frame-Budget
+  und nehmen sichtbaren Kacheln nichts weg. Wirkt erst ab etwa Zoom 14,
+  darunter liegt der Korridor im Sichtbaren.
+- Auf einem Pi 4 gemessen (Zoom 16, drei Paare): kein Frame mehr über
+  100 ms (vorher 1–2 je 2 min), schlechtester Frame 101–124 → 84–88 ms,
+  etwa 7 % mehr Frames über 33 ms. Speicher etwa +50 MB: die Bilder bleiben
+  im Flutter-ImageCache, dessen Deckel (Standard 100 MB) die Obergrenze ist.
+- Braucht vector_map_tiles aus dem Fork `local_map_pi` ab 8d730e2
+  (`VectorTileController.prefetch`).
+
 ## 0.5.2
 
 - `MapConfig.rasterTilesPerFrame`: wie viele neue Kacheln der Raster-Modus

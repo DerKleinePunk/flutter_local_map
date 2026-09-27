@@ -26,7 +26,7 @@ dependencies:
   local_map:
     git:
       url: https://github.com/DerKleinePunk/flutter_local_map
-      ref: local_map-v0.5.2
+      ref: local_map-v0.5.3
       path: packages/local_map
 ```
 

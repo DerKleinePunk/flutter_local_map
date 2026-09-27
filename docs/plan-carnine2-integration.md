@@ -21,6 +21,9 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
   (Befund von carnine2: der Bahnhof „Hauptstraße“ in Freiburg stand vor den Straßen um Alsfeld).
   `local_map-v0.5.2` (27.09.) bringt `MapConfig.rasterTilesPerFrame`; carnine2 nimmt 2 (auf carnine-pc halbiert das im
   Mittel die Zeit in langen Frames). Dazu kommt der Fork ohne Dateicache für MBTiles (UI-Zeit beim Schieben etwa −30 %).
+  `local_map-v0.5.3` (27.09.) bringt das Vorab-Laden in Fahrtrichtung (`MapConfig.prefetchAheadSeconds`, Default aus);
+  auf dem Pi kein Frame mehr über 100 ms bei Zoom 16, etwa +50 MB (von Michael so freigegeben). Ob carnine2 es
+  einschaltet, ist nicht entschieden.
 - **Phase 2** (Navigationsmodus): fertig und auf dem Panel abgenommen (Route auf der gefahrenen Strecke,
   flüssig mit Drehung auf Zoom 16).
 - **Phase 3** (Backend): alle fünf RPCs des `NavigationService` (ADR-021) umgesetzt und gegen echtes
