@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.1
+
+- `searchPlaces` mit `near`: Treffer aus dem Umkreis von 50 km stehen vor
+  denen von weiter weg, erst darin gilt die Typ-Rangfolge. Bisher schlug der
+  Bahnhof „Hauptstraße“ in Freiburg die Hauptstraßen um Alsfeld, weil POIs
+  vor Straßen kamen. Bewohnte Orte bleiben vorn: „Berlin“ findet die Stadt,
+  nicht das Gasthaus nebenan.
+
 ## 0.5.0
 
 Braucht für Standortanzeige, Ortsbezug und Umkreissuche eine Namensdatenbank

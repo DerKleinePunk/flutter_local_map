@@ -17,7 +17,8 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
   und braucht die Marke nicht. `local_map-v0.5.0` (26.09.) bringt die Standortanzeige ohne Route
   (`ReverseGeocoder`, `LocalMapController.locationName`) und eine Suche mit Ortsbezug (`GeocoderResult.area`,
   Umkreis zuerst), die auf dem Pi 4 mit DACH unter 180 ms bleibt. Beides braucht eine neu gebaute
-  Namensdatenbank.
+  Namensdatenbank. `local_map-v0.5.1` (27.09.) stellt mit `near` den Umkreis vor den Rest des Landes
+  (Befund von carnine2: der Bahnhof „Hauptstraße“ in Freiburg stand vor den Straßen um Alsfeld).
 - **Phase 2** (Navigationsmodus): fertig und auf dem Panel abgenommen (Route auf der gefahrenen Strecke,
   flüssig mit Drehung auf Zoom 16).
 - **Phase 3** (Backend): alle fünf RPCs des `NavigationService` (ADR-021) umgesetzt und gegen echtes
