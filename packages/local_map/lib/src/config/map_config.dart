@@ -144,6 +144,15 @@ class MapConfig {
   /// ~200 statt ~45 ms Raster-Zeit pro Frame.
   final double? rasterTileScale;
 
+  /// Wie viele neue Kacheln pro Frame gerastert werden (nur Raster-Modus),
+  /// `0` = unbegrenzt (Default, wie bisher).
+  ///
+  /// Kommen beim Schieben oder Zoomen viele Kacheln auf einmal, rastert die
+  /// Engine sonst alle vor dem naechsten Frame, und der dauert so lange wie
+  /// alle zusammen. Mit einer Grenze verteilen sie sich auf mehrere Frames:
+  /// die Karte fuellt sich etwas spaeter, ruckelt aber weniger.
+  final int rasterTilesPerFrame;
+
   /// Standard-Vektorstyles, die dieses Package mitliefert.
   static const List<String> packageVectorStyleAssets = [
     'packages/local_map/assets/maps/style.json',
@@ -180,8 +189,10 @@ class MapConfig {
     this.vectorLayerMode,
     this.panBuffer = 0,
     this.rasterTileScale,
+    this.rasterTilesPerFrame = 0,
     this.searchResultZoom = 15,
   }) : assert(panBuffer >= 0),
+       assert(rasterTilesPerFrame >= 0),
        assert(rasterTileScale == null || rasterTileScale > 0),
        valhallaBaseUri = valhallaBaseUri ?? Uri.parse('http://127.0.0.1:8002');
 
@@ -228,6 +239,7 @@ class MapConfig {
     VectorTileLayerMode? vectorLayerMode,
     int? panBuffer,
     double? rasterTileScale,
+    int? rasterTilesPerFrame,
     double? searchResultZoom,
   }) {
     return MapConfig(
@@ -259,6 +271,7 @@ class MapConfig {
       vectorLayerMode: vectorLayerMode ?? this.vectorLayerMode,
       panBuffer: panBuffer ?? this.panBuffer,
       rasterTileScale: rasterTileScale ?? this.rasterTileScale,
+      rasterTilesPerFrame: rasterTilesPerFrame ?? this.rasterTilesPerFrame,
       searchResultZoom: searchResultZoom ?? this.searchResultZoom,
     );
   }

@@ -30,7 +30,15 @@ void main() {
     () async {
       // Initialisiert Binding + sqflite-FFI und legt die Karten-Config fest,
       // die MapView/MapDownloader ohne explizites config:-Argument verwenden.
-      LocalMap.ensureInitialized(config: MapConfig.hessen);
+      // LOCAL_MAP_RASTER_TILES_PER_FRAME: zum Vergleichen auf dem Pi ohne
+      // eigenen Build, siehe MapConfig.rasterTilesPerFrame.
+      LocalMap.ensureInitialized(
+        config: MapConfig.hessen.copyWith(
+          rasterTilesPerFrame: int.tryParse(
+            Platform.environment['LOCAL_MAP_RASTER_TILES_PER_FRAME'] ?? '',
+          ),
+        ),
+      );
 
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details);

@@ -1113,6 +1113,7 @@ class _MapViewState extends State<MapView>
         panBuffer: _config.panBuffer,
         rasterTileScale:
             _config.rasterTileScale ?? MediaQuery.devicePixelRatioOf(context),
+        rasterTilesPerFrame: _config.rasterTilesPerFrame,
       );
     }
     return TileLayer(
