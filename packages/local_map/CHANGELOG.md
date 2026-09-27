@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.2
+
+- `MapConfig.rasterTilesPerFrame`: wie viele neue Kacheln der Raster-Modus
+  pro Frame rastert, `0` = unbegrenzt (Default, wie bisher). Kommen beim
+  Schieben oder Zoomen viele Kacheln auf einmal, rastert die Engine sonst
+  alle vor dem nächsten Frame. Auf carnine-pc (Pi 4) halbiert `2` im Mittel
+  die Zeit in langen Frames, die Karte füllt sich dafür etwas später.
+- Braucht vector_map_tiles aus dem Fork `local_map_pi` ab a7ccd5f. Seit 4de0ba4
+  schreibt der Fork Kacheln aus MBTiles nicht mehr in den Dateicache
+  `/tmp/.vector_map` (dazu vector_map_tiles_mbtiles ab 3342bab); auf carnine-pc
+  sank dadurch die Rechenzeit der Oberfläche beim Schieben um etwa 30 %.
+
 ## 0.5.1
 
 - `searchPlaces` mit `near`: Treffer aus dem Umkreis von 50 km stehen vor

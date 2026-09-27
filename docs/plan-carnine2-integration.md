@@ -19,6 +19,8 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
   Umkreis zuerst), die auf dem Pi 4 mit DACH unter 180 ms bleibt. Beides braucht eine neu gebaute
   Namensdatenbank. `local_map-v0.5.1` (27.09.) stellt mit `near` den Umkreis vor den Rest des Landes
   (Befund von carnine2: der Bahnhof „Hauptstraße“ in Freiburg stand vor den Straßen um Alsfeld).
+  `local_map-v0.5.2` (27.09.) bringt `MapConfig.rasterTilesPerFrame`; carnine2 nimmt 2 (auf carnine-pc halbiert das im
+  Mittel die Zeit in langen Frames). Dazu kommt der Fork ohne Dateicache für MBTiles (UI-Zeit beim Schieben etwa −30 %).
 - **Phase 2** (Navigationsmodus): fertig und auf dem Panel abgenommen (Route auf der gefahrenen Strecke,
   flüssig mit Drehung auf Zoom 16).
 - **Phase 3** (Backend): alle fünf RPCs des `NavigationService` (ADR-021) umgesetzt und gegen echtes

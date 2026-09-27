@@ -26,7 +26,7 @@ dependencies:
   local_map:
     git:
       url: https://github.com/DerKleinePunk/flutter_local_map
-      ref: local_map-v0.5.1
+      ref: local_map-v0.5.2
       path: packages/local_map
 ```
 
@@ -63,10 +63,12 @@ Die beiden aus `flutter_map_plugins` sind wegen `mbtiles` noetig: die
 pub.dev-Versionen haengen an `^0.4.0`, dieses Package nutzt `^0.5.0`.
 
 `vector_map_tiles` kommt aus einem Fork von 9.0.0-beta.13 (Branch
-`local_map_pi`), der `panBuffer` und `rasterTileScale` einstellbar macht.
-`MapView` uebergibt beides aus `MapConfig`; ohne den Fork kompiliert
-`local_map` nicht. Beide Werte sind auf dem Pi gemessen, siehe
-`MapConfig.panBuffer` und `MapConfig.rasterTileScale`.
+`local_map_pi`), der `panBuffer`, `rasterTileScale` und
+`rasterTilesPerFrame` einstellbar macht. `MapView` uebergibt alle drei aus
+`MapConfig`; ohne den Fork kompiliert `local_map` nicht. Die Werte sind auf
+dem Pi gemessen, siehe `MapConfig.panBuffer`, `MapConfig.rasterTileScale`
+und `MapConfig.rasterTilesPerFrame`. Ausserdem legt der Fork Kacheln aus
+MBTiles nicht zusaetzlich in seinen Dateicache.
 
 ## Verwenden
 
