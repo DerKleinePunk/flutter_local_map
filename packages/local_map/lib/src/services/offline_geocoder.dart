@@ -170,8 +170,9 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
 
   /// Namen, die genau der Eingabe entsprechen, kommen vor denen, die nur so
   /// anfangen ("Fulda" vor "Fulda-Galerie"), jeweils in der Rangfolge der
-  /// Typen ([GeocoderResult.searchRank]). Mit [near] wird danach nach
-  /// Entfernung sortiert.
+  /// Typen ([GeocoderResult.searchRank]). Mit [near] stehen darin die Orte
+  /// vorn, dann alles aus 50 km Umkreis, dann der Rest, und jeweils wird nach
+  /// Rang und Entfernung sortiert.
   @override
   Future<List<GeocoderResult>> searchPlaces(
     String query, {
@@ -208,8 +209,19 @@ class OfflineGeocoder implements PlaceSearch, ReverseGeocoder {
       for (final r in candidates)
         if (r.type == 'transportation_name') streetKey(r),
     };
-    int rankOf(GeocoderResult r) =>
+    int typeRank(GeocoderResult r) =>
         r.type == 'poi' && streets.contains(streetKey(r)) ? 5 : r.searchRank;
+    // Mit [near] kommt alles aus dem Umkreis vor dem Rest des Landes, sonst
+    // schlägt der Bahnhof "Hauptstraße" in Freiburg die Straße in Alsfeld.
+    // Bewohnte Orte bleiben vorn: "Berlin" meint die Stadt, nicht das
+    // Gasthaus "Berlin" um die Ecke.
+    int rankOf(GeocoderResult r) {
+      final rank = typeRank(r);
+      if (near == null || rank == 0) return rank;
+      final far = distance(near, r.location) > _nearRadiusMeters;
+      return (far ? 200 : 100) + rank;
+    }
+
     // Erst alle genauen Treffer, dann die, die nur so anfangen oder das Wort
     // enthalten - sonst schlägt "Spielplatz Hauptstraße" (POI) die Straße.
     // Innerhalb davon nach Rang, dann nach Nähe.

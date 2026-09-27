@@ -65,20 +65,21 @@ void main() {
   });
 
   test(
-    'mit near: die naechste Hauptstrasse zuerst, Typrangfolge bleibt',
+    'mit near: der Umkreis vor dem Rest, dahinter die Typrangfolge',
     () async {
       final results = await geocoder.searchPlaces(
         'Haupt',
         near: const LatLng(50.74, 9.25), // bei Alsfeld
       );
 
-      expect(results.first.type, 'poi', reason: 'Typrangfolge bleibt');
-      final streets = results
-          .where((r) => r.type == 'transportation_name')
-          .map((r) => r.detail)
-          .toList();
-      // Von Alsfeld: Kassel ~64 km, Frankfurt ~81 km.
-      expect(streets, ['Alsfeld', 'Kassel', 'Frankfurt']);
+      // Von Alsfeld: Kassel ~64 km, Frankfurt ~81 km - beide ausserhalb der
+      // 50 km, dort steht der POI wieder vor den Strassen.
+      expect(results.map((r) => '${r.type} ${r.detail}'), [
+        'transportation_name Alsfeld',
+        'poi Frankfurt',
+        'transportation_name Kassel',
+        'transportation_name Frankfurt',
+      ]);
     },
   );
 
@@ -168,6 +169,30 @@ void main() {
         near: const LatLng(53.5, 9.0),
       );
       expect(results.map((r) => r.name), ['Alsfeld', 'Alsfelder Hof']);
+    });
+
+    test('der ferne POI kommt hinter die Strasse im Umkreis', () async {
+      // Der Bahnhof "Hauptstraße" in Freiburg hat Rang 1, die Strasse in
+      // Alsfeld Rang 4 - mit near zaehlt zuerst der Umkreis. Hinter
+      // Alsfeld kommt Freiburg dann vor den fernen Strassen.
+      final results = await areaGeocoder.searchPlaces(
+        'Hauptstraße',
+        limit: 5,
+        near: _alsfeld,
+      );
+      expect(results.first.type, 'transportation_name');
+      expect(results.map((r) => r.area), [
+        'Alsfeld',
+        'Alsfeld',
+        'Alsfeld',
+        'Freiburg im Breisgau',
+        startsWith('Nordort'),
+      ]);
+    });
+
+    test('die ferne Stadt schlaegt den gleichnamigen POI nebenan', () async {
+      final results = await areaGeocoder.searchPlaces('Berlin', near: _alsfeld);
+      expect(results.map((r) => r.type), ['place', 'poi']);
     });
 
     test('Name und Ort zusammen finden die richtige Strasse', () async {
@@ -292,6 +317,9 @@ String _createAreaDb(Directory dir, {int far = 200}) {
   add('Hauptbahnhof', 50.107, 8.663, 'poi', 'railway', 'Frankfurt am Main');
   add('Hauptbahnhof', 49.999, 8.259, 'transportation_name', 'minor', 'Mainz');
   add('Fulda-Galerie', 50.74, 9.26, 'place', 'suburb', 'Alsfeld');
+  add('Hauptstraße', 47.998, 7.842, 'poi', 'railway', 'Freiburg im Breisgau');
+  add('Berlin', 52.517, 13.389, 'place', 'city', null);
+  add('Berlin', 50.749, 9.271, 'poi', 'restaurant', 'Alsfeld');
   add(
     'Hauptstraße',
     50.751,
