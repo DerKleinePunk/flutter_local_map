@@ -30,15 +30,25 @@ void main() {
     () async {
       // Initialisiert Binding + sqflite-FFI und legt die Karten-Config fest,
       // die MapView/MapDownloader ohne explizites config:-Argument verwenden.
-      // LOCAL_MAP_RASTER_TILES_PER_FRAME: zum Vergleichen auf dem Pi ohne
-      // eigenen Build, siehe MapConfig.rasterTilesPerFrame.
+      // LOCAL_MAP_*: Stellschrauben zum Vergleichen auf dem Pi ohne eigenen
+      // Build, siehe die gleichnamigen Felder in MapConfig.
+      int? envInt(String name) =>
+          int.tryParse(Platform.environment[name] ?? '');
       LocalMap.ensureInitialized(
         config: MapConfig.hessen.copyWith(
-          rasterTilesPerFrame: int.tryParse(
-            Platform.environment['LOCAL_MAP_RASTER_TILES_PER_FRAME'] ?? '',
-          ),
+          rasterTilesPerFrame: envInt('LOCAL_MAP_RASTER_TILES_PER_FRAME'),
+          memoryTileDataCacheMaxSize: envInt('LOCAL_MAP_TILE_DATA_CACHE'),
+          textCacheMaxSize: envInt('LOCAL_MAP_TEXT_CACHE'),
+          vectorConcurrency: envInt('LOCAL_MAP_CONCURRENCY'),
         ),
       );
+      // Flutters Bildcache haelt die fertig gerasterten Kacheln (Vorgabe
+      // 100 MB, etwa 400 Kacheln); mehr davon macht Rueckkehr billiger.
+      final imageCacheMb = envInt('LOCAL_MAP_IMAGE_CACHE_MB');
+      if (imageCacheMb != null) {
+        PaintingBinding.instance.imageCache.maximumSizeBytes =
+            imageCacheMb * 1024 * 1024;
+      }
 
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details);

@@ -5,30 +5,37 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:local_map/local_map.dart' show LatLng, MapController;
+import 'package:local_map/local_map.dart'
+    show GpsNmeaSimulatorService, LatLng, MapController;
 
-/// Messlauf fuer die Ladezeit der Karte.
+/// Messlauf fuer die Karte.
 ///
 /// Aktiv nur mit der Umgebungsvariable `LOCAL_MAP_BENCH`, damit er im
-/// Release-Build auf dem Pi ohne eigenen Build laeuft: `1` misst, `exit`
-/// beendet die App danach. Der Datei-Cache von vector_map_tiles
-/// (`/tmp/.vector_map`) muss vor dem Start leer sein, sonst misst man
-/// die Festplatte statt des Renderers.
+/// Release-Build auf dem Pi ohne eigenen Build laeuft: `1` misst die
+/// Ladeziele, `exit` beendet die App danach. `drive`/`drive-exit` faehrt
+/// stattdessen die GPS-Tour ab und misst die Frames dabei - der Betrieb,
+/// nicht das Laden (LOCAL_MAP_BENCH_SPEED-fach, Vorgabe 20; Dauer
+/// LOCAL_MAP_BENCH_DRIVE_S, Vorgabe 120; Zoom LOCAL_MAP_BENCH_ZOOM,
+/// Vorgabe 14; Tourdatei LOCAL_MAP_BENCH_TOUR statt der Demo-Tour).
+/// Der Datei-Cache von vector_map_tiles (`/tmp/.vector_map`) muss beim
+/// Ladelauf vorher leer sein, sonst misst man die Festplatte statt des
+/// Renderers.
 ///
 /// "Fertig" heisst: das Bild aendert sich nicht mehr. Gemessen wird an einer
 /// verkleinerten Aufnahme der Karte, weil ein Kachelzaehler nur aus dem
 /// Inneren der Bibliothek zu haben waere und sich mit jedem Patch daran
 /// verschieben wuerde - die Aufnahme bleibt vorher wie nachher dieselbe.
 class MapBench {
-  MapBench._(this._exitWhenDone);
+  MapBench._(this._exitWhenDone, this._drive);
 
   static MapBench? fromEnvironment() {
     final value = Platform.environment['LOCAL_MAP_BENCH'];
     if (value == null || value.isEmpty || value == '0') return null;
-    return MapBench._(value == 'exit');
+    return MapBench._(value.endsWith('exit'), value.startsWith('drive'));
   }
 
   final bool _exitWhenDone;
+  final bool _drive;
   final GlobalKey boundaryKey = GlobalKey();
   final MapController mapController = MapController();
 
@@ -71,7 +78,7 @@ class MapBench {
     if (_started) return;
     _started = true;
     SchedulerBinding.instance.addTimingsCallback(_frames.addAll);
-    unawaited(_run(sinceMain));
+    unawaited(_drive ? _runDrive() : _run(sinceMain));
   }
 
   Future<void> _run(Stopwatch sinceMain) async {
@@ -104,6 +111,99 @@ class MapBench {
       await Future<void>.delayed(const Duration(milliseconds: 500));
       exit(0);
     }
+  }
+
+  /// Faehrt die GPS-Tour ab wie der Navigationsmodus: Position und Drehung
+  /// folgen den Fixen, beschleunigt abgespielt. Gemessen werden nur die
+  /// Frame-Zeiten - kein Bildvergleich, der wuerde selbst Last erzeugen.
+  Future<void> _runDrive() async {
+    final sim = GpsNmeaSimulatorService();
+    final tour = Platform.environment['LOCAL_MAP_BENCH_TOUR'];
+    final count = tour == null || tour.isEmpty
+        ? await sim.loadDefaultTourFile()
+        : await sim.loadFromPath(tour);
+    double envDouble(String name, double fallback) =>
+        double.tryParse(Platform.environment[name] ?? '') ?? fallback;
+    final zoom = envDouble('LOCAL_MAP_BENCH_ZOOM', 14);
+    final speed = envDouble('LOCAL_MAP_BENCH_SPEED', 20);
+    final duration = Duration(
+      seconds: envDouble('LOCAL_MAP_BENCH_DRIVE_S', 120).round(),
+    );
+
+    // Zeitachse der Aufzeichnung, Luecken gedeckelt wie beim Abspielen.
+    final fixes = sim.loadedFixes;
+    final at = <double>[0];
+    for (var i = 1; i < fixes.length; i++) {
+      final now = fixes[i].timestampUtc;
+      final prev = fixes[i - 1].timestampUtc;
+      // Ohne Zeitstempel gilt der Sekundentakt eines GPS-Empfaengers.
+      var gap = now == null || prev == null
+          ? const Duration(seconds: 1)
+          : now.difference(prev);
+      if (gap > GpsNmeaSimulatorService.maxReplayGap) {
+        gap = GpsNmeaSimulatorService.maxReplayGap;
+      }
+      if (gap.isNegative) gap = Duration.zero;
+      at.add(at.last + gap.inMilliseconds / 1000);
+    }
+
+    await _waitForCamera();
+    await _measure(before: null); // erst wenn die Karte steht, zaehlt Fahrt
+    _log(
+      'Fahrt: $count Fixe, ${speed}x, Zoom $zoom, '
+      'hoechstens ${duration.inSeconds} s',
+    );
+    _frames.clear();
+    final clock = Stopwatch()..start();
+    var index = 0;
+    while (clock.elapsed < duration) {
+      await Future<void>.delayed(_sampleInterval);
+      final virtualSeconds = clock.elapsedMilliseconds / 1000 * speed;
+      while (index + 1 < fixes.length && at[index + 1] <= virtualSeconds) {
+        index++;
+      }
+      final fix = fixes[index];
+      final heading = (fix.speedMps ?? 0) > 1 ? fix.headingDegrees : null;
+      if (heading == null) {
+        mapController.move(fix.position, zoom);
+      } else {
+        // Fahrtrichtung oben, wie im Navigationsmodus.
+        mapController.moveAndRotate(fix.position, zoom, -heading);
+      }
+      if (index + 1 >= fixes.length) break;
+    }
+    _reportDrive(
+      _Result(clock.elapsed, List.of(_frames), false),
+      coveredFixes: index + 1,
+      totalFixes: fixes.length,
+    );
+    if (_exitWhenDone) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      exit(0);
+    }
+  }
+
+  void _reportDrive(
+    _Result r, {
+    required int coveredFixes,
+    required int totalFixes,
+  }) {
+    final spans = r.frames.map((f) => f.totalSpan.inMicroseconds).toList()
+      ..sort();
+    final builds = r.frames.map((f) => f.buildDuration.inMicroseconds).toList()
+      ..sort();
+    final rasters =
+        r.frames.map((f) => f.rasterDuration.inMicroseconds).toList()..sort();
+    int over(int ms) => spans.where((us) => us > ms * 1000).length;
+    String ms(int us) => (us / 1000).toStringAsFixed(1);
+    _log(
+      'Fahrt fertig: ${r.total.inMilliseconds} ms, $coveredFixes/$totalFixes '
+      'Fixe | ${r.frames.length} Frames, ueber 33/100/300 ms: '
+      '${over(33)}/${over(100)}/${over(300)}, schlechtester '
+      '${ms(spans.isEmpty ? 0 : spans.last)} ms | Build p90 '
+      '${ms(_p90(builds))} ms | Raster p90 ${ms(_p90(rasters))} max '
+      '${ms(rasters.isEmpty ? 0 : rasters.last)} ms',
+    );
   }
 
   Future<void> _waitForCamera() async {
