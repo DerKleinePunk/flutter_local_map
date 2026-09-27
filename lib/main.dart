@@ -40,6 +40,7 @@ void main() {
           memoryTileDataCacheMaxSize: envInt('LOCAL_MAP_TILE_DATA_CACHE'),
           textCacheMaxSize: envInt('LOCAL_MAP_TEXT_CACHE'),
           vectorConcurrency: envInt('LOCAL_MAP_CONCURRENCY'),
+          prefetchAheadSeconds: envInt('LOCAL_MAP_PREFETCH_S'),
         ),
       );
       // Flutters Bildcache haelt die fertig gerasterten Kacheln (Vorgabe

@@ -17,6 +17,7 @@ import '../api/position.dart';
 import '../config/map_config.dart';
 import '../controller/local_map_controller.dart';
 import '../services/map_camera_bounds.dart';
+import '../services/prefetch_corridor.dart';
 import '../services/map_error_handler.dart';
 import '../navigation/heading_filter.dart';
 import '../services/offline_geocoder.dart';
@@ -121,6 +122,18 @@ class _MapViewState extends State<MapView>
   /// Erst nach dem ersten Frame von FlutterMap darf die Kamera bewegt
   /// werden; vorher wirft der MapController.
   bool _mapReady = false;
+
+  /// Zugang zum Kachel-Layer fuers Vorab-Laden; nur der Raster-Modus
+  /// bindet ihn an, sonst ist prefetch wirkungslos.
+  final VectorTileController _vectorTileController = VectorTileController();
+
+  /// Unterhalb dieses Tempos ist der GPS-Kurs Rauschen, dann wird nichts
+  /// vorausgeladen (siehe MapConfig.prefetchAheadSeconds).
+  static const double _prefetchMinSpeedMps = 3;
+
+  /// Eine Zeile im Log, wenn das Vorab-Laden das erste Mal zieht - als
+  /// Beleg beim Messen, ohne jeden Fix zu protokollieren.
+  bool _prefetchLogged = false;
 
   /// Aktive Konfiguration, in [initState] aus dem Widget uebernommen.
   late MapConfig _config;
@@ -879,8 +892,53 @@ class _MapViewState extends State<MapView>
   @override
   Future<void> cycleVectorStyle() => _cycleVectorStyle();
 
+  /// Lädt bei Fahrt Kacheln voraus, siehe [MapConfig.prefetchAheadSeconds]:
+  /// nur mit Kurs und Tempo, und nie die ohnehin sichtbaren.
+  void _maybePrefetch(PositionFix fix) {
+    final ahead = _config.prefetchAheadSeconds;
+    final heading = fix.headingDegrees;
+    final speed = fix.speedMps ?? 0;
+    if (ahead <= 0 ||
+        !_mapReady ||
+        heading == null ||
+        speed <= _prefetchMinSpeedMps) {
+      return;
+    }
+    final zoom = _currentZoom
+        .round()
+        .clamp(_config.minZoom.ceil(), _activeMaxZoom.floor())
+        .toInt();
+    // Der sichtbare Kachelbereich (bei Drehung die achsenparallele Hülle) -
+    // was dort liegt, fordert flutter_map selbst an.
+    final bounds = _mapController.camera.visibleBounds;
+    final (minX, minY) = tileOf(bounds.northWest, zoom);
+    final (maxX, maxY) = tileOf(bounds.southEast, zoom);
+    final tiles = corridorTiles(
+      points: corridorPoints(
+        from: fix.position,
+        headingDegrees: heading,
+        speedMps: speed,
+        aheadSeconds: ahead,
+      ),
+      headingDegrees: heading,
+      zoom: zoom,
+      exclude: (t) => t.x >= minX && t.x <= maxX && t.y >= minY && t.y <= maxY,
+    );
+    if (tiles.isNotEmpty) {
+      if (!_prefetchLogged) {
+        _prefetchLogged = true;
+        MapErrorHandler.logInfo(
+          'Vorab-Laden aktiv: erste ${tiles.length} Kacheln auf Zoom $zoom',
+          context: 'prefetch',
+        );
+      }
+      _vectorTileController.prefetch(tiles);
+    }
+  }
+
   @override
   void positionChanged(PositionFix fix) {
+    _maybePrefetch(fix);
     final target = _Pose(
       fix.position,
       _controller.heading ?? fix.headingDegrees ?? 0,
@@ -1114,6 +1172,7 @@ class _MapViewState extends State<MapView>
         rasterTileScale:
             _config.rasterTileScale ?? MediaQuery.devicePixelRatioOf(context),
         rasterTilesPerFrame: _config.rasterTilesPerFrame,
+        controller: _vectorTileController,
       );
     }
     return TileLayer(

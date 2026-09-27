@@ -153,6 +153,16 @@ class MapConfig {
   /// die Karte fuellt sich etwas spaeter, ruckelt aber weniger.
   final int rasterTilesPerFrame;
 
+  /// Vorab-Laden in Fahrtrichtung: so viele Sekunden voraus werden Kacheln
+  /// schon einmal gerastert (nur Raster-Modus), `0` = aus (Default).
+  ///
+  /// Lädt nur bei einem GPS-Fix mit gültigem Kurs und über 3 m/s - im Stand
+  /// ist der Kurs Rauschen, und ohne Fix wird keine Richtung geraten. Die
+  /// Kacheln laufen nachrangig durch das Frame-Budget
+  /// ([rasterTilesPerFrame]) und nehmen sichtbaren Kacheln nichts weg;
+  /// je Fix höchstens 12 Stück in die vorhandenen Caches.
+  final int prefetchAheadSeconds;
+
   /// Standard-Vektorstyles, die dieses Package mitliefert.
   static const List<String> packageVectorStyleAssets = [
     'packages/local_map/assets/maps/style.json',
@@ -190,9 +200,11 @@ class MapConfig {
     this.panBuffer = 0,
     this.rasterTileScale,
     this.rasterTilesPerFrame = 0,
+    this.prefetchAheadSeconds = 0,
     this.searchResultZoom = 15,
   }) : assert(panBuffer >= 0),
        assert(rasterTilesPerFrame >= 0),
+       assert(prefetchAheadSeconds >= 0),
        assert(rasterTileScale == null || rasterTileScale > 0),
        valhallaBaseUri = valhallaBaseUri ?? Uri.parse('http://127.0.0.1:8002');
 
@@ -240,6 +252,7 @@ class MapConfig {
     int? panBuffer,
     double? rasterTileScale,
     int? rasterTilesPerFrame,
+    int? prefetchAheadSeconds,
     double? searchResultZoom,
   }) {
     return MapConfig(
@@ -272,6 +285,7 @@ class MapConfig {
       panBuffer: panBuffer ?? this.panBuffer,
       rasterTileScale: rasterTileScale ?? this.rasterTileScale,
       rasterTilesPerFrame: rasterTilesPerFrame ?? this.rasterTilesPerFrame,
+      prefetchAheadSeconds: prefetchAheadSeconds ?? this.prefetchAheadSeconds,
       searchResultZoom: searchResultZoom ?? this.searchResultZoom,
     );
   }
