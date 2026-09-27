@@ -36,6 +36,12 @@ class MapBench {
 
   final bool _exitWhenDone;
   final bool _drive;
+
+  /// `drive-gps`: die GPS-Simulation faehrt (MapScreen startet sie samt
+  /// Folgemodus), der Bench misst nur die Frames. Nur so laeuft auch das
+  /// Vorab-Laden mit, das echte Fixe braucht.
+  bool get driveGps =>
+      (Platform.environment['LOCAL_MAP_BENCH'] ?? '').startsWith('drive-gps');
   final GlobalKey boundaryKey = GlobalKey();
   final MapController mapController = MapController();
 
@@ -117,6 +123,9 @@ class MapBench {
   /// folgen den Fixen, beschleunigt abgespielt. Gemessen werden nur die
   /// Frame-Zeiten - kein Bildvergleich, der wuerde selbst Last erzeugen.
   Future<void> _runDrive() async {
+    if (driveGps) {
+      return _measureOnly();
+    }
     final sim = GpsNmeaSimulatorService();
     final tour = Platform.environment['LOCAL_MAP_BENCH_TOUR'];
     final count = tour == null || tour.isEmpty
@@ -176,6 +185,32 @@ class MapBench {
       _Result(clock.elapsed, List.of(_frames), false),
       coveredFixes: index + 1,
       totalFixes: fixes.length,
+    );
+    if (_exitWhenDone) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      exit(0);
+    }
+  }
+
+  /// Misst die Frames, waehrend die GPS-Simulation die Kamera fuehrt.
+  Future<void> _measureOnly() async {
+    final duration = Duration(
+      seconds:
+          (double.tryParse(
+                    Platform.environment['LOCAL_MAP_BENCH_DRIVE_S'] ?? '',
+                  ) ??
+                  120)
+              .round(),
+    );
+    await _waitForCamera();
+    await _measure(before: null);
+    _log('Fahrt (GPS-Sim): ${duration.inSeconds} s Messung beginnt');
+    _frames.clear();
+    await Future<void>.delayed(duration);
+    _reportDrive(
+      _Result(duration, List.of(_frames), false),
+      coveredFixes: 0,
+      totalFixes: 0,
     );
     if (_exitWhenDone) {
       await Future<void>.delayed(const Duration(milliseconds: 500));

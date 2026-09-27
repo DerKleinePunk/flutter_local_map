@@ -43,6 +43,11 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
+    if ((Platform.environment['LOCAL_MAP_BENCH'] ?? '').startsWith(
+      'drive-gps',
+    )) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _startBenchDrive());
+    }
     _routing = ValhallaRoutingService(baseUri: widget.config.valhallaBaseUri);
     _map = LocalMapController(
       routingProvider: _routing,
@@ -77,6 +82,34 @@ class _MapScreenState extends State<MapScreen> {
     if (mounted) {
       setState(() => _geocoderReady = ok);
     }
+  }
+
+  /// Fuer den Fahr-Messlauf mit echten Fixen (LOCAL_MAP_BENCH=drive-gps*):
+  /// Tour laden, beschleunigt abspielen, Navigationsmodus an, Zoom setzen.
+  Future<void> _startBenchDrive() async {
+    final speed =
+        double.tryParse(Platform.environment['LOCAL_MAP_BENCH_SPEED'] ?? '') ??
+        20;
+    final zoom =
+        double.tryParse(Platform.environment['LOCAL_MAP_BENCH_ZOOM'] ?? '') ??
+        16;
+    _gpsLoadedFixes = await _gpsSimulator.loadDefaultTourFile(
+      candidatePaths: widget.config.gpsTourFilePaths,
+    );
+    _map.followPosition = true;
+    _map.headingUp = true;
+    _gpsSimulator.start(loop: false, speedFactor: speed);
+    final first = _gpsSimulator.loadedFixes.first.position;
+    // Die Kamera ist erst nach dem ersten FlutterMap-Frame bereit.
+    for (var i = 0; i < 50; i++) {
+      try {
+        _map.mapController.move(first, zoom);
+        break;
+      } catch (_) {
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+      }
+    }
+    if (mounted) setState(() {});
   }
 
   Future<void> _toggleGpsSimulation() async {
