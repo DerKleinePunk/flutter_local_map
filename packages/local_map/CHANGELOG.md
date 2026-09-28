@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.5
+
+- Auch die übrigen Stellen, an denen ein abgebrochener Kachel-Auftrag als
+  `Unhandled Exception: Cancelled` im Log landete, sind still: das Laden der
+  Kacheldaten und das Zerlegen je Quelle. 0.5.4 hatte nur die erste Stelle
+  erfasst. Auf dem Pi (DACH, Zoom 16, GPS-Route mit Vorab-Laden, je 180 s)
+  kamen je Start vorher 4 Meldungen, mit 0.5.4 meist noch 4, jetzt 0
+  (4 Läufe). Alle kamen in der ersten halben Sekunde nach dem Start, während
+  der Fahrt keine.
+- Braucht vector_map_tiles aus dem Fork `local_map_pi` ab f7f18a4.
+
 ## 0.5.4
 
 - Abgebrochene Kacheln melden sich nicht mehr als
