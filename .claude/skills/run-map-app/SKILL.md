@@ -24,7 +24,12 @@ W=/home/punky/develop/emb-workspace/app/map_local_pi
 git -C $W log --oneline -1          # Stand pruefen
 git -C $W status --porcelain        # Reste aus frueheren Laeufen ansehen
 git -C $W reset --hard master       # erst nachdem du die Reste geprueft hast
+(cd $W && /home/punky/develop/emb-workspace/flutter/bin/flutter pub get)
+git -C $W checkout pubspec.lock analysis_options.yaml
+grep -o 'flutter-vector-map-tiles-[0-9a-f]\{7\}' $W/.dart_tool/package_config.json
 ```
+
+**`emb cross` fuehrt kein `pub get` aus.** Ohne den zweiten Schritt baut es nach einem Wechsel des Lockfiles (etwa auf einen neuen Fork-Stand) still gegen die alten Pakete weiter. Am 28.09. waren so ein Build mit altem und einer mit neuem Fork byte-gleich. Die letzte Zeile zeigt, welcher Fork-Stand tatsaechlich einkompiliert wird - er muss zum `resolved-ref` in `pubspec.lock` passen.
 
 **Dieser Schritt ist nicht optional, und einzelne Dateien hineinzukopieren ist keine Abkuerzung.** Genau daran ist schon ein halber Nachmittag verloren gegangen: das X zum Beenden war gebaut, getestet und committet, im Worktree aber wieder auf den Stand davor zurueckgesetzt. Danach wurde nur noch die Style-Datei von Hand hineinkopiert - und jedes weitere Bundle hatte kein X mehr, ohne dass es jemandem auffiel. Was du testest, muss committet und der Worktree darauf gesetzt sein.
 
