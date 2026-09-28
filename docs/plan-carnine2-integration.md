@@ -7,7 +7,8 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
 **Die Karte läuft in Carnine2**, auf beiden Pis: auf carnine-pc (Carnine2-Sitzung, Debos-Image) und auf jeep-pi
 (normales Debian, Backend dort nativ gebaut). Gegenüber dem Zeitplan unten sind wir damit rund vier Wochen voraus.
 
-- **Phase 0** (emb_cli): fertig. `feature/emb-cli` ist der Integrationszweig in carnine2.
+- **Phase 0** (emb_cli): fertig. `feature/emb-cli` war der Integrationszweig in carnine2; er ist in `feature/backend` und `main`
+  aufgegangen und wurde am 28.09. gelöscht.
 - **Phase 1** (Lib entkoppeln): fertig. Seit `local_map-v0.3.0` keine festen deutschen Texte in `MapView`
   (`errorBuilder`, `MapError.category`) und keine Hessen-Vorgaben mehr (`MapConfig.center` optional, Start in
   der Mitte der Kacheln; das alte Setup heißt `MapConfig.hessen`). Seit `local_map-v0.4.0` sind auch
@@ -38,7 +39,7 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
 - **Phase 4** (Kartenseite): läuft. Navigationsmodus-Umschaltung abgenommen. carnine2 bindet die Lib über
   eine **feste Marke** ein (`ref: local_map-v0.3.0`), nicht mehr über `master`; `scripts/styles.zip` liegt
   nicht mehr im Baum, `pub get` braucht kein `GIT_LFS_SKIP_SMUDGE` mehr.
-  `feature/map-page` ist nach `feature/emb-cli` gemergt (`d3d9f2f`); dort stehen seit `eaaac26` auch
+  `feature/map-page` wurde nach `feature/emb-cli` gemergt (`d3d9f2f`, heute in `feature/backend`); dort stehen seit `eaaac26` auch
   `MapLayerStyle.backgroundColor` (`#0e0e0e`, kein heller Blitz beim Öffnen) und die Suche „genauer Name
   vor Präfix-Treffer“ im Backend. Die Kartenseite läuft auf carnine-pc und auf jeep-pi.
   Der Stil ist für das 7-Zoll-Panel aufgehellt und versioniert (carnine2 #28 zu, `7a25193`).
