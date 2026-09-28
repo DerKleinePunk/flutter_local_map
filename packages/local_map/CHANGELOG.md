@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.4
+
+- Abgebrochene Kacheln melden sich nicht mehr als
+  `Unhandled Exception: Cancelled` (ohne Stacktrace) im Log. Die Vektorkachel
+  wurde angefordert, bevor auf die Rasterquellen gewartet wurde; wurde sie in
+  dieser Zeit verworfen (Schieben, Zoomen, Vorab-Laden), hing an ihrem Fehler
+  noch niemand. Harmlos, füllte aber das Journal (143× im Dauertest auf dem
+  Pi). Raster- und Vektormodus.
+- Braucht vector_map_tiles aus dem Fork `local_map_pi` ab 1fd104a.
+
 ## 0.5.3
 
 - `MapConfig.prefetchAheadSeconds`: Vorab-Laden in Fahrtrichtung (nur

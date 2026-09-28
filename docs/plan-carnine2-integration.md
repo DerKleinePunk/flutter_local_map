@@ -23,7 +23,8 @@ Angelegt: 2026-09-24. Grundlage war eine Bestandsaufnahme beider Repos (flutter_
   Mittel die Zeit in langen Frames). Dazu kommt der Fork ohne Dateicache für MBTiles (UI-Zeit beim Schieben etwa −30 %).
   `local_map-v0.5.3` (27.09.) bringt das Vorab-Laden in Fahrtrichtung (`MapConfig.prefetchAheadSeconds`, Default aus);
   auf dem Pi kein Frame mehr über 100 ms bei Zoom 16, etwa +50 MB (von Michael so freigegeben). Ob carnine2 es
-  einschaltet, ist nicht entschieden.
+  einschaltet, ist nicht entschieden. Seit dem 27.09. abends läuft es auf carnine-pc (ba7dde3, 60 s).
+  `local_map-v0.5.4` (28.09.) nimmt das unbehandelte „Cancelled“ abgebrochener Kacheln aus dem Log (Fork 1fd104a).
 - **Phase 2** (Navigationsmodus): fertig und auf dem Panel abgenommen (Route auf der gefahrenen Strecke,
   flüssig mit Drehung auf Zoom 16).
 - **Phase 3** (Backend): alle fünf RPCs des `NavigationService` (ADR-021) umgesetzt und gegen echtes
