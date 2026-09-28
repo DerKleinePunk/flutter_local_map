@@ -730,7 +730,7 @@ packages:
     description:
       path: "."
       ref: local_map_pi
-      resolved-ref: "8d730e2805600241ec1ab787237625a6cab12d77"
+      resolved-ref: "1fd104a55b8470536430b333cb31c14c956a0520"
       url: "https://github.com/DerKleinePunk/flutter-vector-map-tiles"
     source: git
     version: "9.0.0-beta.13"
