@@ -43,6 +43,48 @@ Kernel baut denselben Modus und der Treiber lehnt ihn aus demselben Grund ab.
 
 ## Die Loesung: EDID mit geraden Timings unterschieben
 
+Das EDID im Panel selbst laesst sich nur mit einem Hardware-Programmer
+aendern (Auskunft Waveshare, 2026-09-29). Der Kernel bekommt deshalb per
+`drm.edid_firmware` ein korrigiertes EDID aus einer Datei.
+
+### Vorgabe: die Datei von Waveshare (seit 2026-09-29)
+
+`edid/waveshare-7h-260929.bin` (256 Byte, sha256
+`07ee8b8361264a829890d64b4a897964840b4c6ab678518e73b3ac65bbb73edd`) kam auf
+Anfrage vom Hersteller. Es ist dasselbe geklonte EDID mit neuem erstem
+Detailtiming und richtiger Bildgroesse:
+
+```
+1024x600, Pixeltakt 50250 kHz, 59,82 Hz
+h: aktiv 1024, front 44, sync 88, total 1344   (alles gerade)
+v: aktiv  600, front  3, sync  6, total  625
+Bildgroesse 154 x 86 mm
+```
+
+Der CEA-Erweiterungsblock ist byte-gleich mit dem Original. Audio ueber HDMI
+(LPCM, HDMI-VSDB) bleibt also erhalten. Verifiziert am 2026-09-29 auf dem
+Test-Pi: 1024x600 @ 60 Hz nativ, Bild scharf, ELD mit Audio-Deskriptor,
+`speaker-test` und Carnine2 spielen Ton.
+
+Installation wie unten in Schritt 2 und 3, nur mit diesem Dateinamen:
+
+```bash
+sudo cp waveshare-7h-260929.bin /lib/firmware/edid/
+# cmdline.txt: drm.edid_firmware=HDMI-A-1:edid/waveshare-7h-260929.bin
+```
+
+**Nicht verwenden:** `7C-1024x600-20211128.bin`, die erste Datei von
+Waveshare. Sie hat 128 Byte **ohne** CEA-Block. Das Bild ist damit scharf,
+aber der Pi behandelt das Panel als DVI-Monitor: ELD leer, `snd_pcm_open`
+scheitert mit Fehler 524, kein Ton ueber HDMI.
+
+### Rueckfall: selbst korrigiertes EDID
+
+`edid/waveshare-1024x600.bin` (sha256
+`72558fbc7e9ca45009d4a3a967eab4ea8473d0e7310897219505b0705c4ca8cb`) war bis
+2026-09-29 die Vorgabe und bleibt als Rueckfall aufgehoben. Sie entsteht aus
+dem EDID des Panels wie folgt.
+
 Es genuegt, zwei Bytes im Detailtiming zu aendern - Front-Porch 5 -> 6 und
 Sync-Breite 13 -> 12. Damit wird
 
@@ -55,7 +97,7 @@ htotal      = 1312  (unveraendert)
 Pixeltakt und Bildwiederholrate bleiben gleich, das Bild verschiebt sich um
 einen Pixel. Alles andere am EDID bleibt unberuehrt.
 
-### 1. Blob erzeugen (auf dem Geraet, Panel angeschlossen)
+#### 1. Blob erzeugen (auf dem Geraet, Panel angeschlossen)
 
 ```python
 # mkedid.py
@@ -73,14 +115,14 @@ open("waveshare-1024x600.bin", "wb").write(bytes(e))
 Den Connector-Namen vorher pruefen (`ls /sys/class/drm/`), auf dem Pi 4 ist es
 `card1-HDMI-A-1` fuer den HDMI-Anschluss neben dem Stromanschluss.
 
-### 2. Blob installieren
+#### 2. Blob installieren
 
 ```bash
 sudo mkdir -p /lib/firmware/edid
 sudo cp waveshare-1024x600.bin /lib/firmware/edid/
 ```
 
-### 3. Kernel-Parameter setzen
+#### 3. Kernel-Parameter setzen
 
 In `/boot/firmware/cmdline.txt` an die **eine** Zeile anhaengen:
 
@@ -95,12 +137,15 @@ heisst inzwischen `drm.edid_firmware`.
 In `config.txt` bleibt `dtoverlay=vc4-kms-v3d` stehen, die `hdmi_*`-Zeilen
 koennen weg.
 
-### 4. Gegenprobe nach dem Neustart
+#### 4. Gegenprobe nach dem Neustart
+
+Gilt fuer beide Dateien.
 
 ```bash
 head -1 /sys/class/drm/card1-HDMI-A-1/modes   # -> 1024x600
 cat /sys/class/graphics/fb0/virtual_size      # -> 1024,600
 dmesg | grep "not supported"                  # -> nichts
+grep sad_count /proc/asound/card0/eld#0       # -> 1 (Audio ueber HDMI da)
 ```
 
 ivi-homescreen meldet dann `mode=1024x600@60Hz` und
