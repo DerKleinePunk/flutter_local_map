@@ -715,7 +715,7 @@ packages:
     description:
       path: "."
       ref: local_map_pi
-      resolved-ref: "8d730e2805600241ec1ab787237625a6cab12d77"
+      resolved-ref: b870db815e8c63bfed8a963f0a8250c85525ddc1
       url: "https://github.com/DerKleinePunk/flutter-vector-map-tiles"
     source: git
     version: "9.0.0-beta.13"
@@ -747,10 +747,11 @@ packages:
   vector_tile_renderer:
     dependency: "direct main"
     description:
-      name: vector_tile_renderer
-      sha256: "982ae5d8f0ab285463a4cd62e711c8f9a36b9b3112b5a471ae8d4f4838f31537"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: local_map_pi
+      resolved-ref: "3205e3ff87389fccbb985aeeec2445bd24a4346f"
+      url: "https://github.com/DerKleinePunk/dart-vector-tile-renderer"
+    source: git
     version: "6.1.0"
   vm_service:
     dependency: transitive

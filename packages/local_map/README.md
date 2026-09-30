@@ -36,7 +36,7 @@ dann eine bewusste Entscheidung des Gastgebers.
 
 ### Pflicht in beiden Varianten: dependency_overrides
 
-`local_map` benötigt drei geforkte Abhängigkeiten. `dependency_overrides`
+`local_map` benötigt vier geforkte Abhängigkeiten. `dependency_overrides`
 werden von pub **nur im Root-Package** ausgewertet und **nicht** transitiv
 vererbt — ohne die folgenden Zeilen scheitert `flutter pub get` im
 konsumierenden Projekt an Versionskonflikten:
@@ -57,6 +57,10 @@ dependency_overrides:
       url: https://github.com/DerKleinePunk/flutter_map_plugins
       ref: to_flutter_map_8
       path: vector_map_tiles_mbtiles
+  vector_tile_renderer:
+    git:
+      url: https://github.com/DerKleinePunk/dart-vector-tile-renderer
+      ref: local_map_pi
 ```
 
 Die beiden aus `flutter_map_plugins` sind wegen `mbtiles` noetig: die
@@ -68,7 +72,14 @@ pub.dev-Versionen haengen an `^0.4.0`, dieses Package nutzt `^0.5.0`.
 `MapConfig`; ohne den Fork kompiliert `local_map` nicht. Die Werte sind auf
 dem Pi gemessen, siehe `MapConfig.panBuffer`, `MapConfig.rasterTileScale`
 und `MapConfig.rasterTilesPerFrame`. Ausserdem legt der Fork Kacheln aus
-MBTiles nicht zusaetzlich in seinen Dateicache.
+MBTiles nicht zusaetzlich in seinen Dateicache. Seit 0.6.0 rendert er die
+Beschriftung auf Wunsch fuer die Kartendrehung (`MapConfig.labelRotationStep`).
+
+`vector_tile_renderer` kommt aus einem Fork von 6.1.0 (Branch
+`local_map_pi`): Strassennamen entlang der Linie stehen auch bei gedrehter
+Karte richtig herum. Der Fork von `vector_map_tiles` haengt daran; ohne den
+Override scheitert `pub get`, weil `local_map` selbst die pub.dev-Version
+verlangt.
 
 ## Verwenden
 
@@ -221,6 +232,7 @@ deutschen Texte; für weitere Sprachen eigene Instanzen übergeben.
 | `searchResultZoom` | `15` | Zoom beim Anspringen eines Suchtreffers; `null` = Zoom des Geocoder-Treffers |
 | `panBuffer` | `0` | Kachelreihen außerhalb des Bildes (Vektor im Raster-Modus); `0` halbiert auf dem Pi die Ladezeit |
 | `rasterTileScale` | `null` | Auflösungsfaktor beim Rastern der Vektorkacheln; `null` = Pixelverhältnis des Bildschirms statt fest 2,0 |
+| `labelRotationStep` | `0` | Beschriftung der Raster-Kacheln für die auf so viele Grad gerundete Kartendrehung rendern, damit sie bei Karte in Fahrtrichtung nicht auf dem Kopf steht; `0` = aus, `45` auf dem Pi gemessen |
 | `memoryTileCacheMaxSize` / `memoryTileDataCacheMaxSize` / `textCacheMaxSize` / `vectorConcurrency` / `vectorLayerMode` | `null` | Speicher- und Thread-Budget von `vector_map_tiles`; `null` = dessen Vorgabe |
 
 `MapConfig.defaults` ist ein `MapConfig()` ohne Ortsbezug. `MapConfig.hessen`

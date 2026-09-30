@@ -1172,6 +1172,7 @@ class _MapViewState extends State<MapView>
         rasterTileScale:
             _config.rasterTileScale ?? MediaQuery.devicePixelRatioOf(context),
         rasterTilesPerFrame: _config.rasterTilesPerFrame,
+        rasterLabelRotationStep: _config.labelRotationStep,
         controller: _vectorTileController,
       );
     }

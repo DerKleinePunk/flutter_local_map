@@ -153,6 +153,18 @@ class MapConfig {
   /// die Karte fuellt sich etwas spaeter, ruckelt aber weniger.
   final int rasterTilesPerFrame;
 
+  /// Beschriftung der Raster-Kacheln mitdrehen: Die Kacheln werden für die
+  /// auf Stufen von so vielen Grad gerundete Kartendrehung gerastert (nur
+  /// Raster-Modus), `0` = aus (Default, wie bisher).
+  ///
+  /// Raster-Kacheln drehen sich mit der Karte; ohne diese Option steht bei
+  /// Fahrt nach Süden mit Karte in Fahrtrichtung jede Beschriftung auf dem
+  /// Kopf (#1). Mit 45 steht keine mehr als etwa 32° schief (halbe Stufe
+  /// plus 10° Hysterese). Geradeaus und im Stand kostet das nichts; beim
+  /// Stufenwechsel werden die sichtbaren Kacheln einmal neu gerastert und
+  /// zeigen bis dahin das alte Bild.
+  final double labelRotationStep;
+
   /// Vorab-Laden in Fahrtrichtung: so viele Sekunden voraus werden Kacheln
   /// schon einmal gerastert (nur Raster-Modus), `0` = aus (Default).
   ///
@@ -200,10 +212,12 @@ class MapConfig {
     this.panBuffer = 0,
     this.rasterTileScale,
     this.rasterTilesPerFrame = 0,
+    this.labelRotationStep = 0,
     this.prefetchAheadSeconds = 0,
     this.searchResultZoom = 15,
   }) : assert(panBuffer >= 0),
        assert(rasterTilesPerFrame >= 0),
+       assert(labelRotationStep >= 0 && labelRotationStep <= 180),
        assert(prefetchAheadSeconds >= 0),
        assert(rasterTileScale == null || rasterTileScale > 0),
        valhallaBaseUri = valhallaBaseUri ?? Uri.parse('http://127.0.0.1:8002');
@@ -252,6 +266,7 @@ class MapConfig {
     int? panBuffer,
     double? rasterTileScale,
     int? rasterTilesPerFrame,
+    double? labelRotationStep,
     int? prefetchAheadSeconds,
     double? searchResultZoom,
   }) {
@@ -285,6 +300,7 @@ class MapConfig {
       panBuffer: panBuffer ?? this.panBuffer,
       rasterTileScale: rasterTileScale ?? this.rasterTileScale,
       rasterTilesPerFrame: rasterTilesPerFrame ?? this.rasterTilesPerFrame,
+      labelRotationStep: labelRotationStep ?? this.labelRotationStep,
       prefetchAheadSeconds: prefetchAheadSeconds ?? this.prefetchAheadSeconds,
       searchResultZoom: searchResultZoom ?? this.searchResultZoom,
     );

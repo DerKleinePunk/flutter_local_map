@@ -5,6 +5,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:local_map/local_map.dart';
+import 'package:path_provider_linux/path_provider_linux.dart';
+import 'package:shared_preferences_linux/shared_preferences_linux.dart';
 
 import 'map_bench.dart';
 import 'map_screen.dart';
@@ -28,12 +30,19 @@ final _bench = MapBench.fromEnvironment();
 void main() {
   runZonedGuarded(
     () async {
+      // Siehe pubspec.yaml: nicht auf den automatischen Registrant verlassen.
+      if (Platform.isLinux) {
+        PathProviderLinux.registerWith();
+        SharedPreferencesLinux.registerWith();
+      }
       // Initialisiert Binding + sqflite-FFI und legt die Karten-Config fest,
       // die MapView/MapDownloader ohne explizites config:-Argument verwenden.
       // LOCAL_MAP_*: Stellschrauben zum Vergleichen auf dem Pi ohne eigenen
       // Build, siehe die gleichnamigen Felder in MapConfig.
       int? envInt(String name) =>
           int.tryParse(Platform.environment[name] ?? '');
+      double? envDouble(String name) =>
+          double.tryParse(Platform.environment[name] ?? '');
       LocalMap.ensureInitialized(
         config: MapConfig.hessen.copyWith(
           rasterTilesPerFrame: envInt('LOCAL_MAP_RASTER_TILES_PER_FRAME'),
@@ -41,6 +50,7 @@ void main() {
           textCacheMaxSize: envInt('LOCAL_MAP_TEXT_CACHE'),
           vectorConcurrency: envInt('LOCAL_MAP_CONCURRENCY'),
           prefetchAheadSeconds: envInt('LOCAL_MAP_PREFETCH_S'),
+          labelRotationStep: envDouble('LOCAL_MAP_LABEL_ROTATION_STEP'),
         ),
       );
       // Flutters Bildcache haelt die fertig gerasterten Kacheln (Vorgabe

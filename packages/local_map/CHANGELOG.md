@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.6.0
+
+- Neue Option `MapConfig.labelRotationStep` (Vorgabe `0` = aus, wie
+  bisher): Die Raster-Kacheln werden für die auf Stufen gerundete
+  Kartendrehung gerendert. Bei Karte in Fahrtrichtung steht die Beschriftung
+  dann nicht mehr auf dem Kopf (#1), mit `45` höchstens etwa 37° schief.
+  Punkt-Namen und Straßennamen (Renderer-Fork) drehen mit.
+- Eine neue Stufe gilt erst nach 15° Hysterese und 2 s Haltezeit, beim Wenden
+  sofort. Beim Wechsel bleibt das alte Bild stehen, bis das neue fertig ist;
+  die angezeigten Kacheln werden nachrangig neu gerendert, eine je Frame.
+  Auf dem Pi (Demo-Fahrt, Karte in Fahrtrichtung, 15-fach, je 3 Läufe):
+  Frames über 100 ms 0–5 (ohne Mitdrehen 0–1), schlechtester 98–123 ms
+  (67–115 ms), über 33 ms 256–266 (138–146), RSS +30 MB.
+- **Neuer Pflicht-Override** `vector_tile_renderer` (Fork `local_map_pi`),
+  siehe README. Braucht vector_map_tiles aus dem Fork `local_map_pi` mit
+  `rasterLabelRotationStep`.
+- Vorab-Laden (`prefetchAheadSeconds`) bekommt höchstens einen Platz je
+  Frame im Frame-Budget.
+
 ## 0.5.5
 
 - Auch die übrigen Stellen, an denen ein abgebrochener Kachel-Auftrag als

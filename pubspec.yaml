@@ -26,6 +26,13 @@ dependencies:
   local_map:
     path: packages/local_map
 
+  # Unter ivi-homescreen (emb_cli) lief der automatische Dart-Plugin-
+  # Registrant in Builds ab dem 30.09.2026 nicht mehr: path_provider und
+  # shared_preferences warfen MissingPluginException, die Karte blieb beim
+  # Laden stehen. main() meldet die beiden Linux-Plugins deshalb selbst an.
+  path_provider_linux: ^2.2.2
+  shared_preferences_linux: ^2.4.1
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -53,6 +60,12 @@ dependency_overrides:
   vector_map_tiles:
     git:
       url: https://github.com/DerKleinePunk/flutter-vector-map-tiles
+      ref: local_map_pi
+  # Fork: Strassennamen richtig herum bei gedrehter Karte (#1), siehe
+  # MapConfig.labelRotationStep. local_map haengt selbst an vector_tile_renderer.
+  vector_tile_renderer:
+    git:
+      url: https://github.com/DerKleinePunk/dart-vector-tile-renderer
       ref: local_map_pi
   flutter_map_mbtiles:
     git:

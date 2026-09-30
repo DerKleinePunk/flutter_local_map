@@ -9,6 +9,12 @@ dependency_overrides:
     git:
       url: https://github.com/DerKleinePunk/flutter-vector-map-tiles
       ref: local_map_pi
+  # Fork: Strassennamen richtig herum bei gedrehter Karte (#1), siehe
+  # MapConfig.labelRotationStep. local_map haengt selbst an vector_tile_renderer.
+  vector_tile_renderer:
+    git:
+      url: https://github.com/DerKleinePunk/dart-vector-tile-renderer
+      ref: local_map_pi
   flutter_map_mbtiles:
     git:
       url: https://github.com/DerKleinePunk/flutter_map_plugins
