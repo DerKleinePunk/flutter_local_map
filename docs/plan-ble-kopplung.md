@@ -117,6 +117,7 @@ Schritte 1–5 sind geschätzt **3–5 Tage** zusammen, je nach Test auf dem Ger
 | Klassisches Koppeln (bis es A2DP gibt)? | **Vorerst abgelehnt**, mit eigenem Test (Michael 11:23) |
 | Zielgerät? | **Nur der Pi 4.** Getestet und freigegeben wird für den Pi 4, der Pi 3 (carnine-pc zurzeit) ist nur die Notlösung zum Arbeiten (Michael 11:24). Damit ist carnine2s Frage erledigt, ob „Secure Connections only“ auf dem Pi 3 geht |
 | Tickets? | **Zwei Tickets:** „BLE: Image + Backend“ (carnine2) und „BLE: UI“ (Jonas), angelegt von carnine2 (Michael 11:24) |
+| Wann? | **Nicht vor der Messe (6.11.2026).** Die Tickets bleiben angelegt, angefangen wird erst danach (Michael 13:40) |
 
 ## Vorlage für das UI-Ticket (für Jonas)
 
