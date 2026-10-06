@@ -511,6 +511,22 @@ void main() {
       expect(info, ['Die Route wird neu berechnet.']);
     });
 
+    test('Neuberechnung nach Fehler: der Satz kommt nicht noch mal', () async {
+      final events = <Announcement>[];
+      map.announcements.listen((e) {
+        if (e is Announcement && e.priority == AnnouncementPriority.info) {
+          events.add(e);
+        }
+      });
+      await leave(1);
+      routing.pending.last.completeError(const RoutingException('weg'));
+      await Future<void>.delayed(Duration.zero);
+      now = now.add(const Duration(seconds: 40));
+      await send(fix(4, east: 0.0012));
+      expect(routing.requests, hasLength(3), reason: 'zweiter Versuch');
+      expect(events, hasLength(1));
+    });
+
     test('Replay: keine Ansage zur Neuberechnung', () async {
       map.setRoute(north, destination: ziel);
       final events = <AnnouncementEvent>[];

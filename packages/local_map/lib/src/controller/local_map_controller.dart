@@ -407,14 +407,6 @@ class LocalMapController extends ChangeNotifier {
     _offRoute = value;
     if (value) {
       debugPrint('[route] Route verlassen');
-      // Nur ansagen, was dann auch passiert.
-      final announcer = _announcer;
-      if (announcer != null &&
-          announcementPolicy.enabled &&
-          offRoutePolicy.reroute &&
-          _routeHasDestination) {
-        _emit(announcer.rerouting());
-      }
     }
     _offRouteChanges.add(value);
   }
@@ -474,6 +466,14 @@ class LocalMapController extends ChangeNotifier {
     if (provider == null || destination == null) return;
     final request = ++_routeRequest;
     _isRerouting = true;
+    // Ansagen, was jetzt passiert - nur beim ersten Versuch, nicht bei jeder
+    // Wiederholung nach einem Fehler.
+    final announcer = _announcer;
+    if (announcer != null &&
+        announcementPolicy.enabled &&
+        _rerouteFailures == 0) {
+      _emit(announcer.rerouting());
+    }
     _notify();
 
     try {

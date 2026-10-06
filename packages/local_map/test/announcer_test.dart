@@ -106,7 +106,7 @@ void main() {
       'Auf Kirchplatz Richtung Norden fahren.',
       'In 300 Metern rechts auf Amthof abbiegen.',
       'Rechts auf Amthof abbiegen. Dann das Ziel.',
-      'In 300 Metern Sie erreichen Ihr Ziel.',
+      'In 300 Metern erreichen Sie Ihr Ziel.',
       'Sie haben Ihr Ziel erreicht.',
     ]);
     _expectPrepared(events);
@@ -170,6 +170,29 @@ void main() {
     );
     expect(
       spoken.where((t) => t == 'Sie haben Ihr Ziel erreicht.'),
+      hasLength(1),
+    );
+  });
+
+  test('Aufzeichnung beginnt nach dem Ziel von vorn: nichts mehr', () {
+    final events = _drive(
+      positions: [1900, 1960, 1990, 2000, 0, 10, 20, 30, 700, 710, 720],
+    );
+    final spoken = _spoken(events);
+    expect(spoken.last, 'Sie haben Ihr Ziel erreicht.');
+    expect(events.last, isA<Announcement>());
+  });
+
+  test('zurueck vor ein schon angesagtes Manoever: keine Wiederholung', () {
+    // Ecke bei 1000 m ist angesagt und passiert, dann springt das GPS 150 m
+    // zurueck vor die Ecke.
+    final spoken = _spoken(
+      _drive(
+        positions: [960, 980, 1000, 1020, 1040, 850, 900, 950, 980, 1000, 1050],
+      ),
+    );
+    expect(
+      spoken.where((t) => t.startsWith('Rechts auf Amthof')),
       hasLength(1),
     );
   });

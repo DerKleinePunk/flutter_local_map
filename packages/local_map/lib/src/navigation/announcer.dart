@@ -44,6 +44,7 @@ class AnnouncementTexts {
     required this.inMeters,
     required this.inKilometers,
     required this.rerouting,
+    required this.arrivalIn,
     this.lowercaseStarts = const <String>{},
   });
 
@@ -53,8 +54,12 @@ class AnnouncementTexts {
   /// Vorsatz für [km] Kilometer, z. B. "In 1 Kilometer".
   final String Function(int km) inKilometers;
 
-  /// Beim Verlassen der Route, wenn neu berechnet wird.
+  /// Wenn wegen des Verlassens der Route neu berechnet wird.
   final String rerouting;
+
+  /// Vorwarnung vor dem Ziel, mit dem Vorsatz der Stufe ("In 300 Metern"):
+  /// Die Sätze des Routers zum Ziel passen nicht hinter einen Vorsatz.
+  final String Function(String prefix) arrivalIn;
 
   /// Wörter, die nach dem Vorsatz klein geschrieben werden ("In 300 Metern
   /// links ..."). Für die Sprachausgabe egal, für das Log schöner.
@@ -64,6 +69,7 @@ class AnnouncementTexts {
     inMeters: (m) => 'In $m Metern',
     inKilometers: (km) => km == 1 ? 'In 1 Kilometer' : 'In $km Kilometern',
     rerouting: 'Die Route wird neu berechnet.',
+    arrivalIn: (prefix) => '$prefix erreichen Sie Ihr Ziel.',
     lowercaseStarts: const {
       'Links',
       'Rechts',
@@ -85,6 +91,7 @@ class AnnouncementTexts {
     inMeters: (m) => 'In $m meters,',
     inKilometers: (km) => km == 1 ? 'In 1 kilometer,' : 'In $km kilometers,',
     rerouting: 'Recalculating the route.',
+    arrivalIn: (prefix) => '$prefix you will arrive at your destination.',
     lowercaseStarts: const {
       'Turn',
       'Bear',
@@ -171,14 +178,18 @@ class ManeuverAnnouncer {
     final index = progress.nextManeuverIndex;
     if (index == null) return const [];
 
-    if (index != _current) {
-      final previous = _current;
+    // Ein Manöver, das schon dran war, kommt nicht wieder - auch nicht, wenn
+    // die Position zurückspringt (GPS-Sprung, Aufzeichnung von vorn).
+    final current = _current;
+    if (current != null && index < current) return const [];
+
+    if (index != current) {
+      final previous = current;
       _current = index;
       _firedSteps.clear();
       _firedNow = false;
       if (policy.announcePost &&
           previous != null &&
-          previous < index &&
           !offRoute &&
           _isMoving(speedMps)) {
         final post = route.maneuvers[previous].verbalPost;
@@ -254,6 +265,7 @@ class ManeuverAnnouncer {
     final prefix = meters >= 1000 && meters % 1000 == 0
         ? texts.inKilometers(meters ~/ 1000)
         : texts.inMeters(meters);
+    if (_isArrival(m.type)) return texts.arrivalIn(prefix);
     return '$prefix ${_lowerStart(m.verbalAlert ?? m.instruction)}';
   }
 
@@ -266,3 +278,6 @@ class ManeuverAnnouncer {
 }
 
 double _max(double a, double b) => a > b ? a : b;
+
+/// Valhalla: 4 Ziel, 5 Ziel rechts, 6 Ziel links.
+bool _isArrival(int? type) => type == 4 || type == 5 || type == 6;
