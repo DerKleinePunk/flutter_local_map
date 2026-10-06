@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.3
+
+- `AnnouncementPrepare` nennt für das nächste Manöver keine Stufe mehr, an
+  der das Fahrzeug schon vorbei ist: Eine Stufe kommt nur, solange das
+  Manöver weiter als 60 % von ihr entfernt ist, dieselbe Regel, nach der
+  die Ansage auslöst. Bisher stand z. B. „In 300 Metern“ für das
+  Start-Manöver (0 m) im Prepare. Auf carnine-pc rechnete die Stimme am
+  Start so zwei Sätze, die nie kamen, zusammen 9,1 s.
+  `ManeuverAnnouncer.textsFor` hat dafür `distanceMeters`.
+
 ## 0.8.2
 
 - **Vorausschau im `AnnouncementPrepare`.** Hinter den Sätzen des nächsten

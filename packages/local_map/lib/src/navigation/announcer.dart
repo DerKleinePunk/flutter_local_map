@@ -218,6 +218,8 @@ class ManeuverAnnouncer {
       }
     }
 
+    final distance = progress.distanceToNextManeuverMeters;
+
     if (index != current) {
       final previous = current;
       _current = index;
@@ -232,24 +234,28 @@ class ManeuverAnnouncer {
           events.add(Announcement(post, AnnouncementPriority.info));
         }
       }
-      events.add(AnnouncementPrepare(textsFor(index)));
+      events.add(
+        AnnouncementPrepare(textsFor(index, distanceMeters: distance)),
+      );
       _preparedFast = _fast;
     } else if (_preparedFast != _fast && !_firedNow) {
       // Andere Stufen als vorbereitet: die jetzt passenden nachreichen.
-      events.add(AnnouncementPrepare(textsFor(index)));
+      events.add(
+        AnnouncementPrepare(textsFor(index, distanceMeters: distance)),
+      );
       _preparedFast = _fast;
     }
 
     if (offRoute || !_isMoving(speedMps)) return events;
 
     final maneuver = route.maneuvers[index];
-    final distance = progress.distanceToNextManeuverMeters ?? 0;
+    final toManeuver = distance ?? 0;
     final nowMeters = _max(
       policy.nowMinMeters,
       policy.nowSeconds * (speedMps ?? 0),
     );
 
-    if (distance <= nowMeters) {
+    if (toManeuver <= nowMeters) {
       if (!_firedNow) {
         _firedNow = true;
         // Was man an Stufen verpasst hat, kommt nicht mehr.
@@ -265,7 +271,7 @@ class ManeuverAnnouncer {
     // Die engste Stufe, in der das Fahrzeug gerade ist. Liegt es schon weit
     // darunter (Route erst kurz vorher bekommen), passt der Satz nicht mehr.
     for (final step in steps.reversed) {
-      if (distance <= step && distance > step * 0.6) {
+      if (_inStep(toManeuver, step)) {
         if (_firedSteps.contains(step)) break;
         for (final s in _allSteps) {
           if (s >= step) _firedSteps.add(s);
@@ -290,13 +296,23 @@ class ManeuverAnnouncer {
   /// können, in der Reihenfolge, in der sie gesprochen würden, dahinter die
   /// der Manöver kurz danach. Wer vorab rechnet, rechnet so zuerst, was
   /// zuerst gebraucht wird.
-  List<String> textsFor(int index) {
+  ///
+  /// [distanceMeters] ist der Weg bis Manöver [index]; Stufen, deren
+  /// Bereich schon hinter dem Fahrzeug liegt, kommen nicht mehr und fehlen
+  /// dann. `null` = alle offenen Stufen.
+  List<String> textsFor(int index, {double? distanceMeters}) {
+    // Eine Stufe kommt nur, solange das Manöver weiter als 60 % von ihr
+    // entfernt ist ([_inStep]).
     return <String>{
-      ..._maneuverTexts(index, (step) => !_firedSteps.contains(step)),
+      ..._maneuverTexts(
+        index,
+        (step) =>
+            !_firedSteps.contains(step) &&
+            (distanceMeters == null || distanceMeters > step * 0.6),
+      ),
       for (final next in _lookahead(index))
-        // Eine Stufe kommt nur, wenn das Manöver weiter als 60 % von ihr
-        // hinter dem vorigen liegt - sonst ist der Bereich schon vorbei,
-        // sobald es das nächste wird.
+        // Das Manöver wird das nächste, wenn es so weit entfernt ist wie
+        // vom vorigen.
         ..._maneuverTexts(next, (step) => _legMeters(next - 1) > step * 0.6),
       texts.rerouting,
     }.toList();
@@ -339,6 +355,11 @@ class ManeuverAnnouncer {
     )..sort((a, b) => b - a);
     return steps;
   }
+
+  /// Im Bereich der Stufe [step]: höchstens [step], aber mehr als 60 % davon
+  /// entfernt. Weiter darunter passt der Satz nicht mehr.
+  bool _inStep(double distance, int step) =>
+      distance <= step && distance > step * 0.6;
 
   bool _isMoving(double? speed) => speed == null || speed >= policy.minSpeedMps;
 

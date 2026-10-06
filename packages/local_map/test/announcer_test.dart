@@ -250,6 +250,40 @@ void main() {
     expect(spoken, ['Rechts auf Amthof abbiegen. Dann das Ziel.']);
   });
 
+  test('Prepare ohne Stufen, an denen das Fahrzeug schon vorbei ist', () {
+    // Start-Manoever bei 0 m: seine 300-m-Stufe kann nie kommen.
+    final start = _drive(to: 0).whereType<AnnouncementPrepare>().single;
+    expect(start.texts, [
+      'Auf Kirchplatz Richtung Norden fahren.',
+      'Die Route wird neu berechnet.',
+    ]);
+
+    // Route 150 m vor der Ecke: unter 180 m kommt "In 300 Metern" nicht mehr.
+    final late = _drive(from: 850, to: 850).whereType<AnnouncementPrepare>();
+    expect(late.single.texts, [
+      'Rechts auf Amthof abbiegen. Dann das Ziel.',
+      'Die Route wird neu berechnet.',
+    ]);
+
+    // 250 m davor ist die Stufe noch dran - und wird auch gesprochen.
+    final inStep = _drive(from: 750, to: 800);
+    expect(
+      inStep.whereType<AnnouncementPrepare>().single.texts.first,
+      'In 300 Metern rechts auf Amthof abbiegen.',
+    );
+    expect(_spoken(inStep), ['In 300 Metern rechts auf Amthof abbiegen.']);
+  });
+
+  test('Tempowechsel 500 m vor dem Manoever: 1 km ist vorbei, 400 m kommt', () {
+    final events = _drive(
+      positions: [0, 100, 200, 300, 400, 500, 530],
+      speeds: [10, 10, 10, 10, 10, 30, 30],
+    );
+    final last = events.whereType<AnnouncementPrepare>().last;
+    expect(last.texts.first, 'In 400 Metern rechts auf Amthof abbiegen.');
+    expect(last.texts, isNot(contains(startsWith('In 1 Kilometer'))));
+  });
+
   test('im Stand wird nichts gesagt, Prepare kommt trotzdem', () {
     final events = _drive(speed: 0, positions: [750, 750, 750, 980, 980]);
     expect(_spoken(events), isEmpty);
