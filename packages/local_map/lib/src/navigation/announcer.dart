@@ -13,9 +13,11 @@ sealed class AnnouncementEvent {
 }
 
 /// Sätze, die bald gesprochen werden können: alle, die für das nächste
-/// Manöver noch kommen. Kommt, sobald ein Manöver das nächste wird. Wer die
-/// Sprache erst erzeugen muss, rechnet sie jetzt vor - jede spätere
-/// [Announcement] ist wörtlich einer dieser Sätze.
+/// Manöver noch kommen, dahinter die der Manöver kurz danach
+/// ([AnnouncementPolicy.lookaheadMeters]). Kommt, sobald ein Manöver das
+/// nächste wird. Wer die Sprache erst erzeugen muss, rechnet sie jetzt vor -
+/// jede spätere [Announcement] ist wörtlich einer dieser Sätze. Die Liste
+/// steht in der Reihenfolge, in der die Sätze gebraucht werden.
 final class AnnouncementPrepare extends AnnouncementEvent {
   const AnnouncementPrepare(this.texts);
 
@@ -120,6 +122,8 @@ class AnnouncementPolicy {
     this.nowSeconds = 3,
     this.minSpeedMps = 1.5,
     this.announcePost = false,
+    this.lookaheadMeters = 500,
+    this.lookaheadManeuvers = 2,
     this.texts,
   });
 
@@ -150,6 +154,14 @@ class AnnouncementPolicy {
 
   /// Auch den Satz nach dem Manöver sagen ("200 Meter weiter auf B 62.").
   final bool announcePost;
+
+  /// Das Prepare nennt auch die Sätze der Manöver, die höchstens so weit
+  /// hinter dem nächsten liegen, damit sie fertig sind, wenn Manöver dicht
+  /// aufeinander folgen (Start, Stadt). 0 = nur das nächste Manöver.
+  final double lookaheadMeters;
+
+  /// Höchstens so viele Manöver aus [lookaheadMeters].
+  final int lookaheadManeuvers;
 
   /// Feste Satzteile; `null` = [AnnouncementTexts.german].
   final AnnouncementTexts? texts;
@@ -275,18 +287,51 @@ class ManeuverAnnouncer {
       Announcement(texts.rerouting, AnnouncementPriority.info);
 
   /// Die Sätze, die für Manöver [index] beim jetzigen Tempo noch kommen
-  /// können, in der Reihenfolge, in der sie gesprochen würden. Wer vorab
-  /// rechnet, rechnet so zuerst, was zuerst gebraucht wird.
+  /// können, in der Reihenfolge, in der sie gesprochen würden, dahinter die
+  /// der Manöver kurz danach. Wer vorab rechnet, rechnet so zuerst, was
+  /// zuerst gebraucht wird.
   List<String> textsFor(int index) {
-    final m = route.maneuvers[index];
     return <String>{
-      for (final step in _steps)
-        if (!_firedSteps.contains(step)) _stepText(m, step),
-      _nowText(m),
-      if (policy.announcePost && m.verbalPost != null) m.verbalPost!,
+      ..._maneuverTexts(index, (step) => !_firedSteps.contains(step)),
+      for (final next in _lookahead(index))
+        // Eine Stufe kommt nur, wenn das Manöver weiter als 60 % von ihr
+        // hinter dem vorigen liegt - sonst ist der Bereich schon vorbei,
+        // sobald es das nächste wird.
+        ..._maneuverTexts(next, (step) => _legMeters(next - 1) > step * 0.6),
       texts.rerouting,
     }.toList();
   }
+
+  List<String> _maneuverTexts(int index, bool Function(int step) withStep) {
+    final m = route.maneuvers[index];
+    return [
+      for (final step in _steps)
+        if (withStep(step)) _stepText(m, step),
+      _nowText(m),
+      if (policy.announcePost && m.verbalPost != null) m.verbalPost!,
+    ];
+  }
+
+  /// Manöver nach [index], die höchstens [AnnouncementPolicy.lookaheadMeters]
+  /// dahinter beginnen.
+  List<int> _lookahead(int index) {
+    final result = <int>[];
+    var meters = 0.0;
+    for (
+      var next = index + 1;
+      next < route.maneuvers.length &&
+          result.length < policy.lookaheadManeuvers;
+      next++
+    ) {
+      meters += _legMeters(next - 1);
+      if (meters > policy.lookaheadMeters) break;
+      result.add(next);
+    }
+    return result;
+  }
+
+  /// Weg von Manöver [index] bis zum folgenden.
+  double _legMeters(int index) => route.maneuvers[index].lengthKm * 1000;
 
   List<int> get _steps {
     final steps = List<int>.of(

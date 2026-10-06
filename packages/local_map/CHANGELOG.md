@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.2
+
+- **Vorausschau im `AnnouncementPrepare`.** Hinter den Sätzen des nächsten
+  Manövers stehen die der Manöver, die höchstens 500 m danach beginnen (bis
+  zu 2; `AnnouncementPolicy.lookaheadMeters`, `lookaheadManeuvers`, 0 =
+  aus). Eine Vorwarnstufe steht nur dabei, wenn das Manöver weiter als 60 %
+  der Stufe hinter dem vorigen liegt, sonst kommt sie nie. Die Liste beginnt
+  weiter mit dem, was als Nächstes gesprochen wird. Auf carnine-pc kamen die
+  Ansagen kurz nach dem Losfahren 3,5–7,3 s zu spät: Das Prepare für ein
+  dichtes Manöver kam erst beim Vorbeifahren am vorigen, im selben
+  Augenblick wie seine Ansage.
+
 ## 0.8.1
 
 - `AnnouncementPrepare` meldet nur noch die Stufen, die beim jetzigen Tempo

@@ -253,7 +253,10 @@ bei Valhalla in der Sprache der Anfrage), davor ein fester Vorsatz aus
 ab 80 km/h 1 km und 400 m, sonst 300 m, dazu „jetzt“ kurz vor dem Manöver –,
 nie im Stand und nie neben der Route. Jede `Announcement` stand vorher
 wörtlich in einem `AnnouncementPrepare`, so trifft eine vorab gerechnete
-Sprachausgabe immer. Abschalten: `AnnouncementPolicy(enabled: false)`.
+Sprachausgabe immer. Das Prepare nennt zuerst die Sätze des nächsten
+Manövers, dahinter die der Manöver, die höchstens 500 m danach folgen (bis
+zu 2, `lookaheadMeters`/`lookaheadManeuvers`), damit bei dichten Manövern
+schon vorgerechnet ist. Abschalten: `AnnouncementPolicy(enabled: false)`.
 
 ### Texte
 

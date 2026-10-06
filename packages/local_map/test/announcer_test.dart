@@ -44,6 +44,52 @@ RoutingResult _route({bool verbal = true}) => RoutingResult(
   ],
 );
 
+/// Dieselbe L-Form, aber nach der Ecke folgen die Manoever dicht: 200 m,
+/// dann 150 m, dann 650 m bis zum Ziel.
+RoutingResult _denseRoute() => RoutingResult(
+  geometry: [
+    const RoutingPoint(lat: 50.000, lon: 9.000),
+    const RoutingPoint(lat: 50.0045, lon: 9.000),
+    const RoutingPoint(lat: 50.009, lon: 9.000), // Ecke, 1000 m
+    RoutingPoint(lat: 50.009, lon: 9 + 200 / _mPerDegLon), // 1200 m
+    RoutingPoint(lat: 50.009, lon: 9 + 350 / _mPerDegLon), // 1350 m
+    RoutingPoint(lat: 50.009, lon: 9 + 1000 / _mPerDegLon), // Ziel
+  ],
+  distanceMeters: 2000,
+  durationSeconds: 200,
+  maneuvers: [
+    _route().maneuvers[0],
+    const RoutingManeuver(
+      instruction: 'Rechts auf Amthof abbiegen.',
+      lengthKm: 0.2,
+      timeSeconds: 20,
+      type: 10,
+      beginShapeIndex: 2,
+    ),
+    const RoutingManeuver(
+      instruction: 'Links auf Bahnhofstrasse abbiegen.',
+      lengthKm: 0.15,
+      timeSeconds: 15,
+      type: 15,
+      beginShapeIndex: 3,
+    ),
+    const RoutingManeuver(
+      instruction: 'Rechts auf L 3195 abbiegen.',
+      lengthKm: 0.65,
+      timeSeconds: 65,
+      type: 10,
+      beginShapeIndex: 4,
+    ),
+    const RoutingManeuver(
+      instruction: 'Ziel erreicht.',
+      lengthKm: 0,
+      timeSeconds: 0,
+      type: 4,
+      beginShapeIndex: 5,
+    ),
+  ],
+);
+
 const double _mPerDegLat = 111319.49;
 final double _mPerDegLon = 111319.49 * 0.64279; // cos(50 Grad)
 
@@ -317,5 +363,83 @@ void main() {
     // "In 300 Metern" waere beim dritten Fix faellig - genau dann, wenn die
     // Route als verlassen gilt.
     expect(_spoken(events).where((t) => t.contains('Amthof')), isEmpty);
+  });
+
+  group('Vorausschau', () {
+    test(
+      'Prepare nennt die dichten Manoever dahinter, das naechste zuerst',
+      () {
+        final prepares = _drive(
+          route: _denseRoute(),
+          to: 900,
+        ).whereType<AnnouncementPrepare>().toList();
+        expect(prepares, hasLength(2));
+        expect(prepares[1].texts, [
+          'In 300 Metern rechts auf Amthof abbiegen.',
+          'Rechts auf Amthof abbiegen.',
+          // 200 m hinter der Ecke: Die 300-m-Stufe kommt noch (ab 180 m).
+          'In 300 Metern links auf Bahnhofstrasse abbiegen.',
+          'Links auf Bahnhofstrasse abbiegen.',
+          // 150 m dahinter: keine Stufe mehr, nur "jetzt".
+          'Rechts auf L 3195 abbiegen.',
+          'Die Route wird neu berechnet.',
+        ]);
+      },
+    );
+
+    test('hoechstens 500 m und 2 Manoever', () {
+      final r = _denseRoute();
+      final announcer = ManeuverAnnouncer(r);
+      // Ab der Ecke: 200 + 150 = 350 m bis L 3195; das Ziel liegt 1000 m
+      // dahinter.
+      expect(announcer.textsFor(1), isNot(contains('Ziel erreicht.')));
+      final one = ManeuverAnnouncer(
+        r,
+        const AnnouncementPolicy(lookaheadManeuvers: 1),
+      );
+      expect(one.textsFor(1), isNot(contains('Rechts auf L 3195 abbiegen.')));
+      expect(one.textsFor(1), contains('Links auf Bahnhofstrasse abbiegen.'));
+      final near = ManeuverAnnouncer(
+        r,
+        const AnnouncementPolicy(lookaheadMeters: 300),
+      );
+      expect(
+        near.textsFor(1),
+        isNot(contains('Rechts auf L 3195 abbiegen.')),
+        reason: '350 m hinter der Ecke',
+      );
+      final off = ManeuverAnnouncer(
+        r,
+        const AnnouncementPolicy(lookaheadMeters: 0),
+      );
+      expect(off.textsFor(1), [
+        'In 300 Metern rechts auf Amthof abbiegen.',
+        'Rechts auf Amthof abbiegen.',
+        'Die Route wird neu berechnet.',
+      ]);
+    });
+
+    test('dichte Fahrt: jede Ansage war schon ein Manoever vorher dran', () {
+      final events = _drive(route: _denseRoute());
+      expect(_spoken(events), [
+        'Auf Kirchplatz Richtung Norden fahren.',
+        'In 300 Metern rechts auf Amthof abbiegen.',
+        'Rechts auf Amthof abbiegen.',
+        'In 300 Metern links auf Bahnhofstrasse abbiegen.',
+        'Links auf Bahnhofstrasse abbiegen.',
+        'Rechts auf L 3195 abbiegen.',
+        'In 300 Metern erreichen Sie Ihr Ziel.',
+        'Ziel erreicht.',
+      ]);
+      _expectPrepared(events);
+      // Was nach der Ecke gesagt wird, stand schon im Prepare vor der Ecke.
+      final beforeCorner = events
+          .whereType<AnnouncementPrepare>()
+          .elementAt(1)
+          .texts;
+      for (final t in _spoken(events).sublist(3, 6)) {
+        expect(beforeCorner, contains(t));
+      }
+    });
   });
 }
