@@ -98,6 +98,10 @@ void main() {
                     'time': 10,
                     'type': 10,
                     'begin_shape_index': 1,
+                    'verbal_transition_alert_instruction': 'Rechts abbiegen.',
+                    'verbal_pre_transition_instruction':
+                        'Rechts abbiegen. Dann Ziel.',
+                    'verbal_post_transition_instruction': ' ',
                   },
                 ],
               },
@@ -121,6 +125,11 @@ void main() {
       expect(result.maneuvers[1].beginShapeIndex, 4);
       expect(result.geometry[4].lon, closeTo(9.001, 1e-6));
       expect(result.maneuvers[1].streetNames, isEmpty);
+      // Sprechtexte fuer Ansagen; leere zaehlen als fehlend.
+      expect(result.maneuvers[1].verbalAlert, 'Rechts abbiegen.');
+      expect(result.maneuvers[1].verbalPre, 'Rechts abbiegen. Dann Ziel.');
+      expect(result.maneuvers[1].verbalPost, isNull);
+      expect(result.maneuvers[0].verbalAlert, isNull);
     },
   );
 

@@ -496,6 +496,46 @@ void main() {
       );
     });
 
+    test('beim Verlassen einmal: Die Route wird neu berechnet', () async {
+      final events = <AnnouncementEvent>[];
+      map.announcements.listen(events.add);
+      await leave(1);
+      await send(fix(4, east: 0.0012));
+      final info = events
+          .whereType<Announcement>()
+          .where((e) => e.priority == AnnouncementPriority.info)
+          .map((e) => e.text)
+          .toList();
+      // Vorbereitet war der Satz schon mit der Route (vor dem listen hier),
+      // das prueft announcer_test.
+      expect(info, ['Die Route wird neu berechnet.']);
+    });
+
+    test('Replay: keine Ansage zur Neuberechnung', () async {
+      map.setRoute(north, destination: ziel);
+      final events = <AnnouncementEvent>[];
+      map.announcements.listen(events.add);
+      await leave(1);
+      expect(map.offRoute, isTrue);
+      expect(events.whereType<Announcement>(), isEmpty);
+    });
+
+    test('Ansagen abgeschaltet: der Stream bleibt still', () async {
+      final quiet = LocalMapController(
+        routingProvider: routing,
+        positionSource: source,
+        announcementPolicy: const AnnouncementPolicy(enabled: false),
+      );
+      addTearDown(quiet.dispose);
+      final events = <AnnouncementEvent>[];
+      quiet.announcements.listen(events.add);
+      final done = quiet.setDestination(ziel);
+      routing.pending.last.complete(north);
+      await done;
+      await leave(1);
+      expect(events, isEmpty);
+    });
+
     test('abgeschaltet per OffRoutePolicy', () async {
       final quiet = LocalMapController(
         routingProvider: routing,

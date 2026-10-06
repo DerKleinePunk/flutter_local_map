@@ -238,6 +238,23 @@ Schwellen und Abstände stellt `OffRoutePolicy` ein, die der Controller im
 Konstruktor bekommt; `OffRoutePolicy(reroute: false)` schaltet das
 Neuberechnen ab, die Erkennung bleibt.
 
+### Abbiegeansagen
+
+```dart
+map.announcements.listen((e) => switch (e) {
+  AnnouncementPrepare(:final texts) => tts.prepare(texts), // vorab rechnen
+  Announcement(:final text, :final priority) => tts.say(text, priority),
+});
+```
+
+Die Sätze kommen vom Router (`RoutingManeuver.verbalAlert`/`verbalPre`,
+bei Valhalla in der Sprache der Anfrage), davor ein fester Vorsatz aus
+`AnnouncementTexts` („In 300 Metern“). Ansagen kommen nur zu festen Stufen –
+ab 80 km/h 1 km und 400 m, sonst 300 m, dazu „jetzt“ kurz vor dem Manöver –,
+nie im Stand und nie neben der Route. Jede `Announcement` stand vorher
+wörtlich in einem `AnnouncementPrepare`, so trifft eine vorab gerechnete
+Sprachausgabe immer. Abschalten: `AnnouncementPolicy(enabled: false)`.
+
 ### Texte
 
 `PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre
@@ -329,7 +346,8 @@ die das Skript seit September 2026 anlegt. Mit einer älteren Datenbank bleibt
 - **Setup:** `LocalMap`, `MapConfig`, `MapStorageLocation`
 - **Steuerung:** `LocalMapController`, `MapLayerStyle`
 - **Navigation:** `RouteTracker`, `RouteProgress`, `HeadingFilter`,
-  `OffRoutePolicy`, `OffRouteDetector`
+  `OffRoutePolicy`, `OffRouteDetector`, `ManeuverAnnouncer`,
+  `AnnouncementPolicy`, `AnnouncementTexts`, `AnnouncementEvent`
 - **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`,
   `ReverseGeocoder` mit `LocationName`
 - **Widgets:** `MapView`, `DownloadOverlay`, `PlaceSearchBar`,

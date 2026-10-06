@@ -30,6 +30,18 @@ class RoutingManeuver {
   /// Straßennamen, auf die das Manöver führt.
   final List<String> streetNames;
 
+  /// Sprechtexte für Ansagen, in der Sprache des Routers. `null`, wenn der
+  /// Anbieter keine liefert - dann gilt [instruction].
+  ///
+  /// [verbalAlert] ist die Vorwarnung ("Links auf Amthof abbiegen."), ohne
+  /// Entfernung; [verbalPre] die Ansage am Manöver selbst; [verbalPost] der
+  /// Satz danach ("200 Meter weiter auf B 62."). Valhalla:
+  /// `verbal_transition_alert_instruction`, `verbal_pre_transition_instruction`,
+  /// `verbal_post_transition_instruction`.
+  final String? verbalAlert;
+  final String? verbalPre;
+  final String? verbalPost;
+
   const RoutingManeuver({
     required this.instruction,
     required this.lengthKm,
@@ -37,6 +49,9 @@ class RoutingManeuver {
     required this.type,
     this.beginShapeIndex,
     this.streetNames = const <String>[],
+    this.verbalAlert,
+    this.verbalPre,
+    this.verbalPost,
   });
 }
 

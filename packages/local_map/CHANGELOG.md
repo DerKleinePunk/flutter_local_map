@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.0
+
+- **Abbiegeansagen.** `LocalMapController.announcements` liefert
+  `AnnouncementPrepare` (alle Sätze, die für das nächste Manöver noch kommen
+  können, zum Vorab-Rechnen) und `Announcement` (Text + Priorität
+  `maneuver`/`info`), wenn gesprochen werden soll. Jede Ansage ist wörtlich
+  ein vorher gemeldeter Satz. Die Karte spricht nicht selbst.
+- Wann: Vorwarnung bei festen Stufen (ab 80 km/h 1 km und 400 m, sonst
+  300 m), „jetzt“ bei max(40 m, 3 s Fahrt), je Manöver jede Stufe höchstens
+  einmal, keine Stufe, die nicht mehr stimmt, nichts im Stand, nichts neben
+  der Route. Beim Verlassen einer Route mit Ziel einmal „Die Route wird neu
+  berechnet.“ (info). Satz nach dem Manöver (`verbalPost`) schaltbar, Vorgabe
+  aus. Einstellbar über `AnnouncementPolicy`, Vorsätze über
+  `AnnouncementTexts` (Deutsch, Englisch).
+- `RoutingManeuver` hat die Sprechtexte `verbalAlert`, `verbalPre`,
+  `verbalPost`; `ValhallaRoutingService` liest sie (auch in
+  `routeAlongTrace`). Ohne sie gilt `instruction`.
+- Log: `[route] Ansage (maneuver|info): …`.
+
 ## 0.7.0
 
 - **Route verlassen erkennen und neu berechnen.** `RouteProgress.offRoute`

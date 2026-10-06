@@ -230,6 +230,15 @@ class ValhallaRoutingService implements RoutingProvider {
               streetNames: streetNames is List
                   ? streetNames.whereType<String>().toList()
                   : const <String>[],
+              verbalAlert: _text(
+                maneuverRaw['verbal_transition_alert_instruction'],
+              ),
+              verbalPre: _text(
+                maneuverRaw['verbal_pre_transition_instruction'],
+              ),
+              verbalPost: _text(
+                maneuverRaw['verbal_post_transition_instruction'],
+              ),
             ),
           );
         }
@@ -385,6 +394,9 @@ RoutingResult joinRoutes(List<RoutingResult> pieces) {
           type: m.type,
           beginShapeIndex: begin == null ? null : begin + offset,
           streetNames: m.streetNames,
+          verbalAlert: m.verbalAlert,
+          verbalPre: m.verbalPre,
+          verbalPost: m.verbalPost,
         ),
       );
     }
@@ -396,6 +408,10 @@ RoutingResult joinRoutes(List<RoutingResult> pieces) {
     maneuvers: maneuvers,
   );
 }
+
+/// Ein nicht leerer Text aus der Antwort, sonst `null`.
+String? _text(Object? value) =>
+    value is String && value.trim().isNotEmpty ? value.trim() : null;
 
 /// Valhalla: 4 Ziel, 5 Ziel rechts, 6 Ziel links.
 bool _isArrival(int? type) => type == 4 || type == 5 || type == 6;

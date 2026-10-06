@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../api/position.dart';
 import '../api/reverse_geocoder.dart';
 import '../api/routing.dart';
+import '../navigation/announcer.dart';
 import '../navigation/heading_filter.dart';
 import '../navigation/off_route.dart';
 import '../navigation/route_progress.dart';
@@ -46,6 +47,7 @@ class LocalMapController extends ChangeNotifier {
     PositionSource? positionSource,
     MapController? mapController,
     this.offRoutePolicy = const OffRoutePolicy(),
+    this.announcementPolicy = const AnnouncementPolicy(),
     DateTime Function()? clock,
   }) : mapController = mapController ?? MapController(),
        _ownsMapController = mapController == null,
@@ -65,6 +67,10 @@ class LocalMapController extends ChangeNotifier {
   /// Wann die Route als verlassen gilt und ob und wie oft dann neu berechnet
   /// wird.
   final OffRoutePolicy offRoutePolicy;
+
+  /// Wann Abbiegeansagen kommen; `enabled: false` schaltet
+  /// [announcements] stumm.
+  final AnnouncementPolicy announcementPolicy;
 
   final DateTime Function() _clock;
 
@@ -117,6 +123,9 @@ class LocalMapController extends ChangeNotifier {
   DateTime? _nextRerouteAt;
   final StreamController<bool> _offRouteChanges =
       StreamController<bool>.broadcast();
+  ManeuverAnnouncer? _announcer;
+  final StreamController<AnnouncementEvent> _announcements =
+      StreamController<AnnouncementEvent>.broadcast();
 
   final ValueNotifier<double> _zoom = ValueNotifier<double>(0);
 
@@ -192,6 +201,11 @@ class LocalMapController extends ChangeNotifier {
   /// Meldung der letzten gescheiterten Neuberechnung, `null` nach einem
   /// Erfolg. Die alte Route bleibt dann stehen.
   String? get rerouteError => _rerouteError;
+
+  /// Abbiegeansagen zum Sprechen: [AnnouncementPrepare] mit den Sätzen, die
+  /// bald kommen können, und [Announcement], wenn gesprochen werden soll.
+  /// Die Karte spricht nicht selbst - das macht der Gastgeber.
+  Stream<AnnouncementEvent> get announcements => _announcements.stream;
 
   /// Wo die eigene Position liegt - Straße, Ort, Ortsteil. Wird nur ohne
   /// [route] nachgeführt, denn während einer Zielführung zeigt die Karte das
@@ -342,6 +356,9 @@ class LocalMapController extends ChangeNotifier {
     _tracker = route == null
         ? null
         : RouteTracker(route, offRoutePolicy: offRoutePolicy);
+    _announcer = route == null
+        ? null
+        : ManeuverAnnouncer(route, announcementPolicy);
     if (!rerouted) {
       _rerouteCount = 0;
       _rerouteFailures = 0;
@@ -353,6 +370,7 @@ class LocalMapController extends ChangeNotifier {
     final fix = _position;
     _progress = fix == null ? null : _trackFix(fix);
     _setOffRoute(_progress?.offRoute ?? false);
+    _announce(fix);
     // Mit Route ruht die Anzeige; ohne soll die nächste Position sofort neu
     // benannt werden, nicht erst nach 25 m.
     _locationName = null;
@@ -368,6 +386,7 @@ class LocalMapController extends ChangeNotifier {
     _headingFilter.update(fix);
     _progress = _trackFix(fix);
     _setOffRoute(_progress?.offRoute ?? false);
+    _announce(fix);
     if (_route == null) {
       _updateLocationName(fix.position);
     }
@@ -388,8 +407,36 @@ class LocalMapController extends ChangeNotifier {
     _offRoute = value;
     if (value) {
       debugPrint('[route] Route verlassen');
+      // Nur ansagen, was dann auch passiert.
+      final announcer = _announcer;
+      if (announcer != null &&
+          announcementPolicy.enabled &&
+          offRoutePolicy.reroute &&
+          _routeHasDestination) {
+        _emit(announcer.rerouting());
+      }
     }
     _offRouteChanges.add(value);
+  }
+
+  void _announce(PositionFix? fix) {
+    final announcer = _announcer;
+    final progress = _progress;
+    if (announcer == null || progress == null || fix == null) return;
+    for (final event in announcer.update(
+      progress,
+      speedMps: fix.speedMps,
+      offRoute: _offRoute,
+    )) {
+      _emit(event);
+    }
+  }
+
+  void _emit(AnnouncementEvent event) {
+    if (event is Announcement) {
+      debugPrint('[route] Ansage (${event.priority.name}): ${event.text}');
+    }
+    _announcements.add(event);
   }
 
   /// Berechnet neu, wenn die Route verlassen ist, sie ein Ziel hat, das
@@ -547,6 +594,7 @@ class LocalMapController extends ChangeNotifier {
     _disposed = true;
     _positionSubscription?.cancel();
     _offRouteChanges.close();
+    _announcements.close();
     _zoom.dispose();
     if (_ownsMapController) {
       mapController.dispose();
