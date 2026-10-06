@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -8,6 +9,7 @@ import '../api/position.dart';
 import '../api/reverse_geocoder.dart';
 import '../api/routing.dart';
 import '../navigation/heading_filter.dart';
+import '../navigation/off_route.dart';
 import '../navigation/route_progress.dart';
 import '../services/offline_geocoder.dart';
 
@@ -43,8 +45,11 @@ class LocalMapController extends ChangeNotifier {
     this.reverseGeocoder,
     PositionSource? positionSource,
     MapController? mapController,
+    this.offRoutePolicy = const OffRoutePolicy(),
+    DateTime Function()? clock,
   }) : mapController = mapController ?? MapController(),
-       _ownsMapController = mapController == null {
+       _ownsMapController = mapController == null,
+       _clock = clock ?? DateTime.now {
     if (positionSource != null) {
       _positionSubscription = positionSource.positions.listen(_onPosition);
     }
@@ -56,6 +61,12 @@ class LocalMapController extends ChangeNotifier {
   /// Benennt die eigene Position für [locationName]. Ohne ihn bleibt
   /// [locationName] leer.
   final ReverseGeocoder? reverseGeocoder;
+
+  /// Wann die Route als verlassen gilt und ob und wie oft dann neu berechnet
+  /// wird.
+  final OffRoutePolicy offRoutePolicy;
+
+  final DateTime Function() _clock;
 
   /// Erst nach so viel Bewegung wird die Position neu benannt. Ein
   /// GPS-Empfänger meldet sich bis zu zehnmal je Sekunde, eine Straße
@@ -93,6 +104,19 @@ class LocalMapController extends ChangeNotifier {
   LocationName? _locationName;
   LatLng? _locationNameAt;
   bool _locationNameLookupRunning = false;
+
+  /// Ob die aktuelle Route aus [setStart]/[setDestination] kommt. Nur dann
+  /// gibt es ein Ziel des Nutzers, zu dem neu berechnet werden kann.
+  bool _routeHasDestination = false;
+  bool _offRoute = false;
+  bool _isRerouting = false;
+  int _rerouteCount = 0;
+  String? _rerouteError;
+  String? _loggedRerouteError;
+  int _rerouteFailures = 0;
+  DateTime? _nextRerouteAt;
+  final StreamController<bool> _offRouteChanges =
+      StreamController<bool>.broadcast();
 
   final ValueNotifier<double> _zoom = ValueNotifier<double>(0);
 
@@ -149,6 +173,26 @@ class LocalMapController extends ChangeNotifier {
   /// `null` ohne Route oder ohne Position.
   RouteProgress? get progress => _progress;
 
+  /// Ob die Route verlassen ist (siehe [OffRoutePolicy]). Wechsel kommen
+  /// auch einzeln über [offRouteChanges].
+  bool get offRoute => _offRoute;
+
+  /// Meldet jeden Wechsel von [offRoute], `true` beim Verlassen, `false`
+  /// zurück auf der Route oder mit einer neuen Route.
+  Stream<bool> get offRouteChanges => _offRouteChanges.stream;
+
+  /// Ob gerade wegen [offRoute] neu berechnet wird. Die alte Route bleibt
+  /// so lange stehen.
+  bool get isRerouting => _isRerouting;
+
+  /// Wie oft die Route seit dem letzten [setStart]/[setDestination]/
+  /// [setRoute] erfolgreich neu berechnet wurde.
+  int get rerouteCount => _rerouteCount;
+
+  /// Meldung der letzten gescheiterten Neuberechnung, `null` nach einem
+  /// Erfolg. Die alte Route bleibt dann stehen.
+  String? get rerouteError => _rerouteError;
+
   /// Wo die eigene Position liegt - Straße, Ort, Ortsteil. Wird nur ohne
   /// [route] nachgeführt, denn während einer Zielführung zeigt die Karte das
   /// nächste Manöver; mit einer Route ist es `null`. Braucht einen
@@ -194,7 +238,7 @@ class LocalMapController extends ChangeNotifier {
     _destination = destination;
     _isRouting = false;
     _routingError = null;
-    _setRoute(route);
+    _setRoute(route, hasDestination: false);
     if (route != null) {
       _followPosition = false;
       _view?.fitRoute(_routePoints);
@@ -245,7 +289,7 @@ class LocalMapController extends ChangeNotifier {
     final origin = start?.location ?? _position?.position;
 
     if (destination == null || provider == null) {
-      _setRoute(null);
+      _setRoute(null, hasDestination: false);
       _isRouting = false;
       _notify();
       return;
@@ -262,7 +306,7 @@ class LocalMapController extends ChangeNotifier {
       );
       // Eine neuere Anfrage läuft schon - ihr Ergebnis gilt, nicht dieses.
       if (_disposed || request != _routeRequest) return;
-      _setRoute(result);
+      _setRoute(result, hasDestination: true);
       _routingAvailable = true;
       // Erst die Übersicht über die ganze Route; die Fahrt beginnt, wenn
       // der Gastgeber den Folgemodus wieder einschaltet.
@@ -270,7 +314,7 @@ class LocalMapController extends ChangeNotifier {
       _view?.fitRoute(_routePoints);
     } catch (e) {
       if (_disposed || request != _routeRequest) return;
-      _setRoute(null);
+      _setRoute(null, hasDestination: false);
       _routingError = e is RoutingException ? e.message : e.toString();
     } finally {
       if (!_disposed && request == _routeRequest) {
@@ -280,14 +324,33 @@ class LocalMapController extends ChangeNotifier {
     }
   }
 
-  void _setRoute(RoutingResult? route) {
+  /// [hasDestination]: die Route führt zu einem Ziel des Nutzers und darf
+  /// neu berechnet werden. [rerouted]: sie ist selbst eine Neuberechnung,
+  /// Zähler und Wartezeit laufen dann weiter.
+  void _setRoute(
+    RoutingResult? route, {
+    required bool hasDestination,
+    bool rerouted = false,
+  }) {
     _route = route;
+    _routeHasDestination = route != null && hasDestination;
     _routePoints = route == null
         ? const <LatLng>[]
         : route.geometry.map((p) => p.toLatLng()).toList(growable: false);
-    _tracker = route == null ? null : RouteTracker(route);
+    _tracker = route == null
+        ? null
+        : RouteTracker(route, offRoutePolicy: offRoutePolicy);
+    if (!rerouted) {
+      _rerouteCount = 0;
+      _rerouteFailures = 0;
+      _rerouteError = null;
+      _loggedRerouteError = null;
+      _nextRerouteAt = null;
+      _isRerouting = false;
+    }
     final fix = _position;
-    _progress = fix == null ? null : _tracker?.update(fix.position);
+    _progress = fix == null ? null : _trackFix(fix);
+    _setOffRoute(_progress?.offRoute ?? false);
     // Mit Route ruht die Anzeige; ohne soll die nächste Position sofort neu
     // benannt werden, nicht erst nach 25 m.
     _locationName = null;
@@ -301,12 +364,98 @@ class LocalMapController extends ChangeNotifier {
     if (_disposed) return;
     _position = fix;
     _headingFilter.update(fix);
-    _progress = _tracker?.update(fix.position);
+    _progress = _trackFix(fix);
+    _setOffRoute(_progress?.offRoute ?? false);
     if (_route == null) {
       _updateLocationName(fix.position);
     }
+    _maybeReroute(fix);
     _notify();
     _view?.positionChanged(fix);
+  }
+
+  RouteProgress? _trackFix(PositionFix fix) => _tracker?.update(
+    fix.position,
+    headingDegrees: fix.headingDegrees,
+    speedMps: fix.speedMps,
+    accuracyMeters: fix.accuracyMeters,
+  );
+
+  void _setOffRoute(bool value) {
+    if (_offRoute == value) return;
+    _offRoute = value;
+    if (value) {
+      debugPrint('[route] Route verlassen');
+    }
+    _offRouteChanges.add(value);
+  }
+
+  /// Berechnet neu, wenn die Route verlassen ist, sie ein Ziel hat, das
+  /// Fahrzeug fährt und die Wartezeit um ist.
+  void _maybeReroute(PositionFix fix) {
+    if (!_offRoute ||
+        !offRoutePolicy.reroute ||
+        !_routeHasDestination ||
+        _isRerouting ||
+        _isRouting) {
+      return;
+    }
+    final speed = fix.speedMps;
+    if (speed != null && speed < offRoutePolicy.minSpeedMps) return;
+    final now = _clock();
+    final next = _nextRerouteAt;
+    if (next != null && now.isBefore(next)) return;
+    _reroute(fix.position);
+  }
+
+  Future<void> _reroute(LatLng from) async {
+    final provider = routingProvider;
+    final destination = _destination;
+    if (provider == null || destination == null) return;
+    final request = ++_routeRequest;
+    _isRerouting = true;
+    _notify();
+
+    try {
+      final result = await provider.route(
+        start: from,
+        end: destination.location,
+      );
+      if (_disposed || request != _routeRequest) return;
+      _rerouteCount++;
+      _rerouteFailures = 0;
+      _rerouteError = null;
+      _loggedRerouteError = null;
+      _nextRerouteAt = _clock().add(_rerouteInterval());
+      debugPrint(
+        '[route] Route neu berechnet (#$_rerouteCount), '
+        '${(result.distanceMeters / 1000).toStringAsFixed(1)} km',
+      );
+      // Kamera und Folgemodus bleiben: Der Fahrer ist unterwegs.
+      _setRoute(result, hasDestination: true, rerouted: true);
+    } catch (e) {
+      if (_disposed || request != _routeRequest) return;
+      final message = e is RoutingException ? e.message : e.toString();
+      _rerouteError = message;
+      _rerouteFailures++;
+      _nextRerouteAt = _clock().add(_rerouteInterval());
+      if (message != _loggedRerouteError) {
+        _loggedRerouteError = message;
+        debugPrint('[route] Neuberechnung fehlgeschlagen: $message');
+      }
+    } finally {
+      if (!_disposed && request == _routeRequest) {
+        _isRerouting = false;
+        _notify();
+      }
+    }
+  }
+
+  /// Wartezeit bis zur nächsten Neuberechnung, nach Fehlschlägen länger.
+  Duration _rerouteInterval() {
+    final intervals = offRoutePolicy.rerouteIntervals;
+    if (intervals.isEmpty) return Duration.zero;
+    return intervals[math.min(_rerouteFailures, intervals.length - 1)];
   }
 
   Future<void> _updateLocationName(LatLng position) async {
@@ -383,6 +532,7 @@ class LocalMapController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _positionSubscription?.cancel();
+    _offRouteChanges.close();
     _zoom.dispose();
     if (_ownsMapController) {
       mapController.dispose();

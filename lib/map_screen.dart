@@ -328,6 +328,23 @@ class _MapScreenState extends State<MapScreen> {
 
   Widget _buildRoutingBadge(BuildContext context) {
     final route = _map.route;
+    if (_map.isRerouting) {
+      return const _Badge(
+        icon: Icons.sync,
+        label: 'Route wird neu berechnet...',
+        tone: _Tone.tertiary,
+      );
+    }
+    if (_map.offRoute) {
+      final rerouteError = _map.rerouteError;
+      return _Badge(
+        icon: Icons.wrong_location,
+        label: rerouteError == null
+            ? 'Route verlassen'
+            : 'Route verlassen - $rerouteError',
+        tone: _Tone.error,
+      );
+    }
     if (_map.isRouting) {
       return const _Badge(
         icon: Icons.sync,
@@ -340,7 +357,8 @@ class _MapScreenState extends State<MapScreen> {
         icon: Icons.route,
         label:
             '${formatDistance(route.distanceMeters)} • '
-            '${formatDuration(route.durationSeconds)}',
+            '${formatDuration(route.durationSeconds)}'
+            '${_map.rerouteCount > 0 ? ' • neu berechnet ${_map.rerouteCount}x' : ''}',
         tone: _Tone.primary,
       );
     }

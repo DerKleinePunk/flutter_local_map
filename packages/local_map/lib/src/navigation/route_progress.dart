@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:latlong2/latlong.dart';
 
 import '../api/routing.dart';
+import 'off_route.dart';
 
 /// Wo die Position gerade auf der Route steht.
 class RouteProgress {
@@ -36,6 +37,10 @@ class RouteProgress {
   /// Weg bis zum Beginn von [nextManeuver] in Metern.
   final double? distanceToNextManeuverMeters;
 
+  /// Ob die Route verlassen ist, nach [OffRoutePolicy] mit Hysterese - nicht
+  /// schon beim ersten Fix mit großem [distanceToRouteMeters].
+  final bool offRoute;
+
   const RouteProgress({
     required this.distanceToRouteMeters,
     required this.snappedPosition,
@@ -46,6 +51,7 @@ class RouteProgress {
     required this.nextManeuver,
     required this.nextManeuverIndex,
     required this.distanceToNextManeuverMeters,
+    this.offRoute = false,
   });
 }
 
@@ -57,10 +63,13 @@ class RouteProgress {
 /// derselben Straße), auf den falschen Teil springt. Nur wenn das Fenster
 /// nichts Nahes findet, wird die ganze Route abgesucht.
 class RouteTracker {
-  RouteTracker(this.route)
-    : _points = route.geometry
-          .map((p) => p.toLatLng())
-          .toList(growable: false) {
+  RouteTracker(
+    this.route, {
+    OffRoutePolicy offRoutePolicy = const OffRoutePolicy(),
+  }) : _offRoute = OffRouteDetector(offRoutePolicy),
+       _points = route.geometry
+           .map((p) => p.toLatLng())
+           .toList(growable: false) {
     _cumulative = List<double>.filled(_points.length, 0);
     for (var i = 1; i < _points.length; i++) {
       _cumulative[i] =
@@ -69,6 +78,7 @@ class RouteTracker {
   }
 
   final RoutingResult route;
+  final OffRouteDetector _offRoute;
   final List<LatLng> _points;
   late final List<double> _cumulative;
   int? _lastSegment;
@@ -86,7 +96,15 @@ class RouteTracker {
   double get lengthMeters => _cumulative.isEmpty ? 0 : _cumulative.last;
 
   /// Fortschritt für [position], `null` für eine Route ohne Abschnitte.
-  RouteProgress? update(LatLng position) {
+  ///
+  /// Kurs, Geschwindigkeit und Genauigkeit des Fixes braucht nur
+  /// [RouteProgress.offRoute]; ohne sie zählt allein der Abstand.
+  RouteProgress? update(
+    LatLng position, {
+    double? headingDegrees,
+    double? speedMps,
+    double? accuracyMeters,
+  }) {
     if (_points.length < 2) {
       return null;
     }
@@ -133,6 +151,15 @@ class RouteTracker {
       }
     }
 
+    final offRoute = _offRoute.update(
+      distanceMeters: hit.distance,
+      remainingMeters: remaining,
+      routeBearing: _bearing(_points[hit.segment], _points[hit.segment + 1]),
+      headingDegrees: headingDegrees,
+      speedMps: speedMps,
+      accuracyMeters: accuracyMeters,
+    );
+
     return RouteProgress(
       distanceToRouteMeters: hit.distance,
       snappedPosition: hit.point,
@@ -145,6 +172,7 @@ class RouteTracker {
       nextManeuver: next,
       nextManeuverIndex: nextIndex,
       distanceToNextManeuverMeters: toNext,
+      offRoute: offRoute,
     );
   }
 
@@ -202,6 +230,16 @@ class _Hit {
 }
 
 const double _metersPerDeg = 111319.49;
+
+/// Richtung von [a] nach [b] in Grad, 0 = Norden, im Uhrzeigersinn. `null`
+/// für zwei gleiche Punkte.
+double? _bearing(LatLng a, LatLng b) {
+  final cosLat = math.cos((a.latitude + b.latitude) / 2 * math.pi / 180);
+  final dx = (b.longitude - a.longitude) * cosLat;
+  final dy = b.latitude - a.latitude;
+  if (dx == 0 && dy == 0) return null;
+  return (math.atan2(dx, dy) * 180 / math.pi) % 360;
+}
 
 double _distanceMeters(LatLng a, LatLng b) {
   final cosLat = math.cos((a.latitude + b.latitude) / 2 * math.pi / 180);

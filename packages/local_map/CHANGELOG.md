@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0
+
+- **Route verlassen erkennen und neu berechnen.** `RouteProgress.offRoute`
+  mit Hysterese (> 50 m an 3 Fixes oder gewendet; zurück < 25 m an 2 Fixes;
+  im Stand unverändert; nach der Ankunft nie mehr). `LocalMapController`
+  berechnet für Routen aus `setDestination` dann über den `routingProvider`
+  von der Position zum selben Ziel neu: alle 15 s höchstens, nach Fehlern
+  30 s, dann 60 s, nicht im Stand, die alte Route bleibt bis zur neuen.
+  Routen aus `setRoute` (Replay) werden nicht neu berechnet.
+- Neu im Controller: `offRoute`, `isRerouting`, `rerouteCount`,
+  `rerouteError`, `offRouteChanges` (Stream), Konstruktor-Parameter
+  `offRoutePolicy` und `clock` (für Tests).
+- Neu: `OffRoutePolicy`, `OffRouteDetector`. `RouteTracker.update` nimmt
+  optional Kurs, Geschwindigkeit und Genauigkeit des Fixes.
+- Log: `[route] Route verlassen`, `[route] Route neu berechnet (#n), x km`,
+  ein Fehler nur einmal je Grund.
+
 ## 0.6.0
 
 - Neue Option `MapConfig.labelRotationStep` (Vorgabe `0` = aus, wie

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:local_map/local_map.dart';
 
@@ -308,5 +309,184 @@ void main() {
     routing.pending.last.complete(_result(41));
     await second;
     expect(map.route?.distanceMeters, 41000);
+  });
+
+  group('Abweichen von der Route', () {
+    // Gerade Route 2 km nach Norden, Ziel am Ende.
+    const north = RoutingResult(
+      geometry: [
+        RoutingPoint(lat: 50.000, lon: 9.000),
+        RoutingPoint(lat: 50.018, lon: 9.000),
+      ],
+      distanceMeters: 2000,
+      durationSeconds: 200,
+      maneuvers: [],
+    );
+    final ziel = _place('Ziel', 50.018, 9.0);
+
+    // 0,0012 Grad Laenge sind auf 50 Grad Breite etwa 86 m.
+    PositionFix fix(int i, {double east = 0, double speed = 10}) => PositionFix(
+      position: LatLng(50.002 + i * 0.0001, 9 + east),
+      headingDegrees: east == 0 ? 0 : 90,
+      speedMps: speed,
+    );
+
+    late _FakeRouting routing;
+    late _FakePositions source;
+    late DateTime now;
+    late LocalMapController map;
+    late List<bool> changes;
+
+    Future<void> send(PositionFix f) async {
+      source.controller.add(f);
+      await Future<void>.delayed(Duration.zero);
+    }
+
+    /// Drei Fixes daneben: danach gilt die Route als verlassen.
+    Future<void> leave(int from) async {
+      for (var i = from; i < from + 3; i++) {
+        await send(fix(i, east: 0.0012));
+      }
+    }
+
+    setUp(() async {
+      routing = _FakeRouting();
+      source = _FakePositions();
+      now = DateTime.utc(2026, 10, 6, 8);
+      map = LocalMapController(
+        routingProvider: routing,
+        positionSource: source,
+        clock: () => now,
+      );
+      changes = <bool>[];
+      map.offRouteChanges.listen(changes.add);
+      await send(fix(0));
+      final done = map.setDestination(ziel);
+      routing.pending.single.complete(north);
+      await done;
+      map.followPosition = true;
+    });
+
+    tearDown(() => map.dispose());
+
+    test(
+      'verlassen: genau eine Neuberechnung ab der Position zum Ziel',
+      () async {
+        await send(fix(1));
+        await send(fix(2, east: 0.0012));
+        await send(fix(3, east: 0.0012));
+        expect(map.offRoute, isFalse);
+        expect(routing.requests, hasLength(1));
+
+        await send(fix(4, east: 0.0012));
+        expect(map.offRoute, isTrue);
+        expect(map.isRerouting, isTrue);
+        expect(routing.requests, hasLength(2));
+        expect(routing.requests.last.$1, fix(4, east: 0.0012).position);
+        expect(routing.requests.last.$2, ziel.location);
+
+        // Weitere Fixes daneben, waehrend gerechnet wird: keine zweite Anfrage.
+        await send(fix(5, east: 0.0012));
+        expect(routing.requests, hasLength(2));
+
+        // Die neue Route beginnt an der Position.
+        routing.pending.last.complete(
+          RoutingResult(
+            geometry: [
+              RoutingPoint.fromLatLng(fix(5, east: 0.0012).position),
+              const RoutingPoint(lat: 50.018, lon: 9.0),
+            ],
+            distanceMeters: 1700,
+            durationSeconds: 170,
+            maneuvers: const [],
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        expect(map.isRerouting, isFalse);
+        expect(map.rerouteCount, 1);
+        expect(map.route?.distanceMeters, 1700);
+        expect(map.offRoute, isFalse);
+        expect(changes, [true, false]);
+        expect(map.followPosition, isTrue, reason: 'Kamera bleibt beim Fahrer');
+        expect(map.destination, ziel);
+      },
+    );
+
+    test(
+      'Route aus setRoute (Replay): Anzeige ja, Neuberechnung nein',
+      () async {
+        // Mit Ziel fuer die Markierung - neu berechnet wird trotzdem nicht.
+        map.setRoute(north, destination: ziel);
+        await leave(1);
+        await send(fix(4, east: 0.0012));
+        expect(map.offRoute, isTrue);
+        expect(routing.requests, hasLength(1));
+      },
+    );
+
+    test('im Stand wird nicht neu berechnet', () async {
+      await leave(1);
+      expect(routing.requests, hasLength(2));
+      routing.pending.last.completeError(const RoutingException('weg'));
+      await Future<void>.delayed(Duration.zero);
+
+      now = now.add(const Duration(minutes: 5));
+      await send(fix(4, east: 0.0012, speed: 0));
+      expect(routing.requests, hasLength(2));
+    });
+
+    test('Fehler: alte Route bleibt, dann 30 s, danach 60 s Abstand', () async {
+      final logs = <String>[];
+      final oldPrint = debugPrint;
+      debugPrint = (String? m, {int? wrapWidth}) => logs.add(m ?? '');
+      addTearDown(() => debugPrint = oldPrint);
+
+      await leave(1);
+      expect(routing.requests, hasLength(2));
+      routing.pending.last.completeError(const RoutingException('weg'));
+      await Future<void>.delayed(Duration.zero);
+
+      final times = <int>[];
+      final start = now;
+      for (var s = 1; s <= 200; s++) {
+        now = start.add(Duration(seconds: s));
+        final before = routing.requests.length;
+        // Hin und her auf demselben Stueck, nie bis zum Ziel.
+        await send(fix(4 + s % 10, east: 0.0012));
+        if (routing.requests.length > before) {
+          times.add(s);
+          routing.pending.last.completeError(const RoutingException('weg'));
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+      // Die erste Anfrage kam beim dritten Fix daneben (s = 0).
+      expect(times, [30, 90, 150]);
+      expect(map.route, north);
+      expect(map.rerouteError, 'weg');
+      expect(map.offRoute, isTrue);
+      expect(
+        logs.where((l) => l.contains('Neuberechnung fehlgeschlagen')),
+        hasLength(1),
+      );
+    });
+
+    test('abgeschaltet per OffRoutePolicy', () async {
+      final quiet = LocalMapController(
+        routingProvider: routing,
+        positionSource: source,
+        offRoutePolicy: const OffRoutePolicy(reroute: false),
+      );
+      addTearDown(quiet.dispose);
+      final done = quiet.setDestination(ziel);
+      routing.pending.last.complete(north);
+      await done;
+      final before = routing.requests.length;
+
+      await leave(1);
+      expect(quiet.offRoute, isTrue);
+      // map (setUp) rechnet neu, quiet nicht.
+      expect(routing.requests.length, before + 1);
+    });
   });
 }

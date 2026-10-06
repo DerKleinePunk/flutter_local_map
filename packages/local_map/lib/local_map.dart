@@ -17,6 +17,7 @@ export 'src/api/routing.dart';
 export 'src/config/map_config.dart';
 export 'src/controller/local_map_controller.dart';
 export 'src/navigation/heading_filter.dart';
+export 'src/navigation/off_route.dart';
 export 'src/navigation/route_progress.dart';
 export 'src/services/gps_nmea_simulator_service.dart';
 export 'src/services/map_downloader.dart';

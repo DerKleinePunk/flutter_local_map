@@ -206,6 +206,34 @@ Der Kurs kommt aus `PositionFix`, geglättet und im Stand eingefroren
 dorthin. **Anzeigen tut das der Gastgeber** – Abbiegekarte und Fahrtleiste
 gehören in die App, nicht in die Karte.
 
+### Route verlassen und neu berechnen
+
+`RouteProgress.offRoute` sagt, ob die Route verlassen ist – mit Hysterese,
+nicht schon beim ersten Fix daneben: mehr als 50 m an 3 Fixes hintereinander
+(bei schlechter gemeldeter Genauigkeit das Doppelte davon) oder gegen die
+Fahrtrichtung der Route gewendet; wieder auf der Route unter 25 m an 2 Fixes.
+Im Stand (unter 1,5 m/s) bleibt der Zustand, nach der Ankunft am Ziel gilt die
+Route nie mehr als verlassen.
+
+Hat die Route ein Ziel aus `setDestination`, berechnet der Controller dann
+selbst neu: über den `routingProvider` von der aktuellen Position zum selben
+Ziel. Die alte Route bleibt bis zur neuen stehen, Kamera und Folgemodus
+bleiben. Eine Route aus `setRoute` (z. B. ein Replay) wird nie neu berechnet.
+Zwischen zwei Neuberechnungen liegen 15 s, nach Fehlschlägen 30 s, dann 60 s;
+im Stand wird nicht gerechnet, ein Fehler steht nur einmal im Log.
+
+```dart
+map.offRoute;        // Route verlassen?
+map.isRerouting;     // gerade wird neu berechnet
+map.rerouteCount;    // erfolgreiche Neuberechnungen seit der letzten Route
+map.rerouteError;    // letzter Fehler, null nach Erfolg
+map.offRouteChanges; // Stream<bool>, nur die Wechsel
+```
+
+Schwellen und Abstände stellt `OffRoutePolicy` ein, die der Controller im
+Konstruktor bekommt; `OffRoutePolicy(reroute: false)` schaltet das
+Neuberechnen ab, die Erkennung bleibt.
+
 ### Texte
 
 `PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre
@@ -296,7 +324,8 @@ die das Skript seit September 2026 anlegt. Mit einer älteren Datenbank bleibt
 
 - **Setup:** `LocalMap`, `MapConfig`, `MapStorageLocation`
 - **Steuerung:** `LocalMapController`, `MapLayerStyle`
-- **Navigation:** `RouteTracker`, `RouteProgress`, `HeadingFilter`
+- **Navigation:** `RouteTracker`, `RouteProgress`, `HeadingFilter`,
+  `OffRoutePolicy`, `OffRouteDetector`
 - **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`,
   `ReverseGeocoder` mit `LocationName`
 - **Widgets:** `MapView`, `DownloadOverlay`, `PlaceSearchBar`,
