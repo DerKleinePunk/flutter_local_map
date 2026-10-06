@@ -6,11 +6,17 @@ import 'package:local_map/local_map.dart';
 
 class _FakeRouting implements RoutingProvider {
   final requests = <(LatLng?, LatLng)>[];
+  final headings = <double?>[];
   final pending = <Completer<RoutingResult>>[];
 
   @override
-  Future<RoutingResult> route({LatLng? start, required LatLng end}) {
+  Future<RoutingResult> route({
+    LatLng? start,
+    required LatLng end,
+    double? startHeadingDegrees,
+  }) {
     requests.add((start, end));
+    headings.add(startHeadingDegrees);
     final c = Completer<RoutingResult>();
     pending.add(c);
     return c.future;
@@ -384,6 +390,10 @@ void main() {
         expect(routing.requests, hasLength(2));
         expect(routing.requests.last.$1, fix(4, east: 0.0012).position);
         expect(routing.requests.last.$2, ziel.location);
+        // Mit dem Kurs der Fahrt, damit die neue Route nicht mit Wenden beginnt.
+        expect(routing.headings.last, closeTo(90, 1));
+        // Die erste Route begann beim Fahren nach Norden.
+        expect(routing.headings.first, closeTo(0, 1));
 
         // Weitere Fixes daneben, waehrend gerechnet wird: keine zweite Anfrage.
         await send(fix(5, east: 0.0012));
@@ -424,6 +434,21 @@ void main() {
         expect(routing.requests, hasLength(1));
       },
     );
+
+    test('im Stand beginnt eine neue Route ohne Kurs', () async {
+      await send(fix(1, speed: 0.5));
+      final done = map.setDestination(ziel);
+      expect(routing.headings.last, isNull);
+      routing.pending.last.complete(north);
+      await done;
+    });
+
+    test('mit eigenem Startpunkt geht kein Kurs mit', () async {
+      final done = map.setStart(_place('Start', 50.1, 9.1));
+      expect(routing.headings.last, isNull);
+      routing.pending.last.complete(north);
+      await done;
+    });
 
     test('im Stand wird nicht neu berechnet', () async {
       await leave(1);

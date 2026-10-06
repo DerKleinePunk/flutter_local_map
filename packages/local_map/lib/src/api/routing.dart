@@ -77,8 +77,18 @@ abstract interface class RoutingProvider {
   /// kommt, weiß der Anbieter (ein Backend kennt seinen GPS-Fix). Ein
   /// Anbieter ohne eigene Position wirft dann [RoutingException].
   ///
+  /// [startHeadingDegrees] ist der Kurs am Start (0 = Norden, im
+  /// Uhrzeigersinn), wenn das Fahrzeug gerade fährt. Der Anbieter soll die
+  /// Route dann in diese Richtung beginnen lassen statt mit Wenden - wichtig
+  /// beim Neuberechnen nach dem Verlassen der Route. `null` = unbekannt
+  /// oder im Stand; ein Anbieter darf den Wert auch übergehen.
+  ///
   /// Wirft [RoutingException], wenn keine Route zustande kommt.
-  Future<RoutingResult> route({LatLng? start, required LatLng end});
+  Future<RoutingResult> route({
+    LatLng? start,
+    required LatLng end,
+    double? startHeadingDegrees,
+  });
 
   /// Ob der Anbieter gerade Anfragen annimmt.
   Future<bool> isAvailable();

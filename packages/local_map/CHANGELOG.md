@@ -16,6 +16,13 @@
   optional Kurs, Geschwindigkeit und Genauigkeit des Fixes.
 - Log: `[route] Route verlassen`, `[route] Route neu berechnet (#n), x km`,
   ein Fehler nur einmal je Grund.
+- **API-Änderung:** `RoutingProvider.route` hat den neuen optionalen
+  Parameter `startHeadingDegrees`. Eigene Implementierungen müssen ihn
+  annehmen (dürfen ihn übergehen). Der Controller übergibt den GPS-Kurs,
+  wenn die Route an der eigenen Position beginnt und das Fahrzeug fährt;
+  `ValhallaRoutingService` schickt ihn als `heading` (±45°). Ohne ihn
+  schickte Valhalla nach dem Verlassen der Route zum Wenden (Gerätetest auf
+  dem Pi: zehn Neuberechnungen hintereinander, Restweg 3,9 → 7,8 km).
 
 ## 0.6.0
 

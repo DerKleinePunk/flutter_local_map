@@ -33,10 +33,14 @@ class ValhallaRoutingService implements RoutingProvider {
   /// Adresse des Servers, für Meldungen an den Benutzer.
   Uri get baseUri => _baseUri;
 
+  /// Erlaubte Abweichung der Startkante vom Kurs in Grad.
+  static const int headingTolerance = 45;
+
   @override
   Future<RoutingResult> route({
     LatLng? start,
     required LatLng end,
+    double? startHeadingDegrees,
     String costing = 'auto',
     String units = 'kilometers',
   }) async {
@@ -47,7 +51,16 @@ class ValhallaRoutingService implements RoutingProvider {
     }
     final requestBody = {
       'locations': [
-        {'lat': start.latitude, 'lon': start.longitude},
+        {
+          'lat': start.latitude,
+          'lon': start.longitude,
+          // Valhalla sucht dann eine Kante in Fahrtrichtung (+-45 Grad) und
+          // schickt nicht erst zum Wenden.
+          if (startHeadingDegrees != null && startHeadingDegrees.isFinite) ...{
+            'heading': startHeadingDegrees.round() % 360,
+            'heading_tolerance': headingTolerance,
+          },
+        },
         {'lat': end.latitude, 'lon': end.longitude},
       ],
       'costing': costing,

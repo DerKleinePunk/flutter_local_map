@@ -303,6 +303,8 @@ class LocalMapController extends ChangeNotifier {
       final result = await provider.route(
         start: origin,
         end: destination.location,
+        // Nur wenn die Route an der eigenen Position beginnt.
+        startHeadingDegrees: start == null ? _drivingHeading(_position) : null,
       );
       // Eine neuere Anfrage läuft schon - ihr Ergebnis gilt, nicht dieses.
       if (_disposed || request != _routeRequest) return;
@@ -405,10 +407,21 @@ class LocalMapController extends ChangeNotifier {
     final now = _clock();
     final next = _nextRerouteAt;
     if (next != null && now.isBefore(next)) return;
-    _reroute(fix.position);
+    _reroute(fix);
   }
 
-  Future<void> _reroute(LatLng from) async {
+  /// Kurs für den Start einer Route an [fix], nur während der Fahrt - im
+  /// Stand oder ohne bekannte Geschwindigkeit ist er nicht verlässlich. Der
+  /// ungeglättete Kurs: Gleich nach dem Abbiegen hinkt der geglättete nach.
+  double? _drivingHeading(PositionFix? fix) {
+    final speed = fix?.speedMps;
+    if (fix == null || speed == null || speed < _headingFilter.minSpeedMps) {
+      return null;
+    }
+    return fix.headingDegrees;
+  }
+
+  Future<void> _reroute(PositionFix fix) async {
     final provider = routingProvider;
     final destination = _destination;
     if (provider == null || destination == null) return;
@@ -418,8 +431,9 @@ class LocalMapController extends ChangeNotifier {
 
     try {
       final result = await provider.route(
-        start: from,
+        start: fix.position,
         end: destination.location,
+        startHeadingDegrees: _drivingHeading(fix),
       );
       if (_disposed || request != _routeRequest) return;
       _rerouteCount++;

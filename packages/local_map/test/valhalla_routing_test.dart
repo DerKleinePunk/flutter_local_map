@@ -183,4 +183,38 @@ void main() {
     expect(adapter.requests.single.uri.path, '/route');
     expect((body['directions_options'] as Map)['language'], 'de-DE');
   });
+
+  test('route gibt den Kurs als heading an den Startpunkt', () async {
+    Future<Map<String, dynamic>> request(double? heading) async {
+      final adapter = _FixedAdapter({
+        'trip': {
+          'legs': [
+            {
+              'shape': _encode([
+                [50.0, 9.0],
+                [50.001, 9.0],
+              ]),
+              'summary': {'length': 0.1, 'time': 12},
+            },
+          ],
+        },
+      });
+      await ValhallaRoutingService(
+        dio: Dio()..httpClientAdapter = adapter,
+      ).route(
+        start: const LatLng(50, 9),
+        end: const LatLng(50.001, 9),
+        startHeadingDegrees: heading,
+      );
+      final body = adapter.requests.single.data as Map<String, dynamic>;
+      return (body['locations'] as List).first as Map<String, dynamic>;
+    }
+
+    final withHeading = await request(-90.4);
+    expect(withHeading['heading'], 270);
+    expect(withHeading['heading_tolerance'], 45);
+
+    expect((await request(null)).containsKey('heading'), isFalse);
+    expect((await request(double.nan)).containsKey('heading'), isFalse);
+  });
 }

@@ -221,6 +221,10 @@ Ziel. Die alte Route bleibt bis zur neuen stehen, Kamera und Folgemodus
 bleiben. Eine Route aus `setRoute` (z. B. ein Replay) wird nie neu berechnet.
 Zwischen zwei Neuberechnungen liegen 15 s, nach Fehlschlägen 30 s, dann 60 s;
 im Stand wird nicht gerechnet, ein Fehler steht nur einmal im Log.
+Der Kurs des Fahrzeugs geht als `startHeadingDegrees` an den
+`RoutingProvider`, damit die neue Route in Fahrtrichtung beginnt und nicht
+mit Wenden; ein eigener Anbieter sollte ihn an seinen Router weitergeben
+(Valhalla: `heading` mit `heading_tolerance`).
 
 ```dart
 map.offRoute;        // Route verlassen?
