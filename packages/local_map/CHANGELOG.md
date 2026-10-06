@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.1
+
+- `AnnouncementPrepare` meldet nur noch die Stufen, die beim jetzigen Tempo
+  kommen können, in Sprechreihenfolge (Vorwarnungen absteigend, dann
+  „jetzt“). Wechselt die Tempoklasse, kommt ein neues `AnnouncementPrepare`
+  mit den noch offenen Sätzen. Der Wechsel hat 10 km/h Hysterese
+  (`AnnouncementPolicy.fastHysteresisMps`). Auf carnine-pc rechnete die
+  Stimme bei Landstraßentempo sonst zuerst die 1-km- und 400-m-Sätze (je
+  3–7 s), und die 300-m-Ansage kam zu spät.
+
 ## 0.8.0
 
 - **Abbiegeansagen.** `LocalMapController.announcements` liefert

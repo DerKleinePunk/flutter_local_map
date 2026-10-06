@@ -113,6 +113,7 @@ class AnnouncementPolicy {
   const AnnouncementPolicy({
     this.enabled = true,
     this.fastSpeedMps = 22.2,
+    this.fastHysteresisMps = 2.8,
     this.fastStepsMeters = const [1000, 400],
     this.slowStepsMeters = const [300],
     this.nowMinMeters = 40,
@@ -127,6 +128,11 @@ class AnnouncementPolicy {
 
   /// Ab dieser Geschwindigkeit gelten [fastStepsMeters]. 22,2 m/s = 80 km/h.
   final double fastSpeedMps;
+
+  /// Zurück zu [slowStepsMeters] erst unter [fastSpeedMps] minus diesem
+  /// Wert, damit die Klasse bei 80 km/h nicht hin und her springt (jeder
+  /// Wechsel bringt ein neues [AnnouncementPrepare]). 2,8 m/s = 10 km/h.
+  final double fastHysteresisMps;
 
   /// Entfernungen der Vorwarnungen, absteigend. Nur diese Werte erscheinen in
   /// den Sätzen - nie eine gerundete Live-Entfernung, sonst trifft die
@@ -162,6 +168,13 @@ class ManeuverAnnouncer {
   final Set<int> _firedSteps = <int>{};
   bool _firedNow = false;
 
+  /// Tempoklasse: [AnnouncementPolicy.fastStepsMeters] oder
+  /// [AnnouncementPolicy.slowStepsMeters].
+  bool _fast = false;
+
+  /// Klasse, für die das letzte [AnnouncementPrepare] galt.
+  bool? _preparedFast;
+
   /// Alle Vorwarn-Stufen, die überhaupt vorkommen können, absteigend.
   List<int> get _allSteps =>
       ({...policy.fastStepsMeters, ...policy.slowStepsMeters}.toList()
@@ -183,6 +196,16 @@ class ManeuverAnnouncer {
     final current = _current;
     if (current != null && index < current) return const [];
 
+    final speed = speedMps;
+    if (speed != null && _isMoving(speed)) {
+      if (!_fast && speed >= policy.fastSpeedMps) {
+        _fast = true;
+      } else if (_fast &&
+          speed < policy.fastSpeedMps - policy.fastHysteresisMps) {
+        _fast = false;
+      }
+    }
+
     if (index != current) {
       final previous = current;
       _current = index;
@@ -198,14 +221,21 @@ class ManeuverAnnouncer {
         }
       }
       events.add(AnnouncementPrepare(textsFor(index)));
+      _preparedFast = _fast;
+    } else if (_preparedFast != _fast && !_firedNow) {
+      // Andere Stufen als vorbereitet: die jetzt passenden nachreichen.
+      events.add(AnnouncementPrepare(textsFor(index)));
+      _preparedFast = _fast;
     }
 
     if (offRoute || !_isMoving(speedMps)) return events;
 
     final maneuver = route.maneuvers[index];
     final distance = progress.distanceToNextManeuverMeters ?? 0;
-    final speed = speedMps ?? 0;
-    final nowMeters = _max(policy.nowMinMeters, policy.nowSeconds * speed);
+    final nowMeters = _max(
+      policy.nowMinMeters,
+      policy.nowSeconds * (speedMps ?? 0),
+    );
 
     if (distance <= nowMeters) {
       if (!_firedNow) {
@@ -219,9 +249,7 @@ class ManeuverAnnouncer {
       return events;
     }
 
-    final steps = speed >= policy.fastSpeedMps
-        ? policy.fastStepsMeters
-        : policy.slowStepsMeters;
+    final steps = _steps;
     // Die engste Stufe, in der das Fahrzeug gerade ist. Liegt es schon weit
     // darunter (Route erst kurz vorher bekommen), passt der Satz nicht mehr.
     for (final step in steps.reversed) {
@@ -246,15 +274,25 @@ class ManeuverAnnouncer {
   Announcement rerouting() =>
       Announcement(texts.rerouting, AnnouncementPriority.info);
 
-  /// Alle Sätze, die für Manöver [index] kommen können.
+  /// Die Sätze, die für Manöver [index] beim jetzigen Tempo noch kommen
+  /// können, in der Reihenfolge, in der sie gesprochen würden. Wer vorab
+  /// rechnet, rechnet so zuerst, was zuerst gebraucht wird.
   List<String> textsFor(int index) {
     final m = route.maneuvers[index];
     return <String>{
-      for (final step in _allSteps) _stepText(m, step),
+      for (final step in _steps)
+        if (!_firedSteps.contains(step)) _stepText(m, step),
       _nowText(m),
       if (policy.announcePost && m.verbalPost != null) m.verbalPost!,
       texts.rerouting,
     }.toList();
+  }
+
+  List<int> get _steps {
+    final steps = List<int>.of(
+      _fast ? policy.fastStepsMeters : policy.slowStepsMeters,
+    )..sort((a, b) => b - a);
+    return steps;
   }
 
   bool _isMoving(double? speed) => speed == null || speed >= policy.minSpeedMps;

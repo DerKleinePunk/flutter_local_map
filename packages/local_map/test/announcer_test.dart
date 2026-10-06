@@ -61,6 +61,7 @@ List<AnnouncementEvent> _drive({
   AnnouncementPolicy policy = const AnnouncementPolicy(),
   RoutingResult? route,
   List<double>? positions,
+  List<double>? speeds,
 }) {
   final r = route ?? _route();
   final tracker = RouteTracker(r);
@@ -69,14 +70,16 @@ List<AnnouncementEvent> _drive({
   final points =
       positions ??
       [for (var d = from; d <= to; d += speed == 0 ? 10 : speed) d];
-  for (final d in points) {
+  for (var i = 0; i < points.length; i++) {
+    final d = points[i];
+    final v = speeds == null ? speed : speeds[i];
     final p = tracker.update(
       _at(d),
       headingDegrees: d <= 1000 ? 0 : 90,
-      speedMps: speed,
+      speedMps: v,
     );
     if (p == null) continue;
-    events.addAll(announcer.update(p, speedMps: speed, offRoute: p.offRoute));
+    events.addAll(announcer.update(p, speedMps: v, offRoute: p.offRoute));
   }
   return events;
 }
@@ -112,20 +115,73 @@ void main() {
     _expectPrepared(events);
   });
 
-  test('Prepare kommt, sobald ein Manoever das naechste wird', () {
+  test('Prepare: nur die Stufen des Tempos, in Sprechreihenfolge', () {
     final events = _drive(to: 1100);
     final prepares = events.whereType<AnnouncementPrepare>().toList();
     expect(prepares, hasLength(3));
+    expect(prepares[1].texts, [
+      'In 300 Metern rechts auf Amthof abbiegen.',
+      'Rechts auf Amthof abbiegen. Dann das Ziel.',
+      'Die Route wird neu berechnet.',
+    ]);
+
+    final fast = _drive(
+      to: 1100,
+      speed: 30,
+    ).whereType<AnnouncementPrepare>().toList();
+    expect(fast[1].texts, [
+      'In 1 Kilometer rechts auf Amthof abbiegen.',
+      'In 400 Metern rechts auf Amthof abbiegen.',
+      'Rechts auf Amthof abbiegen. Dann das Ziel.',
+      'Die Route wird neu berechnet.',
+    ]);
+  });
+
+  test('Tempoklasse wechselt: neues Prepare, Ansage war vorbereitet', () {
+    // Bis 300 m Landstrasse, dann schnell: 400 m ist vorbei, 300 m gilt
+    // nicht mehr - aber "jetzt" und die Ziel-Stufen passen.
+    final positions = <double>[0, 100, 200, 300, 330, 360, 390];
+    final speeds = <double>[10, 10, 10, 10, 30, 30, 30];
+    final events = _drive(positions: positions, speeds: speeds);
+    final prepares = events.whereType<AnnouncementPrepare>().toList();
+    expect(prepares, hasLength(3), reason: 'Start, Manoever 1, Wechsel');
     expect(
-      prepares[1].texts,
-      containsAll([
-        'In 1 Kilometer rechts auf Amthof abbiegen.',
-        'In 400 Metern rechts auf Amthof abbiegen.',
-        'In 300 Metern rechts auf Amthof abbiegen.',
-        'Rechts auf Amthof abbiegen. Dann das Ziel.',
-        'Die Route wird neu berechnet.',
-      ]),
+      prepares.last.texts.first,
+      'In 1 Kilometer rechts auf Amthof abbiegen.',
     );
+    _expectPrepared(
+      _drive(
+        positions: [
+          0,
+          100,
+          200,
+          300,
+          400,
+          500,
+          600,
+          650,
+          700,
+          750,
+          800,
+          900,
+          980,
+        ],
+        speeds: [10, 10, 10, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30],
+      ),
+    );
+  });
+
+  test('Hysterese: um 80 km/h kein Hin und Her', () {
+    final positions = <double>[for (var d = 0.0; d < 500; d += 22) d];
+    final speeds = <double>[
+      for (var i = 0; i < positions.length; i++) i.isEven ? 22.5 : 21.5,
+    ];
+    final prepares = _drive(
+      positions: positions,
+      speeds: speeds,
+    ).whereType<AnnouncementPrepare>().toList();
+    // Start, Manoever 1 - und hoechstens ein Wechsel.
+    expect(prepares.length, lessThanOrEqualTo(3));
   });
 
   test('Autobahntempo: 1 km und 400 m statt 300 m', () {
