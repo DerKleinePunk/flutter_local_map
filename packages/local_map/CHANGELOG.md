@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.4
+
+- **Quellenangabe immer ausgeschrieben.** `MapView` zeigt „© OpenStreetMap
+  contributors“ als kleine, hinterlegte Textzeile (`MapAttribution`) statt
+  des `RichAttributionWidget` von flutter_map, das nur ein (i) zeigte und
+  den Text erst nach einem Tipp. OpenStreetMap verlangt den Hinweis
+  sichtbar. Text, Ecke und Abstand stehen in `MapConfig`
+  (`attributionText`, `attributionAlignment`, `attributionPadding`;
+  Vorgabe rechts unten, 4 px), deutsch `MapConfig.osmAttributionGerman`
+  („© OpenStreetMap-Mitwirkende“). Bisher lag das (i) links unten und war
+  in CarNine unter dem Fahrtpanel halb verdeckt.
+
 ## 0.8.3
 
 - `AnnouncementPrepare` nennt für das nächste Manöver keine Stufe mehr, an

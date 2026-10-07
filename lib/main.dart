@@ -51,6 +51,9 @@ void main() {
           vectorConcurrency: envInt('LOCAL_MAP_CONCURRENCY'),
           prefetchAheadSeconds: envInt('LOCAL_MAP_PREFETCH_S'),
           labelRotationStep: envDouble('LOCAL_MAP_LABEL_ROTATION_STEP'),
+          // Rechts unten liegen Navigation und Zoom; links unten ist frei.
+          attributionText: MapConfig.osmAttributionGerman,
+          attributionAlignment: Alignment.bottomLeft,
         ),
       );
       // Flutters Bildcache haelt die fertig gerasterten Kacheln (Vorgabe

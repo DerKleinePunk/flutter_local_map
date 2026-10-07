@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:latlong2/latlong.dart';
@@ -175,6 +176,24 @@ class MapConfig {
   /// je Fix höchstens 12 Stück in die vorhandenen Caches.
   final int prefetchAheadSeconds;
 
+  /// Quellenangabe der Kartendaten, immer ausgeschrieben auf der Karte
+  /// ([MapAttribution]). OpenStreetMap verlangt sie sichtbar, ohne dass man
+  /// erst etwas antippt. Deutsch: [osmAttributionGerman].
+  final String attributionText;
+
+  /// Ecke der Quellenangabe (Default rechts unten).
+  final Alignment attributionAlignment;
+
+  /// Abstand der Quellenangabe zum Kartenrand. Der Gastgeber legt sie damit
+  /// neben seine eigenen Bedienelemente, die sie sonst verdecken.
+  final EdgeInsets attributionPadding;
+
+  /// Quellenangabe für OpenStreetMap-Daten, englisch (Default).
+  static const String osmAttribution = '© OpenStreetMap contributors';
+
+  /// Quellenangabe für OpenStreetMap-Daten, deutsch.
+  static const String osmAttributionGerman = '© OpenStreetMap-Mitwirkende';
+
   /// Standard-Vektorstyles, die dieses Package mitliefert.
   static const List<String> packageVectorStyleAssets = [
     'packages/local_map/assets/maps/style.json',
@@ -215,6 +234,9 @@ class MapConfig {
     this.labelRotationStep = 0,
     this.prefetchAheadSeconds = 0,
     this.searchResultZoom = 15,
+    this.attributionText = osmAttribution,
+    this.attributionAlignment = Alignment.bottomRight,
+    this.attributionPadding = const EdgeInsets.all(4),
   }) : assert(panBuffer >= 0),
        assert(rasterTilesPerFrame >= 0),
        assert(labelRotationStep >= 0 && labelRotationStep <= 180),
@@ -269,6 +291,9 @@ class MapConfig {
     double? labelRotationStep,
     int? prefetchAheadSeconds,
     double? searchResultZoom,
+    String? attributionText,
+    Alignment? attributionAlignment,
+    EdgeInsets? attributionPadding,
   }) {
     return MapConfig(
       center: center ?? this.center,
@@ -303,6 +328,9 @@ class MapConfig {
       labelRotationStep: labelRotationStep ?? this.labelRotationStep,
       prefetchAheadSeconds: prefetchAheadSeconds ?? this.prefetchAheadSeconds,
       searchResultZoom: searchResultZoom ?? this.searchResultZoom,
+      attributionText: attributionText ?? this.attributionText,
+      attributionAlignment: attributionAlignment ?? this.attributionAlignment,
+      attributionPadding: attributionPadding ?? this.attributionPadding,
     );
   }
 }

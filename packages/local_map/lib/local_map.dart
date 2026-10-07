@@ -26,6 +26,7 @@ export 'src/services/map_error_handler.dart';
 export 'src/services/offline_geocoder.dart';
 export 'src/services/valhalla_routing_service.dart';
 export 'src/widgets/download_overlay.dart';
+export 'src/widgets/map_attribution.dart';
 export 'src/widgets/map_view.dart';
 export 'src/widgets/search_bar.dart';
 export 'src/widgets/storage_settings_dialog.dart';

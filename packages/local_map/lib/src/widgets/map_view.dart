@@ -15,6 +15,7 @@ import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 import '../api/position.dart';
 import '../config/map_config.dart';
+import 'map_attribution.dart';
 import '../controller/local_map_controller.dart';
 import '../services/map_camera_bounds.dart';
 import '../services/prefetch_corridor.dart';
@@ -1124,20 +1125,9 @@ class _MapViewState extends State<MapView>
         _overlay(_buildEndpointLayer),
         // Haengt an der Ueberblendung, nicht am Controller.
         _buildPositionLayer(context),
-        // Quellenangabe. Sie liegt links unten, damit die Bedienelemente
-        // des Gastgebers rechts sie nicht verdecken - sie muss sichtbar
-        // bleiben.
-        RichAttributionWidget(
-          alignment: AttributionAlignment.bottomLeft,
-          attributions: [
-            TextSourceAttribution(
-              '© OpenStreetMap contributors',
-              onTap: () {
-                // Optional: Link zu OSM Copyright-Seite öffnen
-              },
-            ),
-          ],
-        ),
+        // Quellenangabe, immer ausgeschrieben. Ecke und Abstand legt der
+        // Gastgeber in der Config fest, damit nichts von ihm darueber liegt.
+        MapAttribution.fromConfig(_config),
       ],
     );
   }
