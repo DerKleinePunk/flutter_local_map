@@ -694,5 +694,5 @@ Version hat eine Git-Marke `local_map-vX.Y.Z`. Hier nur die Werkzeuge:
 
 ## Lizenz und Daten
 
-- Code: siehe Projektlizenz
+- Code: BSD 3-Clause, siehe [LICENSE](LICENSE)
 - Kartendaten: OpenStreetMap (ODbL), Attribution erforderlich: `© OpenStreetMap contributors`
