@@ -219,12 +219,26 @@ class ManeuverAnnouncer {
     }
 
     final distance = progress.distanceToNextManeuverMeters;
+    final maneuver = route.maneuvers[index];
+    final toManeuver = distance ?? 0;
+    final nowMeters = _max(
+      policy.nowMinMeters,
+      policy.nowSeconds * (speedMps ?? 0),
+    );
 
     if (index != current) {
       final previous = current;
       _current = index;
       _firedSteps.clear();
       _firedNow = false;
+      // Schon beim ersten Fix am Ziel (Neustart mit geladener Route): Das
+      // Ziel war vorher schon dran, "Ziel erreicht" kommt nicht noch einmal.
+      if (previous == null &&
+          _isArrival(maneuver.type) &&
+          toManeuver <= nowMeters) {
+        _firedNow = true;
+        _firedSteps.addAll(_allSteps);
+      }
       if (policy.announcePost &&
           previous != null &&
           !offRoute &&
@@ -247,13 +261,6 @@ class ManeuverAnnouncer {
     }
 
     if (offRoute || !_isMoving(speedMps)) return events;
-
-    final maneuver = route.maneuvers[index];
-    final toManeuver = distance ?? 0;
-    final nowMeters = _max(
-      policy.nowMinMeters,
-      policy.nowSeconds * (speedMps ?? 0),
-    );
 
     if (toManeuver <= nowMeters) {
       if (!_firedNow) {

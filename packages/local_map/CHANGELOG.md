@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.6
+
+- **Kein zweites „Ziel erreicht“ nach einem Neustart.** Steht das Fahrzeug
+  beim ersten Fix einer Route schon im „Jetzt“-Bereich des Ziels (Frontend
+  neu gestartet, Route noch geladen), gilt das Ziel als angesagt. Andere
+  Manöver und eine Route, die kurz vor dem Ziel beginnt, sind nicht
+  betroffen.
+
 ## 0.8.5
 
 - **Quellenangabe mit OpenMapTiles.** Die Vorgabe von

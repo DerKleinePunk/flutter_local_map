@@ -310,6 +310,34 @@ void main() {
     );
   });
 
+  test('Neustart am Ziel: kein zweites "Ziel erreicht"', () {
+    // Frontend neu gestartet, die Route ist noch geladen, das Auto steht am
+    // Ziel. Fixe ohne Geschwindigkeit gelten als Fahrt.
+    final r = _route();
+    final tracker = RouteTracker(r);
+    final announcer = ManeuverAnnouncer(r);
+    final events = <AnnouncementEvent>[];
+    for (var i = 0; i < 5; i++) {
+      final p = tracker.update(_at(1995), headingDegrees: 90);
+      if (p == null) continue;
+      events.addAll(announcer.update(p, offRoute: p.offRoute));
+    }
+    expect(_spoken(events), isEmpty);
+
+    // Im Stand und danach anrollend genauso.
+    expect(
+      _spoken(
+        _drive(positions: [1990, 1990, 1995, 2000], speeds: [0, 0, 2, 2]),
+      ),
+      isEmpty,
+    );
+  });
+
+  test('Neustart kurz vor dem Ziel: "Ziel erreicht" kommt', () {
+    final spoken = _spoken(_drive(from: 1800, to: 2010));
+    expect(spoken.last, 'Sie haben Ihr Ziel erreicht.');
+  });
+
   test('Aufzeichnung beginnt nach dem Ziel von vorn: nichts mehr', () {
     final events = _drive(
       positions: [1900, 1960, 1990, 2000, 0, 10, 20, 30, 700, 710, 720],
