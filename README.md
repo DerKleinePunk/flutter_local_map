@@ -696,3 +696,4 @@ Version hat eine Git-Marke `local_map-vX.Y.Z`. Hier nur die Werkzeuge:
 
 - Code: BSD 3-Clause, siehe [LICENSE](LICENSE)
 - Kartendaten: OpenStreetMap (ODbL), Attribution erforderlich: `© OpenStreetMap contributors`
+- Kachel-Schema: OpenMapTiles (Design CC-BY 4.0), Attribution erforderlich: `© OpenMapTiles` mit Link auf https://openmaptiles.org/ – auf der Karte zusammen: `© OpenMapTiles © OpenStreetMap contributors` (`MapConfig.defaultAttribution`)

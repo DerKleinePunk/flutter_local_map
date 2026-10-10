@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.5
+
+- **Quellenangabe mit OpenMapTiles.** Die Vorgabe von
+  `MapConfig.attributionText` ist jetzt `MapConfig.defaultAttribution`
+  („© OpenMapTiles © OpenStreetMap contributors“), deutsch
+  `MapConfig.defaultAttributionGerman` („© OpenMapTiles ©
+  OpenStreetMap-Mitwirkende“). Die Kacheln aus den tilemaker-Skripten
+  folgen dem OpenMapTiles-Schema; dessen Lizenz (CC-BY 4.0) verlangt
+  „© OpenMapTiles“ sichtbar in der Ecke der Karte. Wer bisher
+  `MapConfig.osmAttribution(German)` übergibt, stellt auf die neuen
+  Konstanten um; die alten bleiben für Kacheln ohne dieses Schema.
+
 ## 0.8.4
 
 - **Quellenangabe immer ausgeschrieben.** `MapView` zeigt „© OpenStreetMap

@@ -177,8 +177,9 @@ class MapConfig {
   final int prefetchAheadSeconds;
 
   /// Quellenangabe der Kartendaten, immer ausgeschrieben auf der Karte
-  /// ([MapAttribution]). OpenStreetMap verlangt sie sichtbar, ohne dass man
-  /// erst etwas antippt. Deutsch: [osmAttributionGerman].
+  /// ([MapAttribution]). OpenStreetMap und OpenMapTiles verlangen sie
+  /// sichtbar, ohne dass man erst etwas antippt. Deutsch:
+  /// [defaultAttributionGerman].
   final String attributionText;
 
   /// Ecke der Quellenangabe (Default rechts unten).
@@ -188,10 +189,23 @@ class MapConfig {
   /// neben seine eigenen Bedienelemente, die sie sonst verdecken.
   final EdgeInsets attributionPadding;
 
-  /// Quellenangabe für OpenStreetMap-Daten, englisch (Default).
+  /// Quellenangabe für Kacheln nach dem OpenMapTiles-Schema aus
+  /// OpenStreetMap-Daten, englisch (Default). So bauen die tilemaker-Skripte
+  /// dieses Repos die Kacheln; das Schema steht unter CC-BY 4.0 und verlangt
+  /// „© OpenMapTiles“ in der Ecke der Karte, OpenStreetMap (ODbL) den
+  /// eigenen Hinweis.
+  static const String defaultAttribution =
+      '© OpenMapTiles © OpenStreetMap contributors';
+
+  /// [defaultAttribution] deutsch.
+  static const String defaultAttributionGerman =
+      '© OpenMapTiles © OpenStreetMap-Mitwirkende';
+
+  /// Quellenangabe nur für OpenStreetMap, englisch. Reicht nur für Kacheln,
+  /// die nicht nach dem OpenMapTiles-Schema gebaut sind.
   static const String osmAttribution = '© OpenStreetMap contributors';
 
-  /// Quellenangabe für OpenStreetMap-Daten, deutsch.
+  /// [osmAttribution] deutsch.
   static const String osmAttributionGerman = '© OpenStreetMap-Mitwirkende';
 
   /// Standard-Vektorstyles, die dieses Package mitliefert.
@@ -234,7 +248,7 @@ class MapConfig {
     this.labelRotationStep = 0,
     this.prefetchAheadSeconds = 0,
     this.searchResultZoom = 15,
-    this.attributionText = osmAttribution,
+    this.attributionText = defaultAttribution,
     this.attributionAlignment = Alignment.bottomRight,
     this.attributionPadding = const EdgeInsets.all(4),
   }) : assert(panBuffer >= 0),

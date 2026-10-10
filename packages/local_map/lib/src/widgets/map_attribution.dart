@@ -4,8 +4,8 @@ import '../config/map_config.dart';
 
 /// Quellenangabe der Kartendaten, immer ausgeschrieben.
 ///
-/// OpenStreetMap verlangt den Hinweis sichtbar auf der Karte, ohne dass man
-/// erst etwas antippen muss. Der `RichAttributionWidget` von flutter_map
+/// OpenStreetMap und OpenMapTiles verlangen den Hinweis sichtbar auf der
+/// Karte, ohne dass man erst etwas antippen muss. Der `RichAttributionWidget` von flutter_map
 /// zeigt nur ein (i) und den Text erst nach einem Tipp; das reicht nicht.
 ///
 /// Als Kind einer `FlutterMap` (oder eines `Stack`) legt sich der Hinweis in
@@ -14,7 +14,7 @@ import '../config/map_config.dart';
 class MapAttribution extends StatelessWidget {
   const MapAttribution({
     super.key,
-    this.text = MapConfig.osmAttribution,
+    this.text = MapConfig.defaultAttribution,
     this.alignment = Alignment.bottomRight,
     this.padding = const EdgeInsets.all(4),
   });

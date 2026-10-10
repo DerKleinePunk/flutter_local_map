@@ -29,7 +29,7 @@ void main() {
   testWidgets('Quellenangabe steht ohne Antippen rechts unten', (tester) async {
     await _pumpMap(tester, const MapAttribution());
 
-    final text = find.text('© OpenStreetMap contributors');
+    final text = find.text('© OpenMapTiles © OpenStreetMap contributors');
     expect(text, findsOneWidget);
     final box = tester.getRect(
       find.ancestor(of: text, matching: find.byType(DecoratedBox)).first,
@@ -43,14 +43,14 @@ void main() {
   testWidgets('Text, Ecke und Abstand kommen aus der Config', (tester) async {
     // So legt CarNine den Hinweis zwischen Kompass und Fahrtpanel.
     final config = MapConfig(
-      attributionText: MapConfig.osmAttributionGerman,
+      attributionText: MapConfig.defaultAttributionGerman,
       attributionPadding: const EdgeInsets.only(right: 8, bottom: 125),
     );
     await _pumpMap(tester, MapAttribution.fromConfig(config));
 
-    final text = find.text('© OpenStreetMap-Mitwirkende');
+    final text = find.text('© OpenMapTiles © OpenStreetMap-Mitwirkende');
     expect(text, findsOneWidget);
-    expect(find.text(MapConfig.osmAttribution), findsNothing);
+    expect(find.text(MapConfig.defaultAttribution), findsNothing);
     final box = tester.getRect(
       find.ancestor(of: text, matching: find.byType(DecoratedBox)).first,
     );
@@ -68,7 +68,7 @@ void main() {
     final box = tester.getRect(
       find
           .ancestor(
-            of: find.text(MapConfig.osmAttribution),
+            of: find.text(MapConfig.defaultAttribution),
             matching: find.byType(DecoratedBox),
           )
           .first,
@@ -79,7 +79,10 @@ void main() {
 
   test('Defaults und copyWith', () {
     final config = MapConfig();
-    expect(config.attributionText, '© OpenStreetMap contributors');
+    expect(
+      config.attributionText,
+      '© OpenMapTiles © OpenStreetMap contributors',
+    );
     expect(config.attributionAlignment, Alignment.bottomRight);
     expect(config.attributionPadding, const EdgeInsets.all(4));
 

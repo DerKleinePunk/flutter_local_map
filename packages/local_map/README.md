@@ -285,7 +285,7 @@ deutschen Texte; für weitere Sprachen eigene Instanzen übergeben.
 | `panBuffer` | `0` | Kachelreihen außerhalb des Bildes (Vektor im Raster-Modus); `0` halbiert auf dem Pi die Ladezeit |
 | `rasterTileScale` | `null` | Auflösungsfaktor beim Rastern der Vektorkacheln; `null` = Pixelverhältnis des Bildschirms statt fest 2,0 |
 | `labelRotationStep` | `0` | Beschriftung der Raster-Kacheln für die auf so viele Grad gerundete Kartendrehung rendern, damit sie bei Karte in Fahrtrichtung nicht auf dem Kopf steht; `0` = aus, `45` auf dem Pi gemessen |
-| `attributionText` / `attributionAlignment` / `attributionPadding` | `© OpenStreetMap contributors` / rechts unten / `4` | Quellenangabe, immer ausgeschrieben auf der Karte (`MapAttribution`); deutsch `MapConfig.osmAttributionGerman`. Ecke und Abstand so wählen, dass keine eigenen Bedienelemente darüber liegen – OpenStreetMap verlangt den Hinweis sichtbar |
+| `attributionText` / `attributionAlignment` / `attributionPadding` | `© OpenMapTiles © OpenStreetMap contributors` / rechts unten / `4` | Quellenangabe, immer ausgeschrieben auf der Karte (`MapAttribution`); deutsch `MapConfig.defaultAttributionGerman`. Ecke und Abstand so wählen, dass keine eigenen Bedienelemente darüber liegen – OpenStreetMap und OpenMapTiles (CC-BY 4.0, gilt für Kacheln nach dem OpenMapTiles-Schema) verlangen den Hinweis sichtbar. Nur-OSM-Text: `MapConfig.osmAttribution(German)` |
 | `memoryTileCacheMaxSize` / `memoryTileDataCacheMaxSize` / `textCacheMaxSize` / `vectorConcurrency` / `vectorLayerMode` | `null` | Speicher- und Thread-Budget von `vector_map_tiles`; `null` = dessen Vorgabe |
 
 `MapConfig.defaults` ist ein `MapConfig()` ohne Ortsbezug. `MapConfig.hessen`

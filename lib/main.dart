@@ -52,7 +52,7 @@ void main() {
           prefetchAheadSeconds: envInt('LOCAL_MAP_PREFETCH_S'),
           labelRotationStep: envDouble('LOCAL_MAP_LABEL_ROTATION_STEP'),
           // Rechts unten liegen Navigation und Zoom; links unten ist frei.
-          attributionText: MapConfig.osmAttributionGerman,
+          attributionText: MapConfig.defaultAttributionGerman,
           attributionAlignment: Alignment.bottomLeft,
         ),
       );
