@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.7
+
+- **LICENSE im Paketordner.** Die BSD-3-Lizenz liegt jetzt auch in
+  `packages/local_map/`. Flutter sammelt Lizenzen für `showLicensePage()`
+  aus dem Paketordner, nicht aus der Wurzel des Repos.
+
 ## 0.8.6
 
 - **Kein zweites „Ziel erreicht“ nach einem Neustart.** Steht das Fahrzeug
