@@ -60,6 +60,17 @@ RoutingResult _result(double km) => RoutingResult(
   maneuvers: const [],
 );
 
+/// Zaehlt, wie oft der Controller der Ansicht den Beginn des Folgens meldet.
+class _FollowView implements LocalMapViewHandle {
+  int followStarts = 0;
+
+  @override
+  void followStarted() => followStarts++;
+
+  @override
+  void noSuchMethod(Invocation invocation) {}
+}
+
 void main() {
   test('Route mit Start und Ziel, Punkte fuer die Karte', () async {
     final routing = _FakeRouting();
@@ -569,5 +580,21 @@ void main() {
       // map (setUp) rechnet neu, quiet nicht.
       expect(routing.requests.length, before + 1);
     });
+  });
+
+  test('followStarted nur beim Einschalten des Folgemodus', () {
+    final map = LocalMapController();
+    final view = _FollowView();
+    map.attachView(view);
+
+    map.followPosition = true; // war schon an: nichts
+    expect(view.followStarts, 0);
+    map.followPosition = false;
+    expect(view.followStarts, 0);
+    map.followPosition = true;
+    expect(view.followStarts, 1);
+    map.followPosition = true;
+    expect(view.followStarts, 1);
+    map.dispose();
   });
 }

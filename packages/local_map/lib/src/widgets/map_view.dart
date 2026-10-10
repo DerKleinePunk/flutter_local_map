@@ -165,6 +165,10 @@ class _MapViewState extends State<MapView>
   /// Überblendung zwischen zwei Positionsmeldungen. [_shown] ist, was der
   /// Pfeil gerade zeigt; die Kamera folgt ihm, solange der Folgemodus an ist.
   late final AnimationController _follow;
+
+  /// Beim nächsten Nachführen auf [MapConfig.followZoom] gehen: am Anfang
+  /// (der Folgemodus ist zu Beginn an) und nach jedem Einschalten.
+  bool _zoomOnFollow = true;
   _Pose? _followFrom;
   _Pose? _followTo;
   final ValueNotifier<_Pose?> _shown = ValueNotifier<_Pose?>(null);
@@ -797,7 +801,11 @@ class _MapViewState extends State<MapView>
   void didUpdateWidget(MapView oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (!identical(oldWidget.config, widget.config)) {
+      final before = _config.followZoom;
       _config = widget.config ?? MapConfig.defaults;
+      // In den Optionen geändert: gleich zeigen, nicht erst beim nächsten
+      // Einschalten des Folgemodus.
+      if (_config.followZoom != before) _zoomOnFollow = true;
     }
     if (!identical(oldWidget.controller, widget.controller)) {
       (oldWidget.controller ?? _ownedController)?.detachView(this);
@@ -963,6 +971,9 @@ class _MapViewState extends State<MapView>
   }
 
   @override
+  void followStarted() => _zoomOnFollow = true;
+
+  @override
   void resetRotation() {
     if (!_mapReady) return;
     _mapController.rotate(0);
@@ -981,7 +992,14 @@ class _MapViewState extends State<MapView>
     if (!_mapReady || !_controller.followPosition) return;
 
     final camera = _mapController.camera;
-    final zoom = camera.zoom;
+    final zoom = followCameraZoom(
+      current: camera.zoom,
+      followZoom: _config.followZoom,
+      apply: _zoomOnFollow,
+      min: _activeMinZoom,
+      max: _activeMaxZoom,
+    );
+    _zoomOnFollow = false;
     if (!_controller.headingUp) {
       _mapController.move(pose.position, zoom);
       return;

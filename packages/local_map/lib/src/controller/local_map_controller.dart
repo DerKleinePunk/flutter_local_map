@@ -29,6 +29,10 @@ abstract interface class LocalMapViewHandle {
   /// ist - die Kamera, gedreht nach [heading], falls [headingUp] an ist.
   void positionChanged(PositionFix fix);
 
+  /// Der Folgemodus ist gerade angegangen. Die Ansicht geht beim nächsten
+  /// Nachführen auf [MapConfig.followZoom], falls gesetzt.
+  void followStarted();
+
   /// Dreht die Karte zurück auf Norden oben.
   void resetRotation();
 }
@@ -157,6 +161,7 @@ class LocalMapController extends ChangeNotifier {
   set followPosition(bool value) {
     if (_followPosition == value) return;
     _followPosition = value;
+    if (value) _view?.followStarted();
     _notify();
     _refollow();
   }

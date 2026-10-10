@@ -338,13 +338,34 @@ void main() {
     expect(spoken.last, 'Sie haben Ihr Ziel erreicht.');
   });
 
-  test('Aufzeichnung beginnt nach dem Ziel von vorn: nichts mehr', () {
+  test('nach dem Ziel von vorn (Replay in Schleife): neue Runde', () {
+    // Messe-Modus 10.10.: Ab Runde 2 kam keine Ansage mehr.
     final events = _drive(
       positions: [1900, 1960, 1990, 2000, 0, 10, 20, 30, 700, 710, 720],
     );
     final spoken = _spoken(events);
+    final arrival = spoken.indexOf('Sie haben Ihr Ziel erreicht.');
+    expect(arrival, isNonNegative);
+    expect(spoken.sublist(arrival + 1), [
+      'Auf Kirchplatz Richtung Norden fahren.',
+      'In 300 Metern rechts auf Amthof abbiegen.',
+    ]);
+    _expectPrepared(events);
+  });
+
+  test('nach dem Ziel zurueck mitten in die Route: keine Wiederholung', () {
+    // Gegenprobe: nur ein Sprung an den Anfang ist eine neue Runde.
+    final spoken = _spoken(
+      _drive(positions: [1900, 1960, 1990, 2000, 700, 710, 720, 730]),
+    );
     expect(spoken.last, 'Sie haben Ihr Ziel erreicht.');
-    expect(events.last, isA<Announcement>());
+  });
+
+  test('zwei Runden hintereinander: jede Ansage je Runde einmal', () {
+    final lap = [for (var d = 0.0; d <= 2010; d += 10) d];
+    final spoken = _spoken(_drive(positions: [...lap, ...lap]));
+    final one = _spoken(_drive(positions: lap));
+    expect(spoken, [...one, ...one]);
   });
 
   test('zurueck vor ein schon angesagtes Manoever: keine Wiederholung', () {

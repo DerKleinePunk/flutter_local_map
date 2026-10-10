@@ -180,6 +180,14 @@ class ManeuverAnnouncer {
   final Set<int> _firedSteps = <int>{};
   bool _firedNow = false;
 
+  /// Das Ziel ist erreicht ("Ziel erreicht" gesagt oder beim Start schon
+  /// dort). Springt die Position danach an den Anfang, fährt eine neue Runde.
+  bool _arrived = false;
+
+  /// Bis hierher ab Start der Route gilt ein Rücksprung nach dem Ziel als
+  /// neue Fahrt (Replay in Schleife, Messe-Modus).
+  static const double _restartMeters = 300;
+
   /// Tempoklasse: [AnnouncementPolicy.fastStepsMeters] oder
   /// [AnnouncementPolicy.slowStepsMeters].
   bool _fast = false;
@@ -204,9 +212,19 @@ class ManeuverAnnouncer {
     if (index == null) return const [];
 
     // Ein Manöver, das schon dran war, kommt nicht wieder - auch nicht, wenn
-    // die Position zurückspringt (GPS-Sprung, Aufzeichnung von vorn).
-    final current = _current;
-    if (current != null && index < current) return const [];
+    // die Position zurückspringt (GPS-Sprung). Ausnahme: Nach dem Ziel
+    // beginnt die Fahrt von vorn (Replay in Schleife) - dann ist das eine
+    // neue Runde, und alles wird wieder angesagt.
+    var current = _current;
+    if (current != null && index < current) {
+      if (!_arrived || progress.traveledMeters > _restartMeters) {
+        return const [];
+      }
+      current = null;
+      _current = null;
+      _arrived = false;
+      _preparedFast = null;
+    }
 
     final speed = speedMps;
     if (speed != null && _isMoving(speed)) {
@@ -238,6 +256,7 @@ class ManeuverAnnouncer {
           toManeuver <= nowMeters) {
         _firedNow = true;
         _firedSteps.addAll(_allSteps);
+        _arrived = true;
       }
       if (policy.announcePost &&
           previous != null &&
@@ -265,6 +284,7 @@ class ManeuverAnnouncer {
     if (toManeuver <= nowMeters) {
       if (!_firedNow) {
         _firedNow = true;
+        if (_isArrival(maneuver.type)) _arrived = true;
         // Was man an Stufen verpasst hat, kommt nicht mehr.
         _firedSteps.addAll(_allSteps);
         events.add(

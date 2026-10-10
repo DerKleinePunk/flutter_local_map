@@ -152,3 +152,17 @@ double steppedZoom({
   required double min,
   required double max,
 }) => (current + direction).clamp(min, max);
+
+/// Zoomstufe der Kamera beim Nachfuehren auf die Position.
+///
+/// [apply] ist wahr beim ersten Nachfuehren nach dem Einschalten des
+/// Folgemodus (oder nachdem sich [followZoom] geaendert hat). Dann gilt
+/// [followZoom], begrenzt auf [min] bis [max]; sonst und ohne [followZoom]
+/// bleibt [current] - wer waehrend der Fahrt zoomt, behaelt seinen Zoom.
+double followCameraZoom({
+  required double current,
+  required double? followZoom,
+  required bool apply,
+  required double min,
+  required double max,
+}) => apply && followZoom != null ? followZoom.clamp(min, max) : current;

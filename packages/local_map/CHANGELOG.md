@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.8
+
+- **`MapConfig.followZoom`.** Schaltet der Gastgeber den Folgemodus ein,
+  geht die Kamera auf diese Zoomstufe statt auf dem Zoom der
+  Routen-Übersicht zu bleiben (bei einer Stadtfahrt ein halber Stadtplan).
+  Gilt einmal je Einschalten und sofort, wenn sich der Wert zur Laufzeit
+  ändert (Optionen der App). Vorgabe `null` = wie bisher.
+- **Ansagen in jeder Runde eines Replays.** Springt die Position nach
+  „Ziel erreicht“ an den Anfang der Route (unter 300 m gefahren), beginnt
+  eine neue Fahrt, und alles wird wieder angesagt. Bisher blieb ab der
+  zweiten Runde alles stumm. Ein Rücksprung mitten in der Route sagt
+  weiterhin nichts doppelt.
+
 ## 0.8.7
 
 - **LICENSE im Paketordner.** Die BSD-3-Lizenz liegt jetzt auch in

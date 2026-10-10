@@ -173,6 +173,61 @@ void main() {
     });
   });
 
+  group('followCameraZoom', () {
+    test('beim Einschalten des Folgemodus auf followZoom', () {
+      // Uebersicht ueber eine Stadtfahrt: Zoom 12,4.
+      expect(
+        followCameraZoom(
+          current: 12.4,
+          followZoom: 16,
+          apply: true,
+          min: 10,
+          max: 17,
+        ),
+        16,
+      );
+    });
+
+    test('danach bleibt der Zoom, den der Fahrer gewaehlt hat', () {
+      expect(
+        followCameraZoom(
+          current: 14,
+          followZoom: 16,
+          apply: false,
+          min: 10,
+          max: 17,
+        ),
+        14,
+      );
+    });
+
+    test('ohne followZoom wie bisher (Gegenprobe)', () {
+      expect(
+        followCameraZoom(
+          current: 12.4,
+          followZoom: null,
+          apply: true,
+          min: 10,
+          max: 17,
+        ),
+        12.4,
+      );
+    });
+
+    test('begrenzt auf den Zoombereich der Kacheln', () {
+      expect(
+        followCameraZoom(
+          current: 12,
+          followZoom: 16,
+          apply: true,
+          min: 10,
+          max: 14,
+        ),
+        14,
+      );
+    });
+  });
+
   group('steppedZoom', () {
     test('eine Stufe hinein und heraus', () {
       expect(steppedZoom(current: 11, direction: 1, min: 9, max: 17), 12);

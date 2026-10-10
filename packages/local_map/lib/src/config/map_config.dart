@@ -125,6 +125,17 @@ class MapConfig {
   /// Dorf z10). Wird auf den Zoombereich der Kacheln begrenzt.
   final double? searchResultZoom;
 
+  /// Zoomstufe, auf die die Kamera geht, sobald sie der Position folgt.
+  ///
+  /// Nach dem Berechnen einer Route zeigt die Karte die ganze Route
+  /// ([LocalMapController.setRoute] und Zielwahl); schaltet der Gastgeber
+  /// dann [LocalMapController.followPosition] ein, bliebe sie ohne diesen Wert
+  /// auf dem Zoom der Übersicht - bei einer Stadtfahrt ein halber Stadtplan.
+  /// Gilt einmal je Einschalten: Wer danach zoomt, behält seinen Zoom, bis
+  /// der Folgemodus das nächste Mal angeht. Wird auf den Zoombereich der
+  /// Kacheln begrenzt. `null` (Default) = der Zoom bleibt, wie er ist.
+  final double? followZoom;
+
   /// Zahl der Kachelreihen, die ausserhalb des sichtbaren Bereichs
   /// mitgeladen werden (nur Raster-Modus).
   ///
@@ -248,6 +259,7 @@ class MapConfig {
     this.labelRotationStep = 0,
     this.prefetchAheadSeconds = 0,
     this.searchResultZoom = 15,
+    this.followZoom,
     this.attributionText = defaultAttribution,
     this.attributionAlignment = Alignment.bottomRight,
     this.attributionPadding = const EdgeInsets.all(4),
@@ -305,6 +317,7 @@ class MapConfig {
     double? labelRotationStep,
     int? prefetchAheadSeconds,
     double? searchResultZoom,
+    double? followZoom,
     String? attributionText,
     Alignment? attributionAlignment,
     EdgeInsets? attributionPadding,
@@ -342,6 +355,7 @@ class MapConfig {
       labelRotationStep: labelRotationStep ?? this.labelRotationStep,
       prefetchAheadSeconds: prefetchAheadSeconds ?? this.prefetchAheadSeconds,
       searchResultZoom: searchResultZoom ?? this.searchResultZoom,
+      followZoom: followZoom ?? this.followZoom,
       attributionText: attributionText ?? this.attributionText,
       attributionAlignment: attributionAlignment ?? this.attributionAlignment,
       attributionPadding: attributionPadding ?? this.attributionPadding,

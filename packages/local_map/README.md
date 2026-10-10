@@ -282,6 +282,7 @@ deutschen Texte; für weitere Sprachen eigene Instanzen übergeben.
 | `gpsTourFilePaths` | leer | NMEA-Tourdatei für den GPS-Simulator |
 | `rasterUrlTemplate` | `mbtiles://local` | Pflichtfeld des Raster-`TileLayer` |
 | `searchResultZoom` | `15` | Zoom beim Anspringen eines Suchtreffers; `null` = Zoom des Geocoder-Treffers |
+| `followZoom` | `null` | Zoom, auf den die Kamera geht, sobald sie der Position folgt (z. B. `16` nach der Routen-Übersicht); danach bleibt ein Zoom von Hand bis zum nächsten Einschalten; `null` = Zoom bleibt |
 | `panBuffer` | `0` | Kachelreihen außerhalb des Bildes (Vektor im Raster-Modus); `0` halbiert auf dem Pi die Ladezeit |
 | `rasterTileScale` | `null` | Auflösungsfaktor beim Rastern der Vektorkacheln; `null` = Pixelverhältnis des Bildschirms statt fest 2,0 |
 | `labelRotationStep` | `0` | Beschriftung der Raster-Kacheln für die auf so viele Grad gerundete Kartendrehung rendern, damit sie bei Karte in Fahrtrichtung nicht auf dem Kopf steht; `0` = aus, `45` auf dem Pi gemessen |
