@@ -311,7 +311,7 @@ packages:
       path: "packages/local_map"
       relative: true
     source: path
-    version: "0.8.4"
+    version: "0.8.7"
   logging:
     dependency: transitive
     description:
@@ -730,7 +730,7 @@ packages:
     description:
       path: "."
       ref: local_map_pi
-      resolved-ref: b870db815e8c63bfed8a963f0a8250c85525ddc1
+      resolved-ref: deb6ebff19195942433574281d30368f2336cdb4
       url: "https://github.com/DerKleinePunk/flutter-vector-map-tiles"
     source: git
     version: "9.0.0-beta.13"
