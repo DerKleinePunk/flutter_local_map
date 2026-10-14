@@ -136,6 +136,14 @@ class MapConfig {
   /// Kacheln begrenzt. `null` (Default) = der Zoom bleibt, wie er ist.
   final double? followZoom;
 
+  /// Rand, mit dem die Routen-Übersicht die ganze Route einpasst
+  /// ([LocalMapController.setRoute] und Zielwahl), in logischen Pixeln vom
+  /// Kartenrand. Liegen eigene Bedienelemente des Gastgebers über der Karte
+  /// (Suchfeld oben, Fahrtpanel unten), hier ihre Höhe plus etwas Luft
+  /// angeben, sonst verschwinden Start oder Ziel darunter.
+  /// Default: 44 rundum (wie bisher).
+  final EdgeInsets overviewPadding;
+
   /// Zahl der Kachelreihen, die ausserhalb des sichtbaren Bereichs
   /// mitgeladen werden (nur Raster-Modus).
   ///
@@ -260,6 +268,7 @@ class MapConfig {
     this.prefetchAheadSeconds = 0,
     this.searchResultZoom = 15,
     this.followZoom,
+    this.overviewPadding = const EdgeInsets.all(44),
     this.attributionText = defaultAttribution,
     this.attributionAlignment = Alignment.bottomRight,
     this.attributionPadding = const EdgeInsets.all(4),
@@ -318,6 +327,7 @@ class MapConfig {
     int? prefetchAheadSeconds,
     double? searchResultZoom,
     double? followZoom,
+    EdgeInsets? overviewPadding,
     String? attributionText,
     Alignment? attributionAlignment,
     EdgeInsets? attributionPadding,
@@ -356,6 +366,7 @@ class MapConfig {
       prefetchAheadSeconds: prefetchAheadSeconds ?? this.prefetchAheadSeconds,
       searchResultZoom: searchResultZoom ?? this.searchResultZoom,
       followZoom: followZoom ?? this.followZoom,
+      overviewPadding: overviewPadding ?? this.overviewPadding,
       attributionText: attributionText ?? this.attributionText,
       attributionAlignment: attributionAlignment ?? this.attributionAlignment,
       attributionPadding: attributionPadding ?? this.attributionPadding,

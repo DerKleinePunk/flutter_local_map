@@ -85,11 +85,17 @@ void main() {
     );
     expect(config.attributionAlignment, Alignment.bottomRight);
     expect(config.attributionPadding, const EdgeInsets.all(4));
+    expect(config.overviewPadding, const EdgeInsets.all(44));
 
     final changed = config.copyWith(
       attributionText: MapConfig.osmAttributionGerman,
       attributionAlignment: Alignment.topRight,
       attributionPadding: const EdgeInsets.only(bottom: 125),
+      overviewPadding: const EdgeInsets.fromLTRB(44, 120, 44, 130),
+    );
+    expect(
+      changed.overviewPadding,
+      const EdgeInsets.fromLTRB(44, 120, 44, 130),
     );
     expect(changed.attributionText, '© OpenStreetMap-Mitwirkende');
     expect(changed.attributionAlignment, Alignment.topRight);
@@ -100,5 +106,6 @@ void main() {
     expect(same.attributionText, changed.attributionText);
     expect(same.attributionAlignment, changed.attributionAlignment);
     expect(same.attributionPadding, changed.attributionPadding);
+    expect(same.overviewPadding, changed.overviewPadding);
   });
 }

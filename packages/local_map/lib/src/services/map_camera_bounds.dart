@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -166,3 +167,17 @@ double followCameraZoom({
   required double min,
   required double max,
 }) => apply && followZoom != null ? followZoom.clamp(min, max) : current;
+
+/// Kamera-Einpassung der Routen-Übersicht: die Hülle von [points] mit
+/// [padding] vom Kartenrand, höchstens auf [maxZoom].
+/// [padding] ist `MapConfig.overviewPadding`; so bleiben Start und Ziel
+/// frei von den Bedienelementen des Gastgebers.
+CameraFit overviewCameraFit({
+  required List<LatLng> points,
+  required EdgeInsets padding,
+  required double maxZoom,
+}) => CameraFit.bounds(
+  bounds: LatLngBounds.fromPoints(points),
+  padding: padding,
+  maxZoom: maxZoom,
+);

@@ -868,11 +868,10 @@ class _MapViewState extends State<MapView>
       return;
     }
 
-    final bounds = LatLngBounds.fromPoints(points);
     _mapController.fitCamera(
-      CameraFit.bounds(
-        bounds: bounds,
-        padding: const EdgeInsets.all(44),
+      overviewCameraFit(
+        points: points,
+        padding: _config.overviewPadding,
         maxZoom: _activeMaxZoom,
       ),
     );

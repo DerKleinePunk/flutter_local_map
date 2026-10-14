@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.10
+
+- **`MapConfig.overviewPadding`.** Rand, mit dem die Routen-Übersicht die
+  Route einpasst (Default 44 rundum, wie bisher). Der Gastgeber gibt oben
+  und unten die Höhe seiner Bedienelemente an (Suchfeld, Fahrtpanel), damit
+  Start und Ziel nicht darunter verschwinden. Fiel mit 0.8.9 auf: Liegt eine
+  Route seit „Norden oben“ hochkant, stieß das Ziel ans Suchfeld und der
+  Start lag unter dem Fahrtpanel.
+
 ## 0.8.9
 
 - **Routen-Übersicht immer mit Norden oben.** Nach `setDestination` und

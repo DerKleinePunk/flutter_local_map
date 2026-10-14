@@ -1,6 +1,7 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:local_map/local_map.dart';
 import 'package:local_map/src/services/map_camera_bounds.dart';
 
 void main() {
@@ -279,6 +280,48 @@ void main() {
         searchResultZoom(configured: null, fromResult: 3, min: 4, max: 17),
         4,
       );
+    });
+  });
+
+  group('overviewCameraFit (Routen-Übersicht)', () {
+    // Route Radmühl -> Alsfeld, hochkant wie beim Befund am 14.10.
+    const route = [LatLng(50.4102, 9.3649), LatLng(50.7519, 9.2692)];
+    final camera = MapCamera(
+      crs: const Epsg3857(),
+      center: const LatLng(50.5, 9.3),
+      zoom: 12,
+      rotation: 0,
+      nonRotatedSize: const Size(1024, 600),
+    );
+
+    /// Bildschirmlage (y) von Start und Ziel nach der Einpassung.
+    (double, double) screenY(EdgeInsets padding) {
+      final fitted = overviewCameraFit(
+        points: route,
+        padding: padding,
+        maxZoom: 18,
+      ).fit(camera);
+      final moved = camera.withPosition(
+        center: fitted.center,
+        zoom: fitted.zoom,
+      );
+      return (
+        moved.latLngToScreenOffset(route.first).dy,
+        moved.latLngToScreenOffset(route.last).dy,
+      );
+    }
+
+    test('Default 44 rundum: Start und Ziel 44 px vom Rand', () {
+      final (start, ziel) = screenY(MapConfig().overviewPadding);
+      expect(ziel, closeTo(44, 1));
+      expect(start, closeTo(600 - 44, 1));
+    });
+
+    test('Rand oben/unten hält Start und Ziel aus Suchfeld und Panel', () {
+      const padding = EdgeInsets.fromLTRB(44, 120, 44, 130);
+      final (start, ziel) = screenY(padding);
+      expect(ziel, greaterThanOrEqualTo(120 - 1));
+      expect(start, lessThanOrEqualTo(600 - 130 + 1));
     });
   });
 }
