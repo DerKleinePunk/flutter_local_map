@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.9
+
+- **Routen-Übersicht immer mit Norden oben.** Nach `setDestination` und
+  `setRoute` setzt der Controller die Drehung der Karte auf 0, bevor er die
+  Route einpasst. War „Fahrtrichtung oben“ (`headingUp`) an, lag die Route
+  bisher quer in der Übersicht. Schaltet der Gastgeber den Folgemodus wieder
+  ein, dreht die Karte wie gewohnt mit.
+
 ## 0.8.8
 
 - **`MapConfig.followZoom`.** Schaltet der Gastgeber den Folgemodus ein,

@@ -60,12 +60,20 @@ RoutingResult _result(double km) => RoutingResult(
   maneuvers: const [],
 );
 
-/// Zaehlt, wie oft der Controller der Ansicht den Beginn des Folgens meldet.
+/// Zaehlt, wie oft der Controller der Ansicht den Beginn des Folgens meldet,
+/// und schreibt die Kamera-Aufrufe der Uebersicht in Reihenfolge mit.
 class _FollowView implements LocalMapViewHandle {
   int followStarts = 0;
+  final camera = <String>[];
 
   @override
   void followStarted() => followStarts++;
+
+  @override
+  void resetRotation() => camera.add('rotate0');
+
+  @override
+  void fitRoute(List<LatLng> points) => camera.add('fit');
 
   @override
   void noSuchMethod(Invocation invocation) {}
@@ -596,5 +604,46 @@ void main() {
     map.followPosition = true;
     expect(view.followStarts, 1);
     map.dispose();
+  });
+
+  group('Routenuebersicht immer mit Norden oben', () {
+    test('setDestination: erst Drehung auf 0, dann einpassen', () async {
+      final routing = _FakeRouting();
+      final map = LocalMapController(routingProvider: routing);
+      addTearDown(map.dispose);
+      final view = _FollowView();
+      map.attachView(view);
+      map.headingUp = true;
+      view.camera.clear();
+
+      await map.setStart(_place('A', 50, 9));
+      final done = map.setDestination(_place('B', 50.1, 9.1));
+      routing.pending.single.complete(_result(10));
+      await done;
+
+      expect(view.camera, ['rotate0', 'fit']);
+      expect(map.followPosition, isFalse);
+      expect(
+        map.headingUp,
+        isTrue,
+        reason: 'beim Weiterfolgen dreht sie wieder',
+      );
+    });
+
+    test('setRoute: erst Drehung auf 0, dann einpassen', () {
+      final map = LocalMapController();
+      addTearDown(map.dispose);
+      final view = _FollowView();
+      map.attachView(view);
+      map.headingUp = true;
+      view.camera.clear();
+
+      map.setRoute(_result(10));
+      expect(view.camera, ['rotate0', 'fit']);
+
+      view.camera.clear();
+      map.setRoute(null);
+      expect(view.camera, isEmpty, reason: 'ohne Route keine Uebersicht');
+    });
   });
 }

@@ -260,7 +260,7 @@ class LocalMapController extends ChangeNotifier {
     _setRoute(route, hasDestination: false);
     if (route != null) {
       _followPosition = false;
-      _view?.fitRoute(_routePoints);
+      _showOverview();
     }
     _notify();
   }
@@ -332,7 +332,7 @@ class LocalMapController extends ChangeNotifier {
       // Erst die Übersicht über die ganze Route; die Fahrt beginnt, wenn
       // der Gastgeber den Folgemodus wieder einschaltet.
       _followPosition = false;
-      _view?.fitRoute(_routePoints);
+      _showOverview();
     } catch (e) {
       if (_disposed || request != _routeRequest) return;
       _setRoute(null, hasDestination: false);
@@ -555,6 +555,14 @@ class LocalMapController extends ChangeNotifier {
     if (_followPosition && fix != null) {
       _view?.positionChanged(fix);
     }
+  }
+
+  /// Zeigt die ganze Route, immer mit Norden oben: Eine in Fahrtrichtung
+  /// gedrehte Übersicht legt die Route quer. Folgt die Karte wieder und ist
+  /// [headingUp] an, dreht sie von selbst wieder mit.
+  void _showOverview() {
+    _view?.resetRotation();
+    _view?.fitRoute(_routePoints);
   }
 
   void _notify() {

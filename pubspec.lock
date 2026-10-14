@@ -311,7 +311,7 @@ packages:
       path: "packages/local_map"
       relative: true
     source: path
-    version: "0.8.8"
+    version: "0.8.9"
   logging:
     dependency: transitive
     description:

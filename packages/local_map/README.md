@@ -198,6 +198,7 @@ MapView(
 ```dart
 map.followPosition = true;  // Kamera folgt der Position
 map.headingUp = true;       // Karte dreht nach Kurs; false = Norden oben
+                            // (die Routen-Übersicht zeigt immer Norden oben)
 ```
 
 Der Kurs kommt aus `PositionFix`, geglättet und im Stand eingefroren
