@@ -40,13 +40,20 @@ class _MapScreenState extends State<MapScreen> {
   int _gpsLoadedFixes = 0;
   String? _gpsSimMessage;
 
+  /// Nur fuer den Messlauf `LOCAL_MAP_BENCH=remount`: die Karte wird
+  /// abwechselnd aus- und wieder eingehaengt, der Controller bleibt - so
+  /// wie in Carnine2 beim Wechsel zwischen Karte und anderen Seiten.
+  bool _mapShown = true;
+
   @override
   void initState() {
     super.initState();
-    if ((Platform.environment['LOCAL_MAP_BENCH'] ?? '').startsWith(
-      'drive-gps',
-    )) {
+    final bench = Platform.environment['LOCAL_MAP_BENCH'] ?? '';
+    if (bench.startsWith('drive-gps')) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _startBenchDrive());
+    }
+    if (bench.startsWith('remount')) {
+      _runRemountBench(exitWhenDone: bench.endsWith('exit'));
     }
     _routing = ValhallaRoutingService(baseUri: widget.config.valhallaBaseUri);
     _map = LocalMapController(
@@ -112,6 +119,43 @@ class _MapScreenState extends State<MapScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Haengt die Karte LOCAL_MAP_BENCH_CYCLES-mal (Vorgabe 30) aus und wieder
+  /// ein, je LOCAL_MAP_BENCH_PERIOD_S Sekunden (Vorgabe 8) sichtbar und
+  /// halb so lange weg, und schreibt nach jedem Aushaengen den RSS ins Log.
+  /// Waechst er von Runde zu Runde, bleibt beim Abbau der Karte etwas liegen.
+  Future<void> _runRemountBench({required bool exitWhenDone}) async {
+    final cycles =
+        int.tryParse(Platform.environment['LOCAL_MAP_BENCH_CYCLES'] ?? '') ??
+        30;
+    final period = Duration(
+      seconds:
+          int.tryParse(
+            Platform.environment['LOCAL_MAP_BENCH_PERIOD_S'] ?? '',
+          ) ??
+          8,
+    );
+    int rssMb() => ProcessInfo.currentRss >> 20;
+    debugPrint('[remount] Start, $cycles Runden, RSS ${rssMb()} MB');
+    for (var i = 1; i <= cycles; i++) {
+      await Future<void>.delayed(period);
+      if (!mounted) return;
+      final shown = rssMb();
+      setState(() => _mapShown = false);
+      await Future<void>.delayed(period ~/ 2);
+      debugPrint(
+        '[remount] Runde $i: mit Karte $shown MB, ohne Karte ${rssMb()} MB',
+      );
+      if (!mounted) return;
+      setState(() => _mapShown = true);
+    }
+    await Future<void>.delayed(period);
+    debugPrint('[remount] Ende, RSS ${rssMb()} MB');
+    if (exitWhenDone) {
+      await Future<void>.delayed(const Duration(milliseconds: 500));
+      exit(0);
+    }
+  }
+
   Future<void> _toggleGpsSimulation() async {
     if (_gpsSimulator.isRunning) {
       _gpsSimulator.stop();
@@ -165,11 +209,14 @@ class _MapScreenState extends State<MapScreen> {
       // unter losen Vorgaben nicht mehr fuellen.
       fit: StackFit.expand,
       children: [
-        MapView(
-          mbtilesPath: widget.mbtilesPath,
-          config: widget.config,
-          controller: _map,
-        ),
+        if (_mapShown)
+          MapView(
+            mbtilesPath: widget.mbtilesPath,
+            config: widget.config,
+            controller: _map,
+          )
+        else
+          const ColoredBox(color: Colors.black),
         // Bedienelemente liegen bewusst ueber der Karte und nicht in ihr.
         // Als Kartenebenen konkurrierte ein Tipp mit der Gestenerkennung der
         // Karte: auf einem Touchscreen wackelt der Finger immer ein paar

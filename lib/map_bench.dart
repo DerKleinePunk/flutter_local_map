@@ -30,7 +30,9 @@ class MapBench {
 
   static MapBench? fromEnvironment() {
     final value = Platform.environment['LOCAL_MAP_BENCH'];
+    // `remount` misst MapScreen selbst, ohne Kamerafahrt.
     if (value == null || value.isEmpty || value == '0') return null;
+    if (value.startsWith('remount')) return null;
     return MapBench._(value.endsWith('exit'), value.startsWith('drive'));
   }
 
