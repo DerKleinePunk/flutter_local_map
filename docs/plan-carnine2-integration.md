@@ -108,7 +108,7 @@ Getroffen am 2026-09-24:
 
 Erledigt: ADR-021 in carnine2 legt den `NavigationService` fest. Ob die Ausnahme „Kacheln liest das Frontend direkt“ und der Wechsel des Embedders dort mit abgedeckt sind, klärt die Carnine2-Sitzung.
 
-## Messe am 6. November 2026
+## Messe (Make) am 7. November 2026, Aufbau am 6. November
 
 Bis dahin bleiben gut sechs Wochen. Das reicht nicht für alles in diesem Plan, also wird für die Messe geschnitten.
 
