@@ -17,16 +17,18 @@ class RoutingPoint {
 ///
 /// Stammt aus `turn:lanes` in OSM. Die Pfeile haben die OSRM-Schreibweise:
 /// `straight`, `slight right`, `right`, `sharp right`, `uturn`,
-/// `sharp left`, `left`, `slight left` oder `none` (Spur ohne Pfeil).
+/// `sharp left`, `left`, `slight left`, `merge to left`, `merge to right`
+/// oder `none` (Spur ohne Pfeil).
 class RoutingLane {
   /// Pfeile auf der Spur, wie auf der Fahrbahn markiert.
   final List<String> indications;
 
-  /// Die Spur führt auf die Route.
+  /// Von der Spur aus lässt sich das Manöver fahren - unter Umständen
+  /// aber nur mit einem weiteren Spurwechsel danach.
   final bool valid;
 
-  /// Die empfohlene Spur unter den gültigen (beim Router `active`): Bei
-  /// zwei gültigen Spuren vor einer Ausfahrt kurz danach z. B. die rechte.
+  /// Die richtige Spur: Wer hier fährt, kommt ohne weiteren Wechsel durch.
+  /// Hebt eine Anzeige nur eine Sorte hervor, dann diese.
   final bool active;
 
   /// Der Pfeil, dem die Route auf dieser Spur folgt, wenn sie [valid] ist
@@ -86,20 +88,6 @@ class RoutingManeuver {
     this.verbalPost,
     this.lanes = const <RoutingLane>[],
   });
-
-  /// Kopie mit anderen Spuren.
-  RoutingManeuver withLanes(List<RoutingLane> lanes) => RoutingManeuver(
-    instruction: instruction,
-    lengthKm: lengthKm,
-    timeSeconds: timeSeconds,
-    type: type,
-    beginShapeIndex: beginShapeIndex,
-    streetNames: streetNames,
-    verbalAlert: verbalAlert,
-    verbalPre: verbalPre,
-    verbalPost: verbalPost,
-    lanes: lanes,
-  );
 }
 
 /// Ergebnis einer Routingabfrage.

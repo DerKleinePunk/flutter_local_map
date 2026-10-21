@@ -28,7 +28,19 @@ void main() {
     for (var i = 0; i < 4; i++) {
       expect(find.byKey(ValueKey('lane-$i')), findsOneWidget);
     }
-    expect(find.bySemanticsLabel('Spuren: 2 von 4 richtig'), findsOneWidget);
+    // Eine Spur ist die richtige (active): nur sie zählt, nicht die zweite,
+    // von der man noch einmal wechseln müsste.
+    expect(find.bySemanticsLabel('Spuren: 1 von 4 richtig'), findsOneWidget);
+
+    // Ohne active zählen die gültigen.
+    await tester.pumpWidget(
+      _host(const [
+        RoutingLane(indications: ['straight'], valid: true),
+        RoutingLane(indications: ['straight'], valid: true),
+        RoutingLane(indications: ['right'], valid: false),
+      ]),
+    );
+    expect(find.bySemanticsLabel('Spuren: 2 von 3 richtig'), findsOneWidget);
     semantics.dispose();
   });
 

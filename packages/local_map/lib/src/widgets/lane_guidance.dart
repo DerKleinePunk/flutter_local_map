@@ -7,6 +7,10 @@ import '../api/routing.dart';
 /// Die Spuren vor einem Manöver als Pfeile, wie auf einem Wegweiser über der
 /// Autobahn: richtige Spuren hell, die übrigen gedämpft.
 ///
+/// Hell sind die [RoutingLane.active] Spuren. Gibt es keine, die gültigen
+/// ([RoutingLane.valid]). Eine nur gültige Spur neben einer aktiven bleibt
+/// gedämpft: von dort müsste man kurz vor der Ausfahrt noch einmal wechseln.
+///
 /// Ohne Spuren nimmt das Widget keinen Platz ein. Der Gastgeber entscheidet,
 /// wann es zu sehen ist (etwa erst in den letzten 2 km vor dem Manöver).
 class LaneGuidance extends StatelessWidget {
@@ -41,7 +45,9 @@ class LaneGuidance extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final on = validColor ?? scheme.onPrimary;
     final off = invalidColor ?? on.withValues(alpha: 0.35);
-    final valid = lanes.where((l) => l.valid).length;
+    final anyActive = lanes.any((l) => l.active);
+    bool lit(RoutingLane l) => anyActive ? l.active : l.valid;
+    final valid = lanes.where(lit).length;
     return Semantics(
       label: 'Spuren: $valid von ${lanes.length} richtig',
       child: DecoratedBox(
@@ -67,6 +73,7 @@ class LaneGuidance extends StatelessWidget {
                   child: CustomPaint(
                     painter: LaneArrowPainter(
                       lane: lanes[i],
+                      highlighted: lit(lanes[i]),
                       validColor: on,
                       invalidColor: off,
                     ),
@@ -86,11 +93,16 @@ class LaneGuidance extends StatelessWidget {
 class LaneArrowPainter extends CustomPainter {
   LaneArrowPainter({
     required this.lane,
+    bool? highlighted,
     required this.validColor,
     required this.invalidColor,
-  });
+  }) : highlighted = highlighted ?? lane.valid;
 
   final RoutingLane lane;
+
+  /// Ob die Spur hell erscheint. Vorgabe: [RoutingLane.valid];
+  /// [LaneGuidance] setzt es nach seiner Regel.
+  final bool highlighted;
   final Color validColor;
   final Color invalidColor;
 
@@ -105,13 +117,15 @@ class LaneArrowPainter extends CustomPainter {
     'slight left' => -45,
     'left' => -90,
     'sharp left' => -135,
+    'merge to left' => -30,
+    'merge to right' => 30,
     _ => null,
   };
 
   /// Welcher Pfeil der Spur der Route folgt: [RoutingLane.validIndication],
   /// sonst bei einer richtigen Spur mit nur einem Pfeil dieser.
   String? get followed {
-    if (!lane.valid) return null;
+    if (!highlighted) return null;
     return lane.validIndication ??
         (lane.indications.length == 1 ? lane.indications.single : null);
   }
@@ -125,13 +139,13 @@ class LaneArrowPainter extends CustomPainter {
     // Erst die gedämpften Pfeile, dann der helle obenauf.
     final ordered = [
       for (final i in indications)
-        if (!(lane.valid && (followedArrow == null || i == followedArrow))) i,
+        if (!(highlighted && (followedArrow == null || i == followedArrow))) i,
       for (final i in indications)
-        if (lane.valid && (followedArrow == null || i == followedArrow)) i,
+        if (highlighted && (followedArrow == null || i == followedArrow)) i,
     ];
     for (final indication in ordered) {
       final bright =
-          lane.valid && (followedArrow == null || indication == followedArrow);
+          highlighted && (followedArrow == null || indication == followedArrow);
       _arrow(canvas, size, indication, bright ? validColor : invalidColor);
     }
   }
@@ -204,6 +218,7 @@ class LaneArrowPainter extends CustomPainter {
   @override
   bool shouldRepaint(LaneArrowPainter old) =>
       old.lane != lane ||
+      old.highlighted != highlighted ||
       old.validColor != validColor ||
       old.invalidColor != invalidColor;
 }
