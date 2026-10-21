@@ -49,6 +49,18 @@ void main() {
     expect(tester.getSize(find.byType(LaneGuidance)), Size.zero);
   });
 
+  testWidgets('ohne eine passende Spur auch nicht', (tester) async {
+    // So kam es von Valhalla an der K 818 in Frankfurt.
+    await tester.pumpWidget(
+      _host(const [
+        RoutingLane(indications: ['straight'], valid: false),
+        RoutingLane(indications: ['slight right'], valid: false),
+        RoutingLane(indications: ['none'], valid: false),
+      ]),
+    );
+    expect(tester.getSize(find.byType(LaneGuidance)), Size.zero);
+  });
+
   test('Winkel der Pfeile, rechts positiv', () {
     expect(LaneArrowPainter.angleOf('straight'), 0);
     expect(LaneArrowPainter.angleOf('none'), 0);
@@ -92,7 +104,7 @@ void main() {
           'none',
           'merge_to_left',
         ])
-          RoutingLane(indications: [i], valid: i == 'right'),
+          RoutingLane(indications: [i], valid: true),
         const RoutingLane(indications: [], valid: false),
       ]),
     );

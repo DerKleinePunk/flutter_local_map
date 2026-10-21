@@ -11,7 +11,10 @@ import '../api/routing.dart';
 /// ([RoutingLane.valid]). Eine nur gültige Spur neben einer aktiven bleibt
 /// gedämpft: von dort müsste man kurz vor der Ausfahrt noch einmal wechseln.
 ///
-/// Ohne Spuren nimmt das Widget keinen Platz ein. Der Gastgeber entscheidet,
+/// Ohne Spuren nimmt das Widget keinen Platz ein, ebenso, wenn keine Spur
+/// hell wäre: Valhalla nennt manchmal Spuren, ohne eine davon zur Route
+/// passend zu markieren, und eine Leiste nur mit grauen Pfeilen hilft
+/// niemandem. Der Gastgeber entscheidet,
 /// wann es zu sehen ist (etwa erst in den letzten 2 km vor dem Manöver).
 class LaneGuidance extends StatelessWidget {
   const LaneGuidance({
@@ -41,13 +44,13 @@ class LaneGuidance extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (lanes.isEmpty) return const SizedBox.shrink();
-    final scheme = Theme.of(context).colorScheme;
-    final on = validColor ?? scheme.onPrimary;
-    final off = invalidColor ?? on.withValues(alpha: 0.35);
     final anyActive = lanes.any((l) => l.active);
     bool lit(RoutingLane l) => anyActive ? l.active : l.valid;
     final valid = lanes.where(lit).length;
+    if (valid == 0) return const SizedBox.shrink();
+    final scheme = Theme.of(context).colorScheme;
+    final on = validColor ?? scheme.onPrimary;
+    final off = invalidColor ?? on.withValues(alpha: 0.35);
     return Semantics(
       label: 'Spuren: $valid von ${lanes.length} richtig',
       child: DecoratedBox(
