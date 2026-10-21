@@ -13,6 +13,34 @@ class RoutingPoint {
   LatLng toLatLng() => LatLng(lat, lon);
 }
 
+/// Eine Fahrspur vor einem Manöver, von links nach rechts gezählt.
+///
+/// Stammt aus `turn:lanes` in OSM. Die Pfeile haben die OSRM-Schreibweise:
+/// `straight`, `slight right`, `right`, `sharp right`, `uturn`,
+/// `sharp left`, `left`, `slight left` oder `none` (Spur ohne Pfeil).
+class RoutingLane {
+  /// Pfeile auf der Spur, wie auf der Fahrbahn markiert.
+  final List<String> indications;
+
+  /// Die Spur führt auf die Route.
+  final bool valid;
+
+  /// Die empfohlene Spur unter den gültigen (beim Router `active`): Bei
+  /// zwei gültigen Spuren vor einer Ausfahrt kurz danach z. B. die rechte.
+  final bool active;
+
+  /// Der Pfeil, dem die Route auf dieser Spur folgt, wenn sie [valid] ist
+  /// und mehrere Pfeile trägt. Sonst `null`.
+  final String? validIndication;
+
+  const RoutingLane({
+    required this.indications,
+    required this.valid,
+    this.active = false,
+    this.validIndication,
+  });
+}
+
 /// Einzelnes Turn-by-Turn-Manöver einer Route.
 class RoutingManeuver {
   final String instruction;
@@ -42,6 +70,10 @@ class RoutingManeuver {
   final String? verbalPre;
   final String? verbalPost;
 
+  /// Die Spuren vor dem Manöver, von links nach rechts. Leer, wenn die
+  /// Kreuzung keine Spurangabe hat oder der Anbieter keine liefert.
+  final List<RoutingLane> lanes;
+
   const RoutingManeuver({
     required this.instruction,
     required this.lengthKm,
@@ -52,7 +84,22 @@ class RoutingManeuver {
     this.verbalAlert,
     this.verbalPre,
     this.verbalPost,
+    this.lanes = const <RoutingLane>[],
   });
+
+  /// Kopie mit anderen Spuren.
+  RoutingManeuver withLanes(List<RoutingLane> lanes) => RoutingManeuver(
+    instruction: instruction,
+    lengthKm: lengthKm,
+    timeSeconds: timeSeconds,
+    type: type,
+    beginShapeIndex: beginShapeIndex,
+    streetNames: streetNames,
+    verbalAlert: verbalAlert,
+    verbalPre: verbalPre,
+    verbalPost: verbalPost,
+    lanes: lanes,
+  );
 }
 
 /// Ergebnis einer Routingabfrage.

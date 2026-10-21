@@ -605,11 +605,16 @@ class _ZoomBadge extends StatelessWidget {
 }
 
 /// Nächstes Manöver mit Entfernung, darunter Restweg, Restzeit und
-/// Ankunftszeit.
+/// Ankunftszeit. Kurz vor einem Manöver mit Spurangabe stehen die Spuren
+/// darüber.
 class _ManeuverCard extends StatelessWidget {
   const _ManeuverCard({required this.progress});
 
   final RouteProgress progress;
+
+  /// Ab dieser Entfernung zum Manöver zeigt die Karte die Spuren - etwa
+  /// so weit vorher, wie auf der Autobahn die ersten Wegweiser stehen.
+  static const double lanesFromMeters = 2000;
 
   @override
   Widget build(BuildContext context) {
@@ -617,6 +622,7 @@ class _ManeuverCard extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final maneuver = progress.nextManeuver!;
     final toNext = progress.distanceToNextManeuverMeters ?? 0;
+    final showLanes = maneuver.lanes.isNotEmpty && toNext <= lanesFromMeters;
 
     return Material(
       color: colorScheme.surface.withValues(alpha: 0.95),
@@ -624,41 +630,59 @@ class _ManeuverCard extends StatelessWidget {
       borderRadius: BorderRadius.circular(16),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              formatDistance(toNext),
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.w700,
-                color: colorScheme.primary,
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    maneuver.instruction,
-                    style: theme.textTheme.titleMedium,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    'noch ${formatDistance(progress.remainingMeters)} • '
-                    '${formatDuration(progress.remainingSeconds)} • '
-                    '${formatArrival(progress.remainingSeconds)}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            if (showLanes) ...[
+              LaneGuidance(lanes: maneuver.lanes),
+              const SizedBox(height: 8),
+            ],
+            _row(theme, colorScheme, maneuver, toNext),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _row(
+    ThemeData theme,
+    ColorScheme colorScheme,
+    RoutingManeuver maneuver,
+    double toNext,
+  ) {
+    return Row(
+      children: [
+        Text(
+          formatDistance(toNext),
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+            color: colorScheme.primary,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                maneuver.instruction,
+                style: theme.textTheme.titleMedium,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              Text(
+                'noch ${formatDistance(progress.remainingMeters)} • '
+                '${formatDuration(progress.remainingSeconds)} • '
+                '${formatArrival(progress.remainingSeconds)}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

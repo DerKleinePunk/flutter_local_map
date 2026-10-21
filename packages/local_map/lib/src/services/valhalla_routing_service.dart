@@ -16,19 +16,32 @@ class ValhallaRoutingService implements RoutingProvider {
   /// antwortet Valhalla englisch.
   final String language;
 
-  ValhallaRoutingService({Dio? dio, Uri? baseUri, this.language = 'de-DE'})
-    : _dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              connectTimeout: const Duration(seconds: 5),
-              receiveTimeout: const Duration(seconds: 10),
-              sendTimeout: const Duration(seconds: 10),
-              contentType: Headers.jsonContentType,
-              responseType: ResponseType.json,
-            ),
-          ),
-      _baseUri = baseUri ?? Uri.parse('http://127.0.0.1:8002');
+  /// Ob zu jeder Route die Spuren geholt werden ([RoutingManeuver.lanes]).
+  ///
+  /// Valhalla liefert sie nur im OSRM-Format, dessen Anweisungen aber
+  /// nicht die Sprechtexte des eigenen Formats tragen. Deshalb geht dieselbe
+  /// Anfrage ein zweites Mal im OSRM-Format raus, gleichzeitig mit der
+  /// ersten - auf dem Pi eine Routenberechnung mehr. Scheitert sie, kommt
+  /// die Route ohne Spuren.
+  final bool fetchLanes;
+
+  ValhallaRoutingService({
+    Dio? dio,
+    Uri? baseUri,
+    this.language = 'de-DE',
+    this.fetchLanes = true,
+  }) : _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               connectTimeout: const Duration(seconds: 5),
+               receiveTimeout: const Duration(seconds: 10),
+               sendTimeout: const Duration(seconds: 10),
+               contentType: Headers.jsonContentType,
+               responseType: ResponseType.json,
+             ),
+           ),
+       _baseUri = baseUri ?? Uri.parse('http://127.0.0.1:8002');
 
   /// Adresse des Servers, für Meldungen an den Benutzer.
   Uri get baseUri => _baseUri;
@@ -120,6 +133,7 @@ class ValhallaRoutingService implements RoutingProvider {
 
   Future<RoutingResult> _post(String path, Map<String, dynamic> body) async {
     final uri = _baseUri.resolve(path);
+    final lanes = fetchLanes ? _fetchOsrm(uri, body) : null;
 
     try {
       final response = await _dio.postUri(uri, data: body);
@@ -131,7 +145,9 @@ class ValhallaRoutingService implements RoutingProvider {
         );
       }
 
-      return _parseRouteResponse(data);
+      final route = _parseRouteResponse(data);
+      final osrm = lanes == null ? null : await lanes;
+      return osrm == null ? route : attachLanes(route, osrm);
     } on DioException catch (error) {
       final statusCode = error.response?.statusCode;
       final errorBody = error.response?.data;
@@ -146,6 +162,26 @@ class ValhallaRoutingService implements RoutingProvider {
       throw RoutingException(
         'Valhalla nicht erreichbar (${statusCode ?? 'ohne Statuscode'}): ${error.message}',
       );
+    }
+  }
+
+  /// Dieselbe Anfrage im OSRM-Format, nur für die Spuren. Wirft nie: ohne
+  /// Antwort `null`.
+  Future<Map<String, dynamic>?> _fetchOsrm(
+    Uri uri,
+    Map<String, dynamic> body,
+  ) async {
+    try {
+      final response = await _dio.postUri(
+        uri,
+        data: {...body, 'format': 'osrm'},
+      );
+      final data = response.data;
+      return data is Map<String, dynamic> ? data : null;
+    } catch (_) {
+      // Auch wenn die Hauptanfrage scheitert und niemand mehr wartet: hier
+      // darf kein Fehler unbehandelt hochkommen.
+      return null;
     }
   }
 
@@ -397,6 +433,7 @@ RoutingResult joinRoutes(List<RoutingResult> pieces) {
           verbalAlert: m.verbalAlert,
           verbalPre: m.verbalPre,
           verbalPost: m.verbalPost,
+          lanes: m.lanes,
         ),
       );
     }
@@ -407,6 +444,122 @@ RoutingResult joinRoutes(List<RoutingResult> pieces) {
     durationSeconds: durationSeconds,
     maneuvers: maneuvers,
   );
+}
+
+/// Wie weit vor dem Manöver eine Spurangabe noch zu ihm gehört.
+///
+/// Meist steht sie an der Manöver-Kreuzung selbst, manchmal an einer
+/// Kreuzung kurz davor (auf jeep-pi gemessen 40-430 m). Eine Angabe 1 km
+/// und mehr davor gehört zu einer anderen Kreuzung.
+const double maxLaneLeadMeters = 500;
+
+/// Hängt die Spuren aus einer Valhalla-Antwort im OSRM-Format ([osrm], von
+/// `/route` oder `/trace_route`) an die Manöver von [route].
+///
+/// Valhalla bildet jedes Manöver auf genau einen OSRM-Schritt ab, in
+/// derselben Reihenfolge und am selben Ort. Passt die Zahl nicht, bleibt die
+/// Route ohne Spuren; ein Schritt, der mehr als 30 m vom Beginn seines
+/// Manövers liegt, gibt keine.
+RoutingResult attachLanes(RoutingResult route, Map<String, dynamic> osrm) {
+  final steps = <Map<String, dynamic>>[];
+  final candidates = osrm['routes'] ?? osrm['matchings'];
+  if (candidates is List) {
+    for (final candidate in candidates.whereType<Map<String, dynamic>>()) {
+      final legs = candidate['legs'];
+      if (legs is! List) continue;
+      for (final leg in legs.whereType<Map<String, dynamic>>()) {
+        final legSteps = leg['steps'];
+        if (legSteps is List) {
+          steps.addAll(legSteps.whereType<Map<String, dynamic>>());
+        }
+      }
+    }
+  }
+  if (steps.length != route.maneuvers.length) return route;
+
+  final maneuvers = <RoutingManeuver>[];
+  for (var i = 0; i < steps.length; i++) {
+    final maneuver = route.maneuvers[i];
+    final at = _location(steps[i]['maneuver']);
+    final begin = maneuver.beginShapeIndex;
+    final aligned =
+        at != null &&
+        begin != null &&
+        begin < route.geometry.length &&
+        _flatMeters(route.geometry[begin].toLatLng(), at) <= 30;
+    final lanes = aligned ? _lanesBefore(steps, i, at) : null;
+    maneuvers.add(lanes == null ? maneuver : maneuver.withLanes(lanes));
+  }
+  return RoutingResult(
+    geometry: route.geometry,
+    distanceMeters: route.distanceMeters,
+    durationSeconds: route.durationSeconds,
+    maneuvers: maneuvers,
+  );
+}
+
+/// Die Spuren für Schritt [i]: an seiner ersten Kreuzung, sonst die letzte
+/// Angabe des Schritts davor, wenn sie höchstens [maxLaneLeadMeters] vor
+/// [at] liegt.
+List<RoutingLane>? _lanesBefore(
+  List<Map<String, dynamic>> steps,
+  int i,
+  LatLng at,
+) {
+  final own = _intersections(steps[i]);
+  if (own.isNotEmpty) {
+    final lanes = _lanes(own.first['lanes']);
+    if (lanes != null) return lanes;
+  }
+  if (i == 0) return null;
+  for (final x in _intersections(steps[i - 1]).reversed) {
+    final lanes = _lanes(x['lanes']);
+    if (lanes == null) continue;
+    final where = _location(x);
+    if (where == null || _flatMeters(where, at) > maxLaneLeadMeters) {
+      return null;
+    }
+    return lanes;
+  }
+  return null;
+}
+
+List<Map<String, dynamic>> _intersections(Map<String, dynamic> step) {
+  final raw = step['intersections'];
+  return raw is List
+      ? raw.whereType<Map<String, dynamic>>().toList()
+      : const <Map<String, dynamic>>[];
+}
+
+List<RoutingLane>? _lanes(Object? raw) {
+  if (raw is! List || raw.isEmpty) return null;
+  final lanes = <RoutingLane>[];
+  for (final lane in raw.whereType<Map<String, dynamic>>()) {
+    final indications = lane['indications'];
+    final validIndication = lane['valid_indication'];
+    lanes.add(
+      RoutingLane(
+        indications: indications is List
+            ? indications.whereType<String>().toList()
+            : const <String>[],
+        valid: lane['valid'] == true,
+        active: lane['active'] == true,
+        validIndication: validIndication is String ? validIndication : null,
+      ),
+    );
+  }
+  return lanes.isEmpty ? null : lanes;
+}
+
+/// OSRM-Ort `[lon, lat]` eines Schritt-Manövers oder einer Kreuzung.
+LatLng? _location(Object? raw) {
+  if (raw is! Map<String, dynamic>) return null;
+  final location = raw['location'];
+  if (location is! List || location.length < 2) return null;
+  final lon = location[0];
+  final lat = location[1];
+  if (lon is! num || lat is! num) return null;
+  return LatLng(lat.toDouble(), lon.toDouble());
 }
 
 /// Ein nicht leerer Text aus der Antwort, sonst `null`.
