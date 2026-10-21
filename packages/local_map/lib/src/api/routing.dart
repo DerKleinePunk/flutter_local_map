@@ -41,7 +41,48 @@ class RoutingLane {
     this.active = false,
     this.validIndication,
   });
+
+  /// Eine Spur aus Valhallas drei Bitmasken ([valhallaLaneBits]):
+  /// `directions` (alle Pfeile), `valid` (Pfeile, die zur Route passen -
+  /// man muss danach aber unter Umständen noch einmal wechseln) und `active`
+  /// (die richtige Spur). Für Gastgeber, die die Masken roh weiterreichen,
+  /// etwa über ein eigenes Backend.
+  factory RoutingLane.fromMasks({
+    required int directions,
+    int valid = 0,
+    int active = 0,
+  }) {
+    final followed = laneIndications(active != 0 ? active : valid);
+    return RoutingLane(
+      indications: laneIndications(directions),
+      valid: valid != 0 || active != 0,
+      active: active != 0,
+      validIndication: followed.length == 1 ? followed.single : null,
+    );
+  }
 }
+
+/// Valhallas Bits für die Pfeile einer Spur, in der Reihenfolge, in der sie
+/// in [RoutingLane.indications] stehen (OSRM-Schreibweise).
+const Map<int, String> valhallaLaneBits = {
+  1: 'none',
+  2: 'straight',
+  4: 'sharp left',
+  8: 'left',
+  16: 'slight left',
+  32: 'slight right',
+  64: 'right',
+  128: 'sharp right',
+  256: 'uturn',
+  512: 'merge to left',
+  1024: 'merge to right',
+};
+
+/// Die Pfeile einer Valhalla-Bitmaske.
+List<String> laneIndications(int mask) => [
+  for (final e in valhallaLaneBits.entries)
+    if (mask & e.key != 0) e.value,
+];
 
 /// Einzelnes Turn-by-Turn-Manöver einer Route.
 class RoutingManeuver {

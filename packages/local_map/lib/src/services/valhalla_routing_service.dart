@@ -422,28 +422,6 @@ RoutingResult joinRoutes(List<RoutingResult> pieces) {
   );
 }
 
-/// Valhallas Bits für die Pfeile einer Spur, in der Reihenfolge, in der sie
-/// in [RoutingLane.indications] stehen (OSRM-Schreibweise).
-const Map<int, String> valhallaLaneBits = {
-  1: 'none',
-  2: 'straight',
-  4: 'sharp left',
-  8: 'left',
-  16: 'slight left',
-  32: 'slight right',
-  64: 'right',
-  128: 'sharp right',
-  256: 'uturn',
-  512: 'merge to left',
-  1024: 'merge to right',
-};
-
-/// Die Pfeile einer Valhalla-Bitmaske.
-List<String> laneIndications(int mask) => [
-  for (final e in valhallaLaneBits.entries)
-    if (mask & e.key != 0) e.value,
-];
-
 /// Die Spuren eines Manövers aus Valhallas `lanes` (nur mit
 /// `turn_lanes: true` in der Anfrage). Je Spur kommen drei Masken:
 /// `directions` (alle Pfeile), `valid` (Pfeile, die zur Route passen - man
@@ -457,13 +435,11 @@ List<RoutingLane> lanesFromValhalla(Object? raw) {
     if (directions is! int || directions == 0) continue;
     final valid = lane['valid'] is int ? lane['valid'] as int : 0;
     final active = lane['active'] is int ? lane['active'] as int : 0;
-    final followed = laneIndications(active != 0 ? active : valid);
     lanes.add(
-      RoutingLane(
-        indications: laneIndications(directions),
-        valid: valid != 0 || active != 0,
-        active: active != 0,
-        validIndication: followed.length == 1 ? followed.single : null,
+      RoutingLane.fromMasks(
+        directions: directions,
+        valid: valid,
+        active: active,
       ),
     );
   }

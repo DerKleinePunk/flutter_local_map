@@ -326,6 +326,23 @@ void main() {
       expect(laneIndications(512 | 1024), ['merge to left', 'merge to right']);
     });
 
+    test('fromMasks: dieselbe Übersetzung für rohe Masken', () {
+      // So reicht ein Backend die Spuren weiter, ohne Valhalla-JSON.
+      final lane = RoutingLane.fromMasks(directions: 48, active: 16);
+      expect(lane.indications, ['slight left', 'slight right']);
+      expect(lane.valid, isTrue);
+      expect(lane.active, isTrue);
+      expect(lane.validIndication, 'slight left');
+
+      final onlyValid = RoutingLane.fromMasks(directions: 16, valid: 16);
+      expect(onlyValid.valid, isTrue);
+      expect(onlyValid.active, isFalse);
+
+      final wrong = RoutingLane.fromMasks(directions: 32);
+      expect(wrong.valid, isFalse);
+      expect(wrong.validIndication, isNull);
+    });
+
     test('unbrauchbare Spuren fallen weg', () {
       expect(lanesFromValhalla(null), isEmpty);
       expect(lanesFromValhalla('kaputt'), isEmpty);
