@@ -8,7 +8,7 @@ param(
     # Quotes required: -Bbox "8.9,50.22,9.9,50.85"  (west,south,east,north)
     [string]$Bbox,
     [string]$Region = "region",
-    [string]$Image = "ghcr.io/gis-ops/docker-valhalla/valhalla:latest"
+    [string]$Image = "ghcr.io/valhalla/valhalla-scripted:3.9.1"
 )
 
 Set-StrictMode -Version Latest
@@ -73,7 +73,7 @@ else {
     Copy-Item -LiteralPath $InputPbf -Destination $ExtractPbf -Force
 }
 
-# Keep a root-level PBF so the GIS-OPS runtime image can auto-build if no prebuilt tiles exist.
+# Keep a root-level PBF so the valhalla-scripted runtime image can auto-build if no prebuilt tiles exist.
 Copy-Item -LiteralPath $ExtractPbf -Destination (Join-Path $OutputFull ("{0}.osm.pbf" -f $Region)) -Force
 $TransitDir = Join-Path $OutputFull "transit_tiles"
 if (-not (Test-Path -LiteralPath $TransitDir)) {
@@ -90,7 +90,7 @@ if ((Test-Path -LiteralPath (Join-Path $OutputFull "valhalla_tiles.tar") -PathTy
     Write-Host "[2/2] Prebuilt routing tiles already exist in $OutputFull"
 }
 else {
-    Write-Host "[2/2] Runtime input prepared. Start the container to let GIS-OPS build tiles from ${Region}.osm.pbf"
+    Write-Host "[2/2] Runtime input prepared. Start the container to let valhalla-scripted build tiles from ${Region}.osm.pbf"
 }
 
 Write-Host "Done"

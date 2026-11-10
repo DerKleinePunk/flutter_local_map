@@ -4,7 +4,7 @@ param(
 
     [int]$Port = 8002,
     [string]$Name = "valhalla-local",
-    [string]$Image = "ghcr.io/gis-ops/docker-valhalla/valhalla:latest"
+    [string]$Image = "ghcr.io/valhalla/valhalla-scripted:3.9.1"
 )
 
 Set-StrictMode -Version Latest

@@ -8,7 +8,7 @@ usage() {
 
 DATA=""
 NAME="valhalla-build"
-IMAGE="ghcr.io/gis-ops/docker-valhalla/valhalla:latest"
+IMAGE="ghcr.io/valhalla/valhalla-scripted:3.9.1"
 
 while getopts ":d:n:i:" opt; do
     case $opt in
@@ -30,14 +30,22 @@ fi
 
 DATA_FULL="$(realpath "$DATA")"
 
-# VALHALLA_BUILD_ADMINS=False nimmt eine fertige admin_data/admins.sqlite,
-# statt sie aus der .osm.pbf zu bauen. Noetig bei Auszuegen, die Landes-
-# grenzen abschneiden: im Geofabrik-DACH fehlen der Schweizer Grenze fuenf
-# Wege, Valhalla verwirft das ganze Land. Die Grenzen dann aus den
+# VALHALLA_BUILD_ADMINS=False nimmt eine fertige admins.sqlite im Daten-
+# ordner, statt sie aus der .osm.pbf zu bauen. Noetig bei Auszuegen, die
+# Landesgrenzen abschneiden: im Geofabrik-DACH fehlen der Schweizer Grenze
+# fuenf Wege, Valhalla verwirft das ganze Land. Die Grenzen dann aus den
 # Laenderauszuegen bauen, siehe docs/valhalla-offline-setup.md.
-if [[ "${VALHALLA_BUILD_ADMINS:-True}" == "False" && ! -f "$DATA_FULL/admin_data/admins.sqlite" ]]; then
-    echo "ERROR: VALHALLA_BUILD_ADMINS=False, aber $DATA_FULL/admin_data/admins.sqlite fehlt." >&2
-    exit 1
+# Das alte gis-ops-Image erwartete sie in admin_data/; liegt sie nur dort,
+# wird sie uebernommen, sonst baute valhalla-scripted ohne Grenzen.
+if [[ "${VALHALLA_BUILD_ADMINS:-True}" == "False" ]]; then
+    if [[ ! -f "$DATA_FULL/admins.sqlite" && -f "$DATA_FULL/admin_data/admins.sqlite" ]]; then
+        echo "Uebernehme admin_data/admins.sqlite nach $DATA_FULL/admins.sqlite"
+        cp "$DATA_FULL/admin_data/admins.sqlite" "$DATA_FULL/admins.sqlite"
+    fi
+    if [[ ! -f "$DATA_FULL/admins.sqlite" ]]; then
+        echo "ERROR: VALHALLA_BUILD_ADMINS=False, aber $DATA_FULL/admins.sqlite fehlt." >&2
+        exit 1
+    fi
 fi
 
 # Container-Laufzeit wie in tilemaker.sh: docker nur, wenn es wirklich

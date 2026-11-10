@@ -511,7 +511,7 @@ if [ "$GENERATE_RASTER" = "1" ]; then
   _step_end
 fi
 
-# Valhalla bekommt ein eigenes Verzeichnis je Region: das GIS-OPS-Image baut
+# Valhalla bekommt ein eigenes Verzeichnis je Region: das valhalla-scripted-Image baut
 # aus JEDER .osm.pbf, die es in seinem Datenverzeichnis findet, und im
 # Arbeitsverzeichnis liegen mehrere (Deutschland, DACH, Ausschnitte).
 VALHALLA_DIR="$WORK_DIR/valhalla-$REGION"

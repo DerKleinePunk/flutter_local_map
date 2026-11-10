@@ -14,7 +14,7 @@ INPUT_PBF=""
 OUTPUT_DIR=""
 BBOX=""
 REGION="region"
-VALHALLA_IMAGE="ghcr.io/gis-ops/docker-valhalla/valhalla:latest"
+VALHALLA_IMAGE="ghcr.io/valhalla/valhalla-scripted:3.9.1"
 
 VOGELSBERG_BBOX="8.9,50.22,9.9,50.85"
 BRAUNSCHWEIG_BBOX="10.28,52.12,10.78,52.42"
@@ -132,7 +132,7 @@ else
   ln -f "$INPUT_PBF" "$EXTRACT_PBF" 2>/dev/null || cp "$INPUT_PBF" "$EXTRACT_PBF"
 fi
 
-# Keep a root-level PBF so the GIS-OPS runtime image can auto-build if no prebuilt tiles exist.
+# Keep a root-level PBF so the valhalla-scripted runtime image can auto-build if no prebuilt tiles exist.
 ln -f "$EXTRACT_PBF" "$OUTPUT_DIR/${REGION}.osm.pbf" 2>/dev/null \
   || cp "$EXTRACT_PBF" "$OUTPUT_DIR/${REGION}.osm.pbf"
 mkdir -p "$OUTPUT_DIR/transit_tiles"
@@ -145,7 +145,7 @@ fi
 if [[ -f "$OUTPUT_DIR/valhalla_tiles.tar" || -d "$OUTPUT_DIR/valhalla_tiles" ]]; then
   echo "[2/2] Prebuilt routing tiles already exist in $OUTPUT_DIR"
 else
-  echo "[2/2] Runtime input prepared. Start the container to let GIS-OPS build tiles from ${REGION}.osm.pbf"
+  echo "[2/2] Runtime input prepared. Start the container to let valhalla-scripted build tiles from ${REGION}.osm.pbf"
 fi
 
 echo "Done"

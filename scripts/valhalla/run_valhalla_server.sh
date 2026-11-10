@@ -8,7 +8,7 @@ set -euo pipefail
 
 DATA_DIR=""
 PORT="8002"
-VALHALLA_IMAGE="ghcr.io/gis-ops/docker-valhalla/valhalla:latest"
+VALHALLA_IMAGE="ghcr.io/valhalla/valhalla-scripted:3.9.1"
 CONTAINER_NAME="valhalla-local"
 
 usage() {
@@ -22,7 +22,7 @@ Required:
 Optional:
   --port   Host port (default: 8002)
   --name   Docker container name (default: valhalla-local)
-  --image  Docker image (default: ghcr.io/gis-ops/docker-valhalla/valhalla:latest)
+  --image  Docker image (default: ghcr.io/valhalla/valhalla-scripted:3.9.1)
   --help   Show this help
 EOF
 }
