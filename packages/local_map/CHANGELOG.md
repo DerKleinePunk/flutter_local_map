@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.9.0
+
+- **Spurempfehlung.** Jedes `RoutingManeuver` trägt `lanes`: die Spuren vor
+  dem Manöver von links nach rechts, als `RoutingLane` mit den Pfeilen der
+  Fahrbahn (`indications`), `valid` (von hier geht es, unter Umständen mit
+  einem weiteren Wechsel) und `active` (die richtige Spur). Leer, wenn die
+  Kreuzung keine Spurangabe hat oder der Anbieter keine liefert – für
+  bestehende Gastgeber ändert sich also nichts.
+- **`ValhallaRoutingService(fetchLanes: true)`** (Vorgabe) schickt
+  `turn_lanes: true` an `/route` und `/trace_route`. Valhalla liefert die
+  Spuren aus `turn:lanes` in OSM nur auf diese Anforderung; es bleibt eine
+  Anfrage, die Antwort wird etwas größer.
+- **`RoutingLane.fromMasks(directions:, valid:, active:)`** baut eine Spur
+  aus Valhallas rohen Bitmasken (`valhallaLaneBits`, `laneIndications`),
+  etwa für einen `RoutingProvider`, der die Route über ein eigenes Backend
+  holt. `0` heißt „nicht gesetzt“.
+- **Widget `LaneGuidance`.** Zeigt die Spuren als Pfeile: hell nur die
+  `active` Spuren (gibt es keine, die `valid`), auf einer Spur mit mehreren
+  Pfeilen nur der Pfeil, dem die Route folgt. Ohne Spuren oder ohne eine
+  helle Spur nimmt es keinen Platz ein. Ab welchem Abstand es zu sehen ist,
+  entscheidet der Gastgeber (Demo-App: 2 km vor dem Manöver).
+
 ## 0.8.10
 
 - **`MapConfig.overviewPadding`.** Rand, mit dem die Routen-Übersicht die

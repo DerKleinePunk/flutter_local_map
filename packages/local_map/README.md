@@ -259,6 +259,27 @@ Manövers, dahinter die der Manöver, die höchstens 500 m danach folgen (bis
 zu 2, `lookaheadMeters`/`lookaheadManeuvers`), damit bei dichten Manövern
 schon vorgerechnet ist. Abschalten: `AnnouncementPolicy(enabled: false)`.
 
+### Spurempfehlung
+
+Vor Ausfahrten und Gabelungen trägt das Manöver die Spuren aus `turn:lanes`
+in OSM: `RoutingManeuver.lanes`, von links nach rechts, leer, wenn es keine
+Angabe gibt. `ValhallaRoutingService` fordert sie mit `turn_lanes: true` an
+(`fetchLanes`, Vorgabe an). Ein eigener `RoutingProvider`, der Valhallas
+Masken roh weiterreicht, baut die Spuren mit `RoutingLane.fromMasks`.
+
+```dart
+final p = map.progress;
+final next = p?.nextManeuver;
+final meters = p?.distanceToNextManeuverMeters;
+if (next != null && meters != null && meters <= 2000) {
+  LaneGuidance(lanes: next.lanes); // nimmt ohne passende Spur keinen Platz ein
+}
+```
+
+Hell sind nur die `active` Spuren – wer dort fährt, kommt ohne weiteren
+Wechsel durch. Gibt es keine, die `valid`. Wann die Leiste zu sehen ist,
+entscheidet der Gastgeber.
+
 ### Texte
 
 `PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre
@@ -358,13 +379,15 @@ die das Skript seit September 2026 anlegt. Mit einer älteren Datenbank bleibt
 - **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`,
   `ReverseGeocoder` mit `LocationName`
 - **Widgets:** `MapView`, `DownloadOverlay`, `PlaceSearchBar`,
-  `StorageSettingsDialog`, dazu ihre Texte `DownloadOverlayTexts`,
-  `PlaceSearchTexts`, `StorageSettingsTexts` und `DownloadStatus`
+  `StorageSettingsDialog`, `LaneGuidance`, dazu ihre Texte
+  `DownloadOverlayTexts`, `PlaceSearchTexts`, `StorageSettingsTexts` und
+  `DownloadStatus`
 - **Services:** `MapDownloader`, `StoragePreferences`, `OfflineGeocoder`,
   `ValhallaRoutingService`, `GpsNmeaSimulatorService`, `MapErrorHandler`
 - **Modelle:** `GeocoderResult`, `RoutingResult`, `RoutingManeuver`,
-  `RoutingPoint`, `PositionFix`, `SimulatedGpsFix`, `MapError`,
-  `MapErrorCategory`, `MapLogLevel`, `MbTilesException`, `RoutingException`
+  `RoutingLane` (mit `valhallaLaneBits`, `laneIndications`), `RoutingPoint`,
+  `PositionFix`, `SimulatedGpsFix`, `MapError`, `MapErrorCategory`,
+  `MapLogLevel`, `MbTilesException`, `RoutingException`
 - **Durchgereicht:** `LatLng`, `LatLngBounds`, `MapController`
 
 ## Einsatz auf eingebettetem Linux (emb_cli / ivi-homescreen)
