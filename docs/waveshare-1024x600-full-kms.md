@@ -151,6 +151,61 @@ grep sad_count /proc/asound/card0/eld#0       # -> 1 (Audio ueber HDMI da)
 ivi-homescreen meldet dann `mode=1024x600@60Hz` und
 `Display metadata: 1024x600 logical -> 1024x600 px, pixel_ratio=1`.
 
+## Rockchip RK3566 (BigTreeTech Pi2)
+
+Getestet am 2026-11-11 auf einer BigTreeTech Pi2 (RK3566, Armbian trixie,
+Kernel 6.18, VOP2 + DW-HDMI) mit demselben Panel. Ohne Vorgabe ist es wie
+am Pi 4: das native 1024x600 fehlt, das Bild kommt in 1920x1080 und das Panel
+skaliert herunter.
+
+`waveshare-7h-260929.bin` hilft hier **nicht**. Der Rockchip-HDMI nimmt nur
+Pixeltakte an, die seine Video-PLL genau trifft, und verwirft den Modus mit
+`Rejected mode ... (NOCLOCK)` (sichtbar mit `drm.debug=0x4`):
+
+```
+angenommen: 74,25  78,75  108  135  148,5 MHz
+verworfen:  25,175  27  31,5  36  40  50,25  65  75  88,75  136,75 MHz
+```
+
+Deshalb gibt es eine eigene Datei mit 74,25 MHz:
+`edid/waveshare-7h-74m-1980x625.bin` (256 Byte, sha256
+`77a3ba937cd66200968aee111ea594116d9959bb88b219f3e930fe63fe47ce33`).
+Sie ist `waveshare-7h-260929.bin` mit geaendertem erstem Detailtiming:
+
+```
+1024x600, Pixeltakt 74250 kHz, 60,0 Hz
+h: aktiv 1024, front 44, sync 88, total 1980
+v: aktiv  600, front  3, sync  6, total  625
+```
+
+Zeilentakt (37,5 kHz) und Zeilenzahl bleiben fast wie beim Panel selbst
+(37,4 kHz, 625), nur die horizontale Austastluecke ist laenger. Das Panel
+nimmt das an, das Bild ist scharf. Der CEA-Block ist byte-gleich, die
+Pruefsumme von Block 0 neu berechnet. Ton ueber HDMI auf der Pi2 ist damit
+noch nicht geprueft.
+
+Installation unter Armbian:
+
+```bash
+sudo cp waveshare-7h-74m-1980x625.bin /lib/firmware/edid/
+# rockchipdrm laeuft schon im Initramfs -> Datei muss mit hinein
+sudo tee /etc/initramfs-tools/hooks/edid >/dev/null <<'HOOK'
+#!/bin/sh
+[ "$1" = prereqs ] && exit 0
+. /usr/share/initramfs-tools/hook-functions
+copy_file firmware /lib/firmware/edid/waveshare-7h-74m-1980x625.bin
+HOOK
+sudo chmod +x /etc/initramfs-tools/hooks/edid
+sudo update-initramfs -u
+# /boot/armbianEnv.txt, Zeile extraargs ergaenzen:
+#   extraargs=drm.edid_firmware=HDMI-A-1:edid/waveshare-7h-74m-1980x625.bin
+```
+
+Gegenprobe nach dem Neustart: dmesg meldet
+`Loaded external firmware EDID "edid/waveshare-7h-74m-1980x625.bin"`, und in
+`/sys/class/drm/card0-HDMI-A-1/modes` steht `1024x600` oben. Fehlt die Datei
+im Initramfs, laedt der Kernel sie nicht und nimmt still das EDID des Panels.
+
 ## Touch
 
 Der Touch des Panels laeuft ueber USB und braucht nichts weiter. Er meldet

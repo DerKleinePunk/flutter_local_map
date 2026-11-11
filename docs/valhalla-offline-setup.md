@@ -44,7 +44,7 @@ Erst nach erfolgreichem End-to-End-Test auf ganz Hessen erweitern.
 
 Empfehlung: Build-Vorbereitung auf starkem Linux-Rechner, dann Artefakte auf Pi kopieren.
 
-Wichtig fuer das verwendete GIS-OPS-Image:
+Wichtig fuer das verwendete Image (`ghcr.io/valhalla/valhalla-scripted:3.9.1`, seit 10.11.2026; vorher gis-ops mit Valhalla 3.5.1):
 
 - Das Image erwartet im Standardfall Daten unter `/custom_files`.
 - Ein `.osm.pbf` im Zielordner reicht, damit der Container `valhalla.json`, Admins, Timezones und Routing-Tiles selbst erzeugt.
@@ -123,12 +123,12 @@ osmium tags-filter -O -o dach-admin.osm.pbf ../dach-latest.osm.pbf r/boundary=ad
 osmium merge -O -o admin-merged.osm.pbf dach-admin.osm.pbf switzerland-admin.osm.pbf austria-admin.osm.pbf
 chmod 777 .   # der Container schreibt als eigener Benutzer
 podman run --rm -v "$PWD:/data" --entrypoint valhalla_build_admins \
-  ghcr.io/gis-ops/docker-valhalla/valhalla:latest \
+  ghcr.io/valhalla/valhalla-scripted:3.9.1 \
   --inline-config '{"mjolnir":{"admin":"/data/admins.sqlite"}}' /data/admin-merged.osm.pbf
 sqlite3 admins.sqlite "select name from admins where admin_level=2"   # Schweiz muss dabei sein
 
 # Kacheln mit dieser Tabelle bauen
-mkdir -p ../valhalla-dach/admin_data && cp admins.sqlite ../valhalla-dach/admin_data/
+cp admins.sqlite ../valhalla-dach/
 VALHALLA_BUILD_ADMINS=False ./scripts/valhalla/build_valhalla_tiles.sh -d ../valhalla-dach
 ```
 
@@ -160,7 +160,7 @@ docker run -d --name valhalla \
   -e use_tiles_ignore_pbf=True \
   -e force_rebuild=False \
   -e serve_tiles=True \
-  ghcr.io/gis-ops/docker-valhalla/valhalla:latest
+  ghcr.io/valhalla/valhalla-scripted:3.9.1
 ```
 
 Alternativ im Projekt mit Skript:
