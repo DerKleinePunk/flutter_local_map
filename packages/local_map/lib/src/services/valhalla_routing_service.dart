@@ -16,19 +16,28 @@ class ValhallaRoutingService implements RoutingProvider {
   /// antwortet Valhalla englisch.
   final String language;
 
-  ValhallaRoutingService({Dio? dio, Uri? baseUri, this.language = 'de-DE'})
-    : _dio =
-          dio ??
-          Dio(
-            BaseOptions(
-              connectTimeout: const Duration(seconds: 5),
-              receiveTimeout: const Duration(seconds: 10),
-              sendTimeout: const Duration(seconds: 10),
-              contentType: Headers.jsonContentType,
-              responseType: ResponseType.json,
-            ),
-          ),
-      _baseUri = baseUri ?? Uri.parse('http://127.0.0.1:8002');
+  /// Ob Valhalla zu jedem Manöver die Spuren mitliefern soll
+  /// ([RoutingManeuver.lanes]). Valhalla tut das nur auf Anforderung
+  /// (`turn_lanes: true`), sonst bleiben die Spuren still leer.
+  final bool fetchLanes;
+
+  ValhallaRoutingService({
+    Dio? dio,
+    Uri? baseUri,
+    this.language = 'de-DE',
+    this.fetchLanes = true,
+  }) : _dio =
+           dio ??
+           Dio(
+             BaseOptions(
+               connectTimeout: const Duration(seconds: 5),
+               receiveTimeout: const Duration(seconds: 10),
+               sendTimeout: const Duration(seconds: 10),
+               contentType: Headers.jsonContentType,
+               responseType: ResponseType.json,
+             ),
+           ),
+       _baseUri = baseUri ?? Uri.parse('http://127.0.0.1:8002');
 
   /// Adresse des Servers, für Meldungen an den Benutzer.
   Uri get baseUri => _baseUri;
@@ -65,6 +74,7 @@ class ValhallaRoutingService implements RoutingProvider {
       ],
       'costing': costing,
       'directions_options': {'units': units, 'language': language},
+      if (fetchLanes) 'turn_lanes': true,
     };
 
     return _post('/route', requestBody);
@@ -112,6 +122,7 @@ class ValhallaRoutingService implements RoutingProvider {
           'costing': costing,
           'shape_match': 'map_snap',
           'directions_options': {'units': units, 'language': language},
+          if (fetchLanes) 'turn_lanes': true,
         }),
       );
     }
@@ -239,6 +250,7 @@ class ValhallaRoutingService implements RoutingProvider {
               verbalPost: _text(
                 maneuverRaw['verbal_post_transition_instruction'],
               ),
+              lanes: lanesFromValhalla(maneuverRaw['lanes']),
             ),
           );
         }
@@ -397,6 +409,7 @@ RoutingResult joinRoutes(List<RoutingResult> pieces) {
           verbalAlert: m.verbalAlert,
           verbalPre: m.verbalPre,
           verbalPost: m.verbalPost,
+          lanes: m.lanes,
         ),
       );
     }
@@ -407,6 +420,30 @@ RoutingResult joinRoutes(List<RoutingResult> pieces) {
     durationSeconds: durationSeconds,
     maneuvers: maneuvers,
   );
+}
+
+/// Die Spuren eines Manövers aus Valhallas `lanes` (nur mit
+/// `turn_lanes: true` in der Anfrage). Je Spur kommen drei Masken:
+/// `directions` (alle Pfeile), `valid` (Pfeile, die zur Route passen - man
+/// muss danach aber unter Umständen noch einmal wechseln) und `active`
+/// (dies ist die richtige Spur). Eine Spur ohne Pfeil fällt weg.
+List<RoutingLane> lanesFromValhalla(Object? raw) {
+  if (raw is! List) return const <RoutingLane>[];
+  final lanes = <RoutingLane>[];
+  for (final lane in raw.whereType<Map<String, dynamic>>()) {
+    final directions = lane['directions'];
+    if (directions is! int || directions == 0) continue;
+    final valid = lane['valid'] is int ? lane['valid'] as int : 0;
+    final active = lane['active'] is int ? lane['active'] as int : 0;
+    lanes.add(
+      RoutingLane.fromMasks(
+        directions: directions,
+        valid: valid,
+        active: active,
+      ),
+    );
+  }
+  return lanes;
 }
 
 /// Ein nicht leerer Text aus der Antwort, sonst `null`.

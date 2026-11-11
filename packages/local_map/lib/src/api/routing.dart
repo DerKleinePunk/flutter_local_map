@@ -13,6 +13,77 @@ class RoutingPoint {
   LatLng toLatLng() => LatLng(lat, lon);
 }
 
+/// Eine Fahrspur vor einem Manöver, von links nach rechts gezählt.
+///
+/// Stammt aus `turn:lanes` in OSM. Die Pfeile haben die OSRM-Schreibweise:
+/// `straight`, `slight right`, `right`, `sharp right`, `uturn`,
+/// `sharp left`, `left`, `slight left`, `merge to left`, `merge to right`
+/// oder `none` (Spur ohne Pfeil).
+class RoutingLane {
+  /// Pfeile auf der Spur, wie auf der Fahrbahn markiert.
+  final List<String> indications;
+
+  /// Von der Spur aus lässt sich das Manöver fahren - unter Umständen
+  /// aber nur mit einem weiteren Spurwechsel danach.
+  final bool valid;
+
+  /// Die richtige Spur: Wer hier fährt, kommt ohne weiteren Wechsel durch.
+  /// Hebt eine Anzeige nur eine Sorte hervor, dann diese.
+  final bool active;
+
+  /// Der Pfeil, dem die Route auf dieser Spur folgt, wenn sie [valid] ist
+  /// und mehrere Pfeile trägt. Sonst `null`.
+  final String? validIndication;
+
+  const RoutingLane({
+    required this.indications,
+    required this.valid,
+    this.active = false,
+    this.validIndication,
+  });
+
+  /// Eine Spur aus Valhallas drei Bitmasken ([valhallaLaneBits]):
+  /// `directions` (alle Pfeile), `valid` (Pfeile, die zur Route passen -
+  /// man muss danach aber unter Umständen noch einmal wechseln) und `active`
+  /// (die richtige Spur). Für Gastgeber, die die Masken roh weiterreichen,
+  /// etwa über ein eigenes Backend.
+  factory RoutingLane.fromMasks({
+    required int directions,
+    int valid = 0,
+    int active = 0,
+  }) {
+    final followed = laneIndications(active != 0 ? active : valid);
+    return RoutingLane(
+      indications: laneIndications(directions),
+      valid: valid != 0 || active != 0,
+      active: active != 0,
+      validIndication: followed.length == 1 ? followed.single : null,
+    );
+  }
+}
+
+/// Valhallas Bits für die Pfeile einer Spur, in der Reihenfolge, in der sie
+/// in [RoutingLane.indications] stehen (OSRM-Schreibweise).
+const Map<int, String> valhallaLaneBits = {
+  1: 'none',
+  2: 'straight',
+  4: 'sharp left',
+  8: 'left',
+  16: 'slight left',
+  32: 'slight right',
+  64: 'right',
+  128: 'sharp right',
+  256: 'uturn',
+  512: 'merge to left',
+  1024: 'merge to right',
+};
+
+/// Die Pfeile einer Valhalla-Bitmaske.
+List<String> laneIndications(int mask) => [
+  for (final e in valhallaLaneBits.entries)
+    if (mask & e.key != 0) e.value,
+];
+
 /// Einzelnes Turn-by-Turn-Manöver einer Route.
 class RoutingManeuver {
   final String instruction;
@@ -42,6 +113,10 @@ class RoutingManeuver {
   final String? verbalPre;
   final String? verbalPost;
 
+  /// Die Spuren vor dem Manöver, von links nach rechts. Leer, wenn die
+  /// Kreuzung keine Spurangabe hat oder der Anbieter keine liefert.
+  final List<RoutingLane> lanes;
+
   const RoutingManeuver({
     required this.instruction,
     required this.lengthKm,
@@ -52,6 +127,7 @@ class RoutingManeuver {
     this.verbalAlert,
     this.verbalPre,
     this.verbalPost,
+    this.lanes = const <RoutingLane>[],
   });
 }
 
