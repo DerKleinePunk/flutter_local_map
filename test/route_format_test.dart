@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:local_map/local_map.dart';
 import 'package:map_local/route_format.dart';
 
 void main() {
@@ -22,5 +23,36 @@ void main() {
     expect(formatArrival(289 * 60, now: now), 'Ankunft 22:20');
     expect(formatArrival(7 * 3600, now: now), 'Ankunft morgen 00:31');
     expect(formatArrival(40 * 3600, now: now), 'Ankunft 28.9. 09:31');
+  });
+
+  test('Stau voraus, mittendrin und Vollsperrung', () {
+    RouteTrafficSpan span({
+      TrafficSeverity severity = TrafficSeverity.heavy,
+      int delay = 16 * 60,
+    }) => RouteTrafficSpan(
+      incident: const TrafficIncident(
+        id: 'x',
+        kind: TrafficIncidentKind.jam,
+        road: 'A3',
+        title: 'A3',
+      ),
+      startMeters: 12000,
+      endMeters: 14400,
+      points: const [],
+      severity: severity,
+      delaySeconds: delay,
+    );
+    expect(formatTrafficSpan(span()), 'Stau 2,4 km • +16 min • in 12 km');
+    expect(
+      formatTrafficSpan(span(), traveledMeters: 13600),
+      'Stau noch 800 m • +5 min',
+    );
+    expect(
+      formatTrafficSpan(
+        span(severity: TrafficSeverity.closed, delay: 0),
+        traveledMeters: 8800,
+      ),
+      'Vollsperrung • in 3,2 km',
+    );
   });
 }

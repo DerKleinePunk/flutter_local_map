@@ -280,6 +280,55 @@ Hell sind nur die `active` Spuren – wer dort fährt, kommt ohne weiteren
 Wechsel durch. Gibt es keine, die `valid`. Wann die Leiste zu sehen ist,
 entscheidet der Gastgeber.
 
+### Verkehr (Staus, Sperrungen, Baustellen)
+
+Mit einem `TrafficProvider` holt der Controller zu jeder Route die
+Meldungen entlang der Strecke, gleich nach dem Berechnen und dann alle
+`TrafficPolicy.refreshInterval` (5 min). `AutobahnTrafficService` fragt
+dafür die offene Schnittstelle der Autobahn GmbH
+(`verkehr.autobahn.de`, ohne Schlüssel). Sie braucht Netz und kennt nur
+deutsche Autobahnen.
+
+```dart
+final traffic = AutobahnTrafficService();
+final map = LocalMapController(
+  routingProvider: routing,
+  trafficProvider: traffic,
+);
+
+// Ankunft mit Stau: gemeldeter Verlust vor der eigenen Position.
+final eta = map.progress!.remainingSeconds + map.trafficDelaySeconds;
+final next = map.routeTraffic?.nextSpan(map.progress!.traveledMeters);
+```
+
+Ein eigener `TrafficProvider` bekommt die Route (`incidentsAlong`) und
+entscheidet selbst, ob er nach Straßen oder nach Gebiet fragt.
+`CombinedTrafficProvider` fragt mehrere gleichzeitig. Meldet mehr als eine
+Quelle denselben Stau, zählt er einmal: Decken sich zwei Abschnitte zu
+mehr als der Hälfte, bleibt der schwerere.
+
+- **Welche Autobahnen:** aus den Straßennamen der Manöver (`A 3` in OSM),
+  `autobahnsOnRoute`. Höchstens 8 je Abruf, nacheinander gefragt.
+- **Staus und Vollsperrungen** (`RouteTraffic.spans`) zählen nur in
+  Fahrtrichtung: ihre Linie muss entlang der Route vorwärts laufen. Die
+  Gegenfahrbahn liegt keine 30 m daneben, ihre Staus laufen rückwärts.
+  `MapView` färbt das Stück der Route nach `TrafficSeverity`: gelb
+  zähfließend, orange ab 5 min oder Stau, rot ab 15 min oder Stillstand,
+  dunkelrot gesperrt (Farben in `MapLayerStyle`).
+- **Zeitverlust** nur, wo die Quelle einen meldet (`delayTimeValue`);
+  geschätzt wird nicht. Fährt die Route nur einen Teil des Staus, zählt
+  der Teil, mittendrin der Rest.
+- **Baustellen, Warnungen, gesperrte Ausfahrten** (`RouteTraffic.notices`)
+  haben keine verlässliche Richtung. Sie erscheinen als Symbol an der
+  Route und können auch die Gegenfahrbahn meinen
+  (`MapLayerStyle.showTrafficNotices`).
+- **Ausfälle:** `RouteTraffic.report.sources` sagt je Autobahn `fresh`,
+  `cached` (Abruf gescheitert, älterer Stand bis 6 h) oder `failed` –
+  eine leere Liste heißt dann nicht „frei“.
+
+Der Verkehr geht nicht in Valhalla ein: Die Route bleibt dieselbe, nur
+Anzeige und Ankunftszeit berücksichtigen ihn.
+
 ### Texte
 
 `PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre
@@ -375,15 +424,20 @@ die das Skript seit September 2026 anlegt. Mit einer älteren Datenbank bleibt
 - **Steuerung:** `LocalMapController`, `MapLayerStyle`
 - **Navigation:** `RouteTracker`, `RouteProgress`, `HeadingFilter`,
   `OffRoutePolicy`, `OffRouteDetector`, `ManeuverAnnouncer`,
-  `AnnouncementPolicy`, `AnnouncementTexts`, `AnnouncementEvent`
+  `AnnouncementPolicy`, `AnnouncementTexts`, `AnnouncementEvent`,
+  `RouteTraffic`, `RouteTrafficSpan`, `RouteTrafficNotice`,
+  `TrafficPolicy`, `TrafficSeverity`, `autobahnsOnRoute`
 - **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`,
-  `ReverseGeocoder` mit `LocationName`
+  `ReverseGeocoder` mit `LocationName`, `TrafficProvider` mit
+  `TrafficReport`, `TrafficSourceStatus`, `TrafficIncident`,
+  `CombinedTrafficProvider`
 - **Widgets:** `MapView`, `DownloadOverlay`, `PlaceSearchBar`,
   `StorageSettingsDialog`, `LaneGuidance`, dazu ihre Texte
   `DownloadOverlayTexts`, `PlaceSearchTexts`, `StorageSettingsTexts` und
   `DownloadStatus`
 - **Services:** `MapDownloader`, `StoragePreferences`, `OfflineGeocoder`,
-  `ValhallaRoutingService`, `GpsNmeaSimulatorService`, `MapErrorHandler`
+  `ValhallaRoutingService`, `AutobahnTrafficService`,
+  `GpsNmeaSimulatorService`, `MapErrorHandler`
 - **Modelle:** `GeocoderResult`, `RoutingResult`, `RoutingManeuver`,
   `RoutingLane` (mit `valhallaLaneBits`, `laneIndications`), `RoutingPoint`,
   `PositionFix`, `SimulatedGpsFix`, `MapError`, `MapErrorCategory`,

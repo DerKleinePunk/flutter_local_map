@@ -4,6 +4,26 @@
 /// Gastgeber, weil er die Sprache kennt. Diese hier sind deutsch.
 library;
 
+import 'package:local_map/local_map.dart';
+
+/// "Stau 2,4 km • +16 min • in 12 km", "Vollsperrung • in 3,2 km", mitten
+/// im Stau "Stau noch 800 m • +4 min".
+String formatTrafficSpan(RouteTrafficSpan span, {double traveledMeters = 0}) {
+  final inside = traveledMeters >= span.startMeters;
+  final closed = span.severity == TrafficSeverity.closed;
+  final rest = inside ? span.endMeters - traveledMeters : span.lengthMeters;
+  final delay = span.delayAheadSeconds(traveledMeters);
+  return [
+    closed
+        ? 'Vollsperrung'
+        : inside
+        ? 'Stau noch ${formatDistance(rest)}'
+        : 'Stau ${formatDistance(rest)}',
+    if (delay >= 60) '+${formatDuration(delay)}',
+    if (!inside) 'in ${formatDistance(span.startMeters - traveledMeters)}',
+  ].join(' • ');
+}
+
 /// "35 min", "4 h 49 min", "2 h" - nie "289 min".
 String formatDuration(num seconds) {
   final minutes = (seconds / 60).round();

@@ -35,6 +35,10 @@ class _MapScreenState extends State<MapScreen> {
   late final ValhallaRoutingService _routing;
   late final LocalMapController _map;
 
+  /// Staus und Sperrungen der Autobahn GmbH. Braucht Netz; ohne bleibt die
+  /// Route einfach ohne Verkehr.
+  final AutobahnTrafficService _traffic = AutobahnTrafficService();
+
   bool _geocoderReady = false;
   bool _matchingTour = false;
   int _gpsLoadedFixes = 0;
@@ -58,6 +62,7 @@ class _MapScreenState extends State<MapScreen> {
     _routing = ValhallaRoutingService(baseUri: widget.config.valhallaBaseUri);
     _map = LocalMapController(
       routingProvider: _routing,
+      trafficProvider: _traffic,
       reverseGeocoder: _geocoder,
       positionSource: _gpsSimulator,
       mapController: widget.mapController,
@@ -69,6 +74,7 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     _map.dispose();
+    _traffic.close();
     _gpsSimulator.dispose();
     _geocoder.close();
     super.dispose();
@@ -329,7 +335,11 @@ class _MapScreenState extends State<MapScreen> {
           bottom: 16,
           left: 200,
           right: 200,
-          child: _ManeuverCard(progress: _map.progress!),
+          child: _ManeuverCard(
+            progress: _map.progress!,
+            trafficDelaySeconds: _map.trafficDelaySeconds,
+            nextJam: _map.routeTraffic?.nextSpan(_map.progress!.traveledMeters),
+          ),
         )
       else if (_map.route == null && _map.locationName != null)
         Positioned(
@@ -404,7 +414,8 @@ class _MapScreenState extends State<MapScreen> {
         icon: Icons.route,
         label:
             '${formatDistance(route.distanceMeters)} • '
-            '${formatDuration(route.durationSeconds)}'
+            '${formatDuration(route.durationSeconds + _map.trafficDelaySeconds)}'
+            '${_map.trafficDelaySeconds >= 60 ? ' (+${formatDuration(_map.trafficDelaySeconds)} Stau)' : ''}'
             '${_map.rerouteCount > 0 ? ' • neu berechnet ${_map.rerouteCount}x' : ''}',
         tone: _Tone.primary,
       );
@@ -608,9 +619,19 @@ class _ZoomBadge extends StatelessWidget {
 /// Ankunftszeit. Kurz vor einem Manöver mit Spurangabe stehen die Spuren
 /// darüber.
 class _ManeuverCard extends StatelessWidget {
-  const _ManeuverCard({required this.progress});
+  const _ManeuverCard({
+    required this.progress,
+    this.trafficDelaySeconds = 0,
+    this.nextJam,
+  });
 
   final RouteProgress progress;
+
+  /// Zeitverlust durch Staus voraus, geht in Restzeit und Ankunft ein.
+  final int trafficDelaySeconds;
+
+  /// Der nächste Stau oder die nächste Sperrung auf der Route.
+  final RouteTrafficSpan? nextJam;
 
   /// Ab dieser Entfernung zum Manöver zeigt die Karte die Spuren - etwa
   /// so weit vorher, wie auf der Autobahn die ersten Wegweiser stehen.
@@ -673,12 +694,32 @@ class _ManeuverCard extends StatelessWidget {
               ),
               Text(
                 'noch ${formatDistance(progress.remainingMeters)} • '
-                '${formatDuration(progress.remainingSeconds)} • '
-                '${formatArrival(progress.remainingSeconds)}',
+                '${formatDuration(progress.remainingSeconds + trafficDelaySeconds)} • '
+                '${formatArrival(progress.remainingSeconds + trafficDelaySeconds)}',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+                  // Ab 15 min Verlust rot, ab 1 min gelb - wie die Linie.
+                  color: trafficDelaySeconds >= 15 * 60
+                      ? const Color(0xFFD32F2F)
+                      : trafficDelaySeconds >= 60
+                      ? const Color(0xFFB08800)
+                      : colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (nextJam != null)
+                Text(
+                  formatTrafficSpan(
+                    nextJam!,
+                    traveledMeters: progress.traveledMeters,
+                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const MapLayerStyle().trafficColor(
+                      nextJam!.severity,
+                    ),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
             ],
           ),
         ),

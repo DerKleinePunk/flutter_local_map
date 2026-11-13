@@ -13,6 +13,7 @@ export 'src/api/place_search.dart';
 export 'src/api/reverse_geocoder.dart';
 export 'src/api/position.dart';
 export 'src/api/routing.dart';
+export 'src/api/traffic.dart';
 
 export 'src/config/map_config.dart';
 export 'src/controller/local_map_controller.dart';
@@ -20,8 +21,10 @@ export 'src/navigation/announcer.dart';
 export 'src/navigation/heading_filter.dart';
 export 'src/navigation/off_route.dart';
 export 'src/navigation/route_progress.dart';
+export 'src/navigation/route_traffic.dart';
 export 'src/services/gps_nmea_simulator_service.dart';
 export 'src/services/map_downloader.dart';
+export 'src/services/autobahn_traffic_service.dart';
 export 'src/services/map_error_handler.dart';
 export 'src/services/offline_geocoder.dart';
 export 'src/services/valhalla_routing_service.dart';

@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.10.0
+
+- **Verkehr auf der Route.** `LocalMapController(trafficProvider: ...)`
+  holt zu jeder Route Staus, Sperrungen und Baustellen ihrer Autobahnen,
+  danach alle 5 min (`TrafficPolicy`). Ergebnis in `routeTraffic`; der
+  gemeldete Zeitverlust vor der eigenen Position in `trafficDelaySeconds`
+  – zu `RouteProgress.remainingSeconds` addiert die Ankunft mit Stau.
+  Ohne `trafficProvider` ändert sich nichts.
+- **`AutobahnTrafficService`** fragt die offene Schnittstelle der Autobahn
+  GmbH (`verkehr.autobahn.de`, ohne Schlüssel): je Autobahn `warning`,
+  `closure`, `roadworks`, nacheinander, 6 s Zeitgrenze. Zwischenspeicher
+  5 min frisch, bei Ausfall bis 6 h als Ersatz; je Straße steht im
+  `TrafficReport`, ob die Daten frisch, alt oder fehlend sind.
+  Angekündigte Meldungen (`future`) nur mit `includePlanned`.
+- **`RouteTraffic.match`** ordnet Staus und Vollsperrungen der Route nur in
+  Fahrtrichtung zu, Staus der Gegenfahrbahn fallen weg. Fährt die Route nur
+  einen Teil eines Staus, zählt der Teil. Baustellen und Warnungen ohne
+  Richtung werden zu `notices`.
+- **`MapView`** färbt Staus auf der Route (gelb/orange/rot, gesperrt
+  dunkelrot; Farben in `MapLayerStyle`) und zeigt Baustellen und
+  Warnungen als Symbole (`showTrafficNotices`).
+- **`CombinedTrafficProvider`** fragt mehrere Quellen gleichzeitig;
+  `RouteTraffic.match` zählt denselben Stau aus zwei Quellen nur einmal
+  (der schwerere bleibt).
+- `TrafficProvider.incidentsAlong(route)` bekommt die Route; der Anbieter
+  entscheidet, ob er nach Straßen oder Gebiet fragt.
+  `TrafficReport.sources` (`TrafficSourceStatus`) nennt den Stand je
+  Autobahn oder Zelle.
+- Der Verkehr geht nicht in Valhalla ein; die Route selbst bleibt gleich.
+
 ## 0.9.0
 
 - **Spurempfehlung.** Jedes `RoutingManeuver` trägt `lanes`: die Spuren vor
