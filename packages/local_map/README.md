@@ -280,6 +280,106 @@ Hell sind nur die `active` Spuren – wer dort fährt, kommt ohne weiteren
 Wechsel durch. Gibt es keine, die `valid`. Wann die Leiste zu sehen ist,
 entscheidet der Gastgeber.
 
+### Verkehr (Staus, Sperrungen, Baustellen)
+
+Mit einem `TrafficProvider` holt der Controller zu jeder Route die
+Meldungen entlang der Strecke, gleich nach dem Berechnen und dann alle
+`TrafficPolicy.refreshInterval` (5 min). `AutobahnTrafficService` fragt
+dafür die offene Schnittstelle der Autobahn GmbH
+(`verkehr.autobahn.de`, ohne Schlüssel). Sie braucht Netz und kennt nur
+deutsche Autobahnen.
+
+```dart
+final traffic = AutobahnTrafficService();
+final map = LocalMapController(
+  routingProvider: routing,
+  trafficProvider: traffic,
+);
+
+// Ankunft mit Stau: gemeldeter Verlust vor der eigenen Position.
+final eta = map.progress!.remainingSeconds + map.trafficDelaySeconds;
+final next = map.routeTraffic?.nextSpan(map.progress!.traveledMeters);
+```
+
+Ein eigener `TrafficProvider` bekommt die Route (`incidentsAlong`) und
+entscheidet selbst, ob er nach Straßen oder nach Gebiet fragt.
+`CombinedTrafficProvider` fragt mehrere gleichzeitig. Meldet mehr als eine
+Quelle denselben Stau, zählt er einmal: Decken sich zwei Abschnitte zu
+mehr als der Hälfte, bleibt der schwerere.
+
+- **Welche Autobahnen:** aus den Straßennamen der Manöver (`A 3` in OSM),
+  `autobahnsOnRoute`. Höchstens 8 je Abruf, nacheinander gefragt.
+- **Staus und Vollsperrungen** (`RouteTraffic.spans`) zählen nur in
+  Fahrtrichtung: ihre Linie muss entlang der Route vorwärts laufen. Die
+  Gegenfahrbahn liegt keine 30 m daneben, ihre Staus laufen rückwärts.
+  `MapView` färbt das Stück der Route nach `TrafficSeverity`: gelb
+  zähfließend, orange ab 5 min oder Stau, rot ab 15 min oder Stillstand,
+  dunkelrot gesperrt (Farben in `MapLayerStyle`).
+- **Zeitverlust** nur, wo die Quelle einen meldet (`delayTimeValue`);
+  geschätzt wird nicht. Fährt die Route nur einen Teil des Staus, zählt
+  der Teil, mittendrin der Rest.
+- **Baustellen, Warnungen, gesperrte Ausfahrten** (`RouteTraffic.notices`)
+  haben keine verlässliche Richtung. Sie erscheinen als Symbol an der
+  Route und können auch die Gegenfahrbahn meinen
+  (`MapLayerStyle.showTrafficNotices`).
+- **Ausfälle:** `RouteTraffic.report.sources` sagt je Autobahn `fresh`,
+  `cached` (Abruf gescheitert, älterer Stand bis 6 h) oder `failed` –
+  eine leere Liste heißt dann nicht „frei“.
+
+Der Verkehr geht nicht in Valhalla ein: Die Route bleibt dieselbe, nur
+Anzeige und Ankunftszeit berücksichtigen ihn.
+
+#### DATEX II (Länder, Mobilithek)
+
+`Datex2TrafficService` liest Verkehrsmeldungen im Format DATEX II (v2 und
+v3) aus einer Quelle, die der Gastgeber einstellt. Er holt jeweils den
+ganzen Stand eines Gebiets und behält die Meldungen in `corridorMeters`
+(2 km) um die Route. Zusammen mit der Autobahn GmbH:
+
+```dart
+final traffic = CombinedTrafficProvider([
+  AutobahnTrafficService(),
+  Datex2TrafficService(
+    name: 'MobiData BW',
+    uri: Uri.parse(
+      'https://api.mobidata-bw.de/datasets/traffic/incidents/incidents_lmsbw.datex2.xml',
+    ),
+  ),
+]);
+```
+
+Ein Abo der Mobilithek braucht ihr Maschinenzertifikat (`.p12`):
+
+```dart
+Datex2TrafficService.withClientCertificate(
+  name: 'Hessen Mobil',
+  uri: Datex2TrafficService.mobilithekV3('<Abo-ID>'), // v2: mobilithekV2
+  pkcs12: File('/etc/carnine/mobilithek.p12').readAsBytesSync(),
+  password: kennwort,
+);
+```
+
+- **Gelesen** werden Staus (`AbnormalTraffic` mit Art), Sperrungen
+  (`roadClosed`/`carriagewayClosures` sperren ganz, Fahrstreifen und
+  Rampen nicht), Baustellen und Warnungen (Unfall, Hindernis, Wetter).
+  Umleitungen und Hinweise der Leitzentrale allein ergeben keine Meldung.
+- **Ort** aus `locationForDisplay`/`coordinatesForDisplay` und der Linie
+  (`gmlLineString`, `linearByCoordinates`, TPEG-Endpunkte). Meldungen, die
+  ihren Ort nur als ALERT-C-Code nennen, fallen weg.
+- **Richtung:** Eine Situation in beiden Richtungen kommt als zwei Records
+  mit gegenläufiger Linie und wird zu zwei Meldungen. Staus und
+  Vollsperrungen sind gerichtet, außer die Quelle sagt `bothDirections`.
+- **Straße** aus `roadNumber` (v3), sonst aus dem Text (`A5 Karlsruhe
+  Richtung Basel` → `A5`, Richtung `Basel`).
+- **Abruf** mit `Accept-Encoding: gzip` und `If-Modified-Since`; 204/304
+  behalten den alten Stand, ein Fehler gibt ihn bis `keepFor` als
+  `cached` weiter. Ein Land sind 1–2 MB XML; gelesen wird in einem
+  eigenen Isolate.
+
+Die Demo-App nimmt eine DATEX-II-Quelle aus der Umgebung:
+`LOCAL_MAP_DATEX2_URL`, `LOCAL_MAP_DATEX2_NAME`, `LOCAL_MAP_DATEX2_P12`,
+`LOCAL_MAP_DATEX2_P12_PASSWORD`.
+
 ### Texte
 
 `PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre
@@ -375,15 +475,21 @@ die das Skript seit September 2026 anlegt. Mit einer älteren Datenbank bleibt
 - **Steuerung:** `LocalMapController`, `MapLayerStyle`
 - **Navigation:** `RouteTracker`, `RouteProgress`, `HeadingFilter`,
   `OffRoutePolicy`, `OffRouteDetector`, `ManeuverAnnouncer`,
-  `AnnouncementPolicy`, `AnnouncementTexts`, `AnnouncementEvent`
+  `AnnouncementPolicy`, `AnnouncementTexts`, `AnnouncementEvent`,
+  `RouteTraffic`, `RouteTrafficSpan`, `RouteTrafficNotice`,
+  `TrafficPolicy`, `TrafficSeverity`, `autobahnsOnRoute`
 - **Schnittstellen:** `RoutingProvider`, `PositionSource`, `PlaceSearch`,
-  `ReverseGeocoder` mit `LocationName`
+  `ReverseGeocoder` mit `LocationName`, `TrafficProvider` mit
+  `TrafficReport`, `TrafficSourceStatus`, `TrafficIncident`,
+  `CombinedTrafficProvider`
 - **Widgets:** `MapView`, `DownloadOverlay`, `PlaceSearchBar`,
   `StorageSettingsDialog`, `LaneGuidance`, dazu ihre Texte
   `DownloadOverlayTexts`, `PlaceSearchTexts`, `StorageSettingsTexts` und
   `DownloadStatus`
 - **Services:** `MapDownloader`, `StoragePreferences`, `OfflineGeocoder`,
-  `ValhallaRoutingService`, `GpsNmeaSimulatorService`, `MapErrorHandler`
+  `ValhallaRoutingService`, `AutobahnTrafficService`,
+  `Datex2TrafficService`,
+  `GpsNmeaSimulatorService`, `MapErrorHandler`
 - **Modelle:** `GeocoderResult`, `RoutingResult`, `RoutingManeuver`,
   `RoutingLane` (mit `valhallaLaneBits`, `laneIndications`), `RoutingPoint`,
   `PositionFix`, `SimulatedGpsFix`, `MapError`, `MapErrorCategory`,

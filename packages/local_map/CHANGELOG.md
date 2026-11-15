@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.11.0
+
+- **`Datex2TrafficService`**: Verkehrsmeldungen im europäischen Format
+  DATEX II (v2 und v3, `SituationPublication`, auch im `messageContainer`
+  oder SOAP-Umschlag) aus einer einstellbaren Quelle – Länderdaten wie
+  MobiData BW oder ein Abo der Mobilithek. Staus (mit Stufe und Verlust),
+  Sperrungen, Baustellen, Unfälle und andere Warnungen, je Situation und
+  Fahrtrichtung eine Meldung. Nur Meldungen mit Koordinaten; reine
+  ALERT-C-Ortsangaben fallen weg.
+- Einstellbar: Adresse, Kopfzeilen, Abrufabstand (`freshFor`, 2 min),
+  Ersatzdauer (`keepFor`, 6 h), Korridor um die Route (`corridorMeters`,
+  2 km), angekündigte Meldungen (`includePlanned`).
+  `Datex2TrafficService.withClientCertificate` nimmt ein `.p12`
+  (Maschinenzertifikat der Mobilithek) für gegenseitiges TLS;
+  `mobilithekV2`/`mobilithekV3` bauen die Abruf-Adresse eines Abos.
+- Abruf mit `Accept-Encoding: gzip` und `If-Modified-Since`; 204/304
+  behalten den alten Stand. Gelesen wird in einem eigenen Isolate.
+- Neue Abhängigkeit: `xml` (>=6.5 <8).
+
+## 0.10.0
+
+- **Verkehr auf der Route.** `LocalMapController(trafficProvider: ...)`
+  holt zu jeder Route Staus, Sperrungen und Baustellen ihrer Autobahnen,
+  danach alle 5 min (`TrafficPolicy`). Ergebnis in `routeTraffic`; der
+  gemeldete Zeitverlust vor der eigenen Position in `trafficDelaySeconds`
+  – zu `RouteProgress.remainingSeconds` addiert die Ankunft mit Stau.
+  Ohne `trafficProvider` ändert sich nichts.
+- **`AutobahnTrafficService`** fragt die offene Schnittstelle der Autobahn
+  GmbH (`verkehr.autobahn.de`, ohne Schlüssel): je Autobahn `warning`,
+  `closure`, `roadworks`, nacheinander, 6 s Zeitgrenze. Zwischenspeicher
+  5 min frisch, bei Ausfall bis 6 h als Ersatz; je Straße steht im
+  `TrafficReport`, ob die Daten frisch, alt oder fehlend sind.
+  Angekündigte Meldungen (`future`) nur mit `includePlanned`.
+- **`RouteTraffic.match`** ordnet Staus und Vollsperrungen der Route nur in
+  Fahrtrichtung zu, Staus der Gegenfahrbahn fallen weg. Fährt die Route nur
+  einen Teil eines Staus, zählt der Teil. Baustellen und Warnungen ohne
+  Richtung werden zu `notices`.
+- **`MapView`** färbt Staus auf der Route (gelb/orange/rot, gesperrt
+  dunkelrot; Farben in `MapLayerStyle`) und zeigt Baustellen und
+  Warnungen als Symbole (`showTrafficNotices`).
+- **`CombinedTrafficProvider`** fragt mehrere Quellen gleichzeitig;
+  `RouteTraffic.match` zählt denselben Stau aus zwei Quellen nur einmal
+  (der schwerere bleibt).
+- `TrafficProvider.incidentsAlong(route)` bekommt die Route; der Anbieter
+  entscheidet, ob er nach Straßen oder Gebiet fragt.
+  `TrafficReport.sources` (`TrafficSourceStatus`) nennt den Stand je
+  Autobahn oder Zelle.
+- Der Verkehr geht nicht in Valhalla ein; die Route selbst bleibt gleich.
+
 ## 0.9.0
 
 - **Spurempfehlung.** Jedes `RoutingManeuver` trägt `lanes`: die Spuren vor

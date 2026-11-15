@@ -14,7 +14,9 @@ import 'package:vector_map_tiles/vector_map_tiles.dart';
 import 'package:vector_map_tiles_mbtiles/vector_map_tiles_mbtiles.dart';
 import 'package:vector_tile_renderer/vector_tile_renderer.dart' as vtr;
 import '../api/position.dart';
+import '../api/traffic.dart';
 import '../config/map_config.dart';
+import '../navigation/route_traffic.dart';
 import 'map_attribution.dart';
 import '../controller/local_map_controller.dart';
 import '../services/map_camera_bounds.dart';
@@ -42,6 +44,19 @@ class MapLayerStyle {
   /// Stils wählen.
   final Color? backgroundColor;
 
+  /// Farben der Staus auf der Route ([LocalMapController.routeTraffic]),
+  /// nach [TrafficSeverity]: zähfließend, Stau, ab 15 min oder Stillstand,
+  /// gesperrt.
+  final Color trafficLightColor;
+  final Color trafficModerateColor;
+  final Color trafficHeavyColor;
+  final Color trafficClosedColor;
+
+  /// Baustellen, Warnungen und gesperrte Ausfahrten als Symbole an der
+  /// Route. Sie haben keine Richtung und können auch die Gegenfahrbahn
+  /// betreffen.
+  final bool showTrafficNotices;
+
   const MapLayerStyle({
     this.routeColor,
     this.routeWidth = 5,
@@ -51,7 +66,20 @@ class MapLayerStyle {
     this.destinationColor,
     this.highlightColor,
     this.backgroundColor,
+    this.trafficLightColor = const Color(0xFFF2C200),
+    this.trafficModerateColor = const Color(0xFFF07F00),
+    this.trafficHeavyColor = const Color(0xFFD32F2F),
+    this.trafficClosedColor = const Color(0xFF6A1B1B),
+    this.showTrafficNotices = true,
   });
+
+  /// Die Farbe für [severity].
+  Color trafficColor(TrafficSeverity severity) => switch (severity) {
+    TrafficSeverity.light => trafficLightColor,
+    TrafficSeverity.moderate => trafficModerateColor,
+    TrafficSeverity.heavy => trafficHeavyColor,
+    TrafficSeverity.closed => trafficClosedColor,
+  };
 }
 
 /// Die Karte: Kacheln aus einer MBTiles-Datei und darüber, was der
@@ -1139,6 +1167,8 @@ class _MapViewState extends State<MapView>
         // neue GPS-Position nur den Positionspfeil neu, nicht die Kacheln.
         _overlay(_buildHighlightLayer),
         _overlay(_buildRouteLayer),
+        _overlay(_buildTrafficLayer),
+        _overlay(_buildTrafficNoticeLayer),
         _overlay(_buildEndpointLayer),
         // Haengt an der Ueberblendung, nicht am Controller.
         _buildPositionLayer(context),
@@ -1235,6 +1265,53 @@ class _MapViewState extends State<MapView>
     );
   }
 
+  /// Staus und Sperrungen färben das betroffene Stück der Route, etwas
+  /// schmaler als die Route selbst, damit deren Farbe am Rand bleibt.
+  /// Darüber die Meldungen ohne Richtung als kleine Symbole.
+  Widget _buildTrafficLayer(BuildContext context) {
+    final traffic = _controller.routeTraffic;
+    if (traffic == null ||
+        traffic.spans.isEmpty ||
+        _controller.routePoints.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final style = widget.layerStyle;
+    return PolylineLayer(
+      polylines: [
+        for (final span in traffic.spans)
+          Polyline(
+            points: span.points,
+            strokeWidth: math.max(2, style.routeWidth - 1),
+            color: style.trafficColor(span.severity),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildTrafficNoticeLayer(BuildContext context) {
+    final traffic = _controller.routeTraffic;
+    if (traffic == null ||
+        traffic.notices.isEmpty ||
+        !widget.layerStyle.showTrafficNotices ||
+        _controller.routePoints.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    return MarkerLayer(
+      markers: [
+        for (final notice in traffic.notices)
+          Marker(
+            point: notice.incident.position!,
+            width: 22,
+            height: 22,
+            child: Tooltip(
+              message: notice.incident.title,
+              child: _TrafficNoticeIcon(incident: notice.incident),
+            ),
+          ),
+      ],
+    );
+  }
+
   Widget _buildEndpointLayer(BuildContext context) {
     final start = _controller.start;
     final destination = _controller.destination;
@@ -1318,6 +1395,48 @@ class _MapViewState extends State<MapView>
           ],
         );
       },
+    );
+  }
+}
+
+/// Rundes Symbol für eine Meldung ohne Richtung, im Stil eines
+/// Verkehrszeichens: Baustelle orange, Sperrung rot, Warnung gelb.
+class _TrafficNoticeIcon extends StatelessWidget {
+  const _TrafficNoticeIcon({required this.incident});
+
+  final TrafficIncident incident;
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, color) = switch (incident.kind) {
+      TrafficIncidentKind.roadworks => (
+        Icons.construction,
+        const Color(0xFFF07F00),
+      ),
+      TrafficIncidentKind.closure => (
+        Icons.do_not_disturb_on,
+        const Color(0xFFD32F2F),
+      ),
+      TrafficIncidentKind.jam => (Icons.traffic, const Color(0xFFD32F2F)),
+      TrafficIncidentKind.warning => (
+        Icons.warning_amber_rounded,
+        const Color(0xFFE0A800),
+      ),
+    };
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: color, width: 2),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x33000000),
+            blurRadius: 3,
+            offset: Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Icon(icon, size: 13, color: color),
     );
   }
 }

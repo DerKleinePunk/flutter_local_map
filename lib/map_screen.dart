@@ -35,6 +35,16 @@ class _MapScreenState extends State<MapScreen> {
   late final ValhallaRoutingService _routing;
   late final LocalMapController _map;
 
+  /// Staus und Sperrungen der Autobahn GmbH. Braucht Netz; ohne bleibt die
+  /// Route einfach ohne Verkehr.
+  final AutobahnTrafficService _traffic = AutobahnTrafficService();
+
+  /// Dazu wahlweise eine DATEX-II-Quelle aus der Umgebung
+  /// ([datex2FromEnvironment]), etwa MobiData BW oder ein Mobilithek-Abo.
+  final Datex2TrafficService? _datex2 = datex2FromEnvironment(
+    Platform.environment,
+  );
+
   bool _geocoderReady = false;
   bool _matchingTour = false;
   int _gpsLoadedFixes = 0;
@@ -58,6 +68,9 @@ class _MapScreenState extends State<MapScreen> {
     _routing = ValhallaRoutingService(baseUri: widget.config.valhallaBaseUri);
     _map = LocalMapController(
       routingProvider: _routing,
+      trafficProvider: _datex2 == null
+          ? _traffic
+          : CombinedTrafficProvider([_traffic, _datex2]),
       reverseGeocoder: _geocoder,
       positionSource: _gpsSimulator,
       mapController: widget.mapController,
@@ -69,6 +82,8 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void dispose() {
     _map.dispose();
+    _traffic.close();
+    _datex2?.close();
     _gpsSimulator.dispose();
     _geocoder.close();
     super.dispose();
@@ -329,7 +344,11 @@ class _MapScreenState extends State<MapScreen> {
           bottom: 16,
           left: 200,
           right: 200,
-          child: _ManeuverCard(progress: _map.progress!),
+          child: _ManeuverCard(
+            progress: _map.progress!,
+            trafficDelaySeconds: _map.trafficDelaySeconds,
+            nextJam: _map.routeTraffic?.nextSpan(_map.progress!.traveledMeters),
+          ),
         )
       else if (_map.route == null && _map.locationName != null)
         Positioned(
@@ -404,7 +423,8 @@ class _MapScreenState extends State<MapScreen> {
         icon: Icons.route,
         label:
             '${formatDistance(route.distanceMeters)} • '
-            '${formatDuration(route.durationSeconds)}'
+            '${formatDuration(route.durationSeconds + _map.trafficDelaySeconds)}'
+            '${_map.trafficDelaySeconds >= 60 ? ' (+${formatDuration(_map.trafficDelaySeconds)} Stau)' : ''}'
             '${_map.rerouteCount > 0 ? ' • neu berechnet ${_map.rerouteCount}x' : ''}',
         tone: _Tone.primary,
       );
@@ -608,9 +628,19 @@ class _ZoomBadge extends StatelessWidget {
 /// Ankunftszeit. Kurz vor einem Manöver mit Spurangabe stehen die Spuren
 /// darüber.
 class _ManeuverCard extends StatelessWidget {
-  const _ManeuverCard({required this.progress});
+  const _ManeuverCard({
+    required this.progress,
+    this.trafficDelaySeconds = 0,
+    this.nextJam,
+  });
 
   final RouteProgress progress;
+
+  /// Zeitverlust durch Staus voraus, geht in Restzeit und Ankunft ein.
+  final int trafficDelaySeconds;
+
+  /// Der nächste Stau oder die nächste Sperrung auf der Route.
+  final RouteTrafficSpan? nextJam;
 
   /// Ab dieser Entfernung zum Manöver zeigt die Karte die Spuren - etwa
   /// so weit vorher, wie auf der Autobahn die ersten Wegweiser stehen.
@@ -673,12 +703,32 @@ class _ManeuverCard extends StatelessWidget {
               ),
               Text(
                 'noch ${formatDistance(progress.remainingMeters)} • '
-                '${formatDuration(progress.remainingSeconds)} • '
-                '${formatArrival(progress.remainingSeconds)}',
+                '${formatDuration(progress.remainingSeconds + trafficDelaySeconds)} • '
+                '${formatArrival(progress.remainingSeconds + trafficDelaySeconds)}',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
+                  // Ab 15 min Verlust rot, ab 1 min gelb - wie die Linie.
+                  color: trafficDelaySeconds >= 15 * 60
+                      ? const Color(0xFFD32F2F)
+                      : trafficDelaySeconds >= 60
+                      ? const Color(0xFFB08800)
+                      : colorScheme.onSurfaceVariant,
                 ),
               ),
+              if (nextJam != null)
+                Text(
+                  formatTrafficSpan(
+                    nextJam!,
+                    traveledMeters: progress.traveledMeters,
+                  ),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: const MapLayerStyle().trafficColor(
+                      nextJam!.severity,
+                    ),
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
             ],
           ),
         ),
@@ -773,5 +823,41 @@ class _ZoomButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Eine DATEX-II-Quelle aus Umgebungsvariablen, `null` ohne
+/// `LOCAL_MAP_DATEX2_URL`.
+///
+/// - `LOCAL_MAP_DATEX2_URL`: Adresse, z. B.
+///   `https://api.mobidata-bw.de/datasets/traffic/incidents/incidents_lmsbw.datex2.xml`
+///   oder die eines Mobilithek-Abos.
+/// - `LOCAL_MAP_DATEX2_NAME`: Name im Protokoll (Vorgabe `DATEX II`).
+/// - `LOCAL_MAP_DATEX2_P12`, `LOCAL_MAP_DATEX2_P12_PASSWORD`:
+///   Maschinenzertifikat der Mobilithek als `.p12` und dessen Kennwort.
+///
+/// Ein falsches Zertifikat oder Kennwort lässt die Quelle weg und sagt es
+/// im Protokoll, statt die App anzuhalten.
+Datex2TrafficService? datex2FromEnvironment(Map<String, String> env) {
+  final url = env['LOCAL_MAP_DATEX2_URL'] ?? '';
+  if (url.isEmpty) return null;
+  final uri = Uri.tryParse(url);
+  if (uri == null || !uri.hasScheme) {
+    debugPrint('[verkehr] LOCAL_MAP_DATEX2_URL ungültig: $url');
+    return null;
+  }
+  final name = env['LOCAL_MAP_DATEX2_NAME'] ?? 'DATEX II';
+  final p12 = env['LOCAL_MAP_DATEX2_P12'] ?? '';
+  if (p12.isEmpty) return Datex2TrafficService(uri: uri, name: name);
+  try {
+    return Datex2TrafficService.withClientCertificate(
+      uri: uri,
+      name: name,
+      pkcs12: File(p12).readAsBytesSync(),
+      password: env['LOCAL_MAP_DATEX2_P12_PASSWORD'],
+    );
+  } catch (e) {
+    debugPrint('[verkehr] Zertifikat $p12 nicht nutzbar: $e');
+    return null;
   }
 }

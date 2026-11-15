@@ -8,10 +8,12 @@ import 'package:latlong2/latlong.dart';
 import '../api/position.dart';
 import '../api/reverse_geocoder.dart';
 import '../api/routing.dart';
+import '../api/traffic.dart';
 import '../navigation/announcer.dart';
 import '../navigation/heading_filter.dart';
 import '../navigation/off_route.dart';
 import '../navigation/route_progress.dart';
+import '../navigation/route_traffic.dart';
 import '../services/offline_geocoder.dart';
 
 /// Was eine eingehängte [MapView] für den Controller erledigt.
@@ -52,6 +54,8 @@ class LocalMapController extends ChangeNotifier {
     MapController? mapController,
     this.offRoutePolicy = const OffRoutePolicy(),
     this.announcementPolicy = const AnnouncementPolicy(),
+    this.trafficProvider,
+    this.trafficPolicy = const TrafficPolicy(),
     DateTime Function()? clock,
   }) : mapController = mapController ?? MapController(),
        _ownsMapController = mapController == null,
@@ -75,6 +79,14 @@ class LocalMapController extends ChangeNotifier {
   /// Wann Abbiegeansagen kommen; `enabled: false` schaltet
   /// [announcements] stumm.
   final AnnouncementPolicy announcementPolicy;
+
+  /// Liefert Staus, Sperrungen und Baustellen entlang der
+  /// Route ([routeTraffic]). Ohne ihn bleibt die Karte ohne Verkehr.
+  final TrafficProvider? trafficProvider;
+
+  /// Wie oft [trafficProvider] gefragt wird und wie nah eine Meldung an der
+  /// Route liegen muss.
+  final TrafficPolicy trafficPolicy;
 
   final DateTime Function() _clock;
 
@@ -130,6 +142,11 @@ class LocalMapController extends ChangeNotifier {
   ManeuverAnnouncer? _announcer;
   final StreamController<AnnouncementEvent> _announcements =
       StreamController<AnnouncementEvent>.broadcast();
+  RouteTraffic? _routeTraffic;
+  TrafficReport? _trafficReport;
+  bool _isLoadingTraffic = false;
+  int _trafficRequest = 0;
+  Timer? _trafficTimer;
 
   final ValueNotifier<double> _zoom = ValueNotifier<double>(0);
 
@@ -217,6 +234,22 @@ class LocalMapController extends ChangeNotifier {
   /// nächste Manöver; mit einer Route ist es `null`. Braucht einen
   /// [reverseGeocoder].
   LocationName? get locationName => _locationName;
+
+  /// Staus, Sperrungen und Baustellen auf der Route. `null` ohne Route,
+  /// ohne [trafficProvider] oder solange der erste Abruf läuft.
+  /// [RouteTraffic.report] sagt je Teil (Autobahn, Kartenausschnitt), ob
+  /// die Daten frisch sind.
+  RouteTraffic? get routeTraffic => _routeTraffic;
+
+  /// Ob gerade Verkehrsmeldungen geholt werden.
+  bool get isLoadingTraffic => _isLoadingTraffic;
+
+  /// Zeitverlust durch Staus vor der eigenen Position, in Sekunden: der
+  /// gemeldete Wert der Quelle, nie geschätzt. Zu
+  /// [RouteProgress.remainingSeconds] addiert ergibt das die Ankunftszeit
+  /// mit Verkehr. Ohne Position zählt die ganze Route.
+  int get trafficDelaySeconds =>
+      _routeTraffic?.delayAheadSeconds(_progress?.traveledMeters ?? 0) ?? 0;
 
   /// Aktueller Zoom der Kamera.
   ValueListenable<double> get zoom => _zoom;
@@ -364,6 +397,7 @@ class LocalMapController extends ChangeNotifier {
     _announcer = route == null
         ? null
         : ManeuverAnnouncer(route, announcementPolicy);
+    _restartTraffic(route, rerouted: rerouted);
     if (!rerouted) {
       _rerouteCount = 0;
       _rerouteFailures = 0;
@@ -383,6 +417,84 @@ class LocalMapController extends ChangeNotifier {
     if (route == null && fix != null) {
       _updateLocationName(fix.position);
     }
+  }
+
+  /// Holt die Verkehrsmeldungen entlang der Route neu und ordnet sie ihr
+  /// zu. Läuft mit einer Route alle [TrafficPolicy.refreshInterval] von
+  /// selbst; ein Aufruf von Hand aktualisiert sofort.
+  Future<void> refreshTraffic() async {
+    final provider = trafficProvider;
+    final route = _route;
+    if (_disposed ||
+        provider == null ||
+        route == null ||
+        !trafficPolicy.enabled) {
+      return;
+    }
+    final request = ++_trafficRequest;
+
+    _isLoadingTraffic = true;
+    _notify();
+    try {
+      final report = await provider.incidentsAlong(route);
+      if (_disposed ||
+          request != _trafficRequest ||
+          !identical(route, _route)) {
+        return;
+      }
+      _trafficReport = report;
+      _routeTraffic = RouteTraffic.match(
+        route,
+        report,
+        toleranceMeters: trafficPolicy.matchToleranceMeters,
+      );
+      final failed = report.failedSources.toList();
+      debugPrint(
+        '[verkehr] ${report.sources.map((s) => s.name).join(', ')}: '
+        '${_routeTraffic!.spans.length} Staus/Sperrungen, '
+        '${_routeTraffic!.notices.length} weitere Meldungen auf der Route'
+        '${failed.isEmpty ? '' : ', keine Daten für ${failed.join(', ')}'}',
+      );
+    } catch (e) {
+      // Ein TrafficProvider soll nicht werfen. Tut er es doch, bleibt der
+      // alte Stand stehen.
+      debugPrint('[verkehr] Abruf gescheitert: $e');
+    } finally {
+      if (!_disposed && request == _trafficRequest) {
+        _isLoadingTraffic = false;
+        _notify();
+      }
+    }
+  }
+
+  /// Neue Route: alten Abruf verwerfen, Takt neu starten. Nach einer
+  /// Neuberechnung gilt bis zum nächsten Abruf der letzte Stand, neu
+  /// zugeordnet - meist fährt die neue Route über dieselbe Autobahn.
+  void _restartTraffic(RoutingResult? route, {required bool rerouted}) {
+    _trafficRequest++;
+    _trafficTimer?.cancel();
+    _trafficTimer = null;
+    _isLoadingTraffic = false;
+    if (route == null || trafficProvider == null || !trafficPolicy.enabled) {
+      _routeTraffic = null;
+      _trafficReport = null;
+      return;
+    }
+    final last = _trafficReport;
+    _routeTraffic = rerouted && last != null
+        ? RouteTraffic.match(
+            route,
+            last,
+            toleranceMeters: trafficPolicy.matchToleranceMeters,
+          )
+        : null;
+    _trafficTimer = Timer.periodic(
+      trafficPolicy.refreshInterval,
+      (_) => refreshTraffic(),
+    );
+    // Nicht mitten in _setRoute benachrichtigen: erst, wenn die Route
+    // vollständig steht.
+    scheduleMicrotask(refreshTraffic);
   }
 
   void _onPosition(PositionFix fix) {
@@ -605,6 +717,7 @@ class LocalMapController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _trafficTimer?.cancel();
     _positionSubscription?.cancel();
     _offRouteChanges.close();
     _announcements.close();
