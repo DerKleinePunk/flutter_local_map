@@ -20,6 +20,7 @@ import '../navigation/route_traffic.dart';
 import 'map_attribution.dart';
 import '../controller/local_map_controller.dart';
 import '../services/map_camera_bounds.dart';
+import '../services/mbtiles_sources.dart';
 import '../services/prefetch_corridor.dart';
 import '../services/map_error_handler.dart';
 import '../navigation/heading_filter.dart';
@@ -172,6 +173,8 @@ class _MapViewState extends State<MapView>
   int _initializationToken = 0;
 
   MbTilesTileProvider? _rasterTileProvider;
+  MbTiles? _rasterMbTiles;
+  int? _rasterNativeMaxZoom;
   MbTiles? _vectorMbTiles;
 
   /// Metadaten der offenen MBTiles. Nur fuer den Stilwechsel gehalten, der
@@ -288,7 +291,11 @@ class _MapViewState extends State<MapView>
       }
 
       final format = metadata.format;
-      final maxZoom = metadata.maxZoom ?? _config.maxZoom;
+      final maxZoom = effectiveMaxZoom(
+        fromMetadata: metadata.maxZoom,
+        configured: _config.maxZoom,
+        overzoomUntil: _config.overzoomUntil,
+      );
       final minZoom = effectiveMinZoom(
         fromMetadata: metadata.minZoom ?? _config.minZoom,
         max: maxZoom,
@@ -305,8 +312,8 @@ class _MapViewState extends State<MapView>
       );
 
       if (format == 'pbf') {
-        final mbtiles = MbTiles(path: widget.mbtilesPath!);
-        final provider = MbTilesVectorTileProvider(mbtiles: mbtiles);
+        final mbtiles = openVectorMbTiles(widget.mbtilesPath!);
+        final provider = _vectorProvider(mbtiles, metadata);
 
         vtr.Theme vectorTheme;
         SpriteStyle? vectorSprites;
@@ -385,11 +392,13 @@ class _MapViewState extends State<MapView>
         return;
       }
 
-      final provider = MbTilesTileProvider.fromPath(path: widget.mbtilesPath!);
+      final rasterMbTiles = openRasterMbTiles(widget.mbtilesPath!);
+      final provider = MbTilesTileProvider(mbtiles: rasterMbTiles);
 
       // Token check before setState
       if (!mounted || _initializationToken != currentToken) {
         provider.dispose();
+        rasterMbTiles.close();
         MapErrorHandler.logDebug(
           'Raster init cancelled (newer request running)',
           context: 'Token $currentToken',
@@ -399,6 +408,11 @@ class _MapViewState extends State<MapView>
 
       setState(() {
         _rasterTileProvider = provider;
+        _rasterMbTiles = rasterMbTiles;
+        _rasterNativeMaxZoom = nativeMaxZoom(
+          fromMetadata: metadata.maxZoom,
+          configured: _config.maxZoom,
+        );
         _activeMinZoom = minZoom;
         _activeMaxZoom = maxZoom;
         _currentZoom = boundedInitialZoom;
@@ -438,9 +452,23 @@ class _MapViewState extends State<MapView>
     }
   }
 
+  MbTilesVectorTileProvider _vectorProvider(
+    MbTiles mbtiles,
+    _MbtilesMetadataInfo metadata,
+  ) => vectorTileProvider(
+    mbtiles,
+    minZoom: metadata.minZoom,
+    maxZoom: metadata.maxZoom,
+  );
+
   void _disposeTileResources() {
     _rasterTileProvider?.dispose();
     _rasterTileProvider = null;
+    // Mit dem normalen Konstruktor schliesst der Provider die Datei nicht
+    // selbst.
+    _rasterMbTiles?.close();
+    _rasterMbTiles = null;
+    _rasterNativeMaxZoom = null;
 
     _vectorMbTiles?.close();
     _vectorMbTiles = null;
@@ -615,7 +643,7 @@ class _MapViewState extends State<MapView>
     required _MbtilesMetadataInfo metadata,
   }) async {
     final token = ++_initializationToken;
-    final provider = MbTilesVectorTileProvider(mbtiles: mbtiles);
+    final provider = _vectorProvider(mbtiles, metadata);
 
     try {
       final styleResult = await _loadLocalVectorStyle(
@@ -1217,6 +1245,7 @@ class _MapViewState extends State<MapView>
       tileProvider: _rasterTileProvider,
       urlTemplate: _config.rasterUrlTemplate,
       maxZoom: _activeMaxZoom,
+      maxNativeZoom: _rasterNativeMaxZoom ?? _activeMaxZoom.floor(),
       errorTileCallback: (tile, error, stackTrace) {
         MapErrorHandler.logDebug(
           'Kachel $tile nicht geladen: $error',

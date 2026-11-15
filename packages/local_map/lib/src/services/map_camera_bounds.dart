@@ -116,6 +116,33 @@ double? minZoomForBounds(LatLngBounds? bounds) {
 /// Nimmt die groessere von [fromMetadata] und der aus [tiles] abgeleiteten
 /// Grenze, ueberschreitet dabei aber nie [max] - sonst liesse sich die Karte
 /// gar nicht mehr darstellen.
+/// Hoechste Zoomstufe der Kamera.
+///
+/// [fromMetadata] ist die hoechste Stufe, fuer die die MBTiles Kacheln
+/// haben (`maxzoom`). Darueber vergroessert die Karte die letzte Stufe
+/// ("Overzoom"). Ohne Metadaten gilt [configured].
+///
+/// Bis [overzoomUntil] darf die Kamera auch dann, wenn die Kacheln frueher
+/// enden: planetiler (und damit z. B. Yapaia) baut bis z14, unsere eigenen
+/// Kacheln bis z17. Ohne diese Regel bliebe die Kamera bei fremden Kacheln
+/// auf z14 stehen. `overzoomUntil <= fromMetadata` laesst den Wert aus den
+/// Metadaten unveraendert.
+double effectiveMaxZoom({
+  required double? fromMetadata,
+  required double configured,
+  required double overzoomUntil,
+}) {
+  if (fromMetadata == null) return configured;
+  return math.max(fromMetadata, overzoomUntil);
+}
+
+/// Hoechste Stufe, die wirklich aus der Datei gelesen wird; alles darueber
+/// wird aus dieser Stufe vergroessert.
+int nativeMaxZoom({
+  required double? fromMetadata,
+  required double configured,
+}) => (fromMetadata ?? configured).floor();
+
 double effectiveMinZoom({
   required double fromMetadata,
   required double max,
