@@ -2,8 +2,16 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+/// Die echten Kacheln liegen nur lokal (map/ ist nicht im Repo). Ohne sie,
+/// etwa in der CI, werden die Tests uebersprungen statt rot.
+final Object _ohneKacheln =
+    File('map/tiles-germany/hessen.mbtiles').existsSync() &&
+        File('map/tiles-germany/hessen_raster.mbtiles').existsSync()
+    ? false
+    : 'Kacheln unter map/tiles-germany fehlen';
+
 void main() {
-  group('MBTiles Regression Tests', () {
+  group('MBTiles Regression Tests', skip: _ohneKacheln, () {
     test('Raster MBTiles metadata can be read correctly', () {
       final rasterPath = 'map/tiles-germany/hessen_raster.mbtiles';
 

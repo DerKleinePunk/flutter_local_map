@@ -4,47 +4,59 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqlite3/sqlite3.dart';
 import 'package:local_map/local_map.dart';
 
+/// Die echten Kacheln liegen nur lokal (map/ ist nicht im Repo). Ohne sie,
+/// etwa in der CI, werden die Tests uebersprungen statt rot.
+final Object _ohneKacheln =
+    File('map/tiles-germany/hessen.mbtiles').existsSync() &&
+        File('map/tiles-germany/hessen_raster.mbtiles').existsSync()
+    ? false
+    : 'Kacheln unter map/tiles-germany fehlen';
+
 /// Comprehensive offline smoke test matrix for MBTiles handling.
 /// Tests all critical offline scenarios to ensure robustness.
 void main() {
   group('Offline Map Smoke Tests', () {
-    group('Scenario 1: Vector MBTiles (pbf) with valid style', () {
-      test('Can read vector metadata from valid pbf MBTiles', () {
-        final vectorPath = 'map/tiles-germany/hessen.mbtiles';
-        expect(File(vectorPath).existsSync(), isTrue);
+    group(
+      'Scenario 1: Vector MBTiles (pbf) with valid style',
+      skip: _ohneKacheln,
+      () {
+        test('Can read vector metadata from valid pbf MBTiles', () {
+          final vectorPath = 'map/tiles-germany/hessen.mbtiles';
+          expect(File(vectorPath).existsSync(), isTrue);
 
-        final db = sqlite3.open(vectorPath, mode: OpenMode.readOnly);
-        final rows = db.select(
-          "SELECT name, value FROM metadata WHERE name = 'format';",
-        );
+          final db = sqlite3.open(vectorPath, mode: OpenMode.readOnly);
+          final rows = db.select(
+            "SELECT name, value FROM metadata WHERE name = 'format';",
+          );
 
-        expect(rows, isNotEmpty);
-        expect(rows.first['value'].toString().toLowerCase(), equals('pbf'));
-        db.close();
-      });
+          expect(rows, isNotEmpty);
+          expect(rows.first['value'].toString().toLowerCase(), equals('pbf'));
+          db.close();
+        });
 
-      test('Can extract vector layer information from metadata', () {
-        final vectorPath = 'map/tiles-germany/hessen.mbtiles';
-        final db = sqlite3.open(vectorPath, mode: OpenMode.readOnly);
+        test('Can extract vector layer information from metadata', () {
+          final vectorPath = 'map/tiles-germany/hessen.mbtiles';
+          final db = sqlite3.open(vectorPath, mode: OpenMode.readOnly);
 
-        final rows = db.select(
-          "SELECT name, value FROM metadata WHERE name IN ('minzoom', 'maxzoom', 'json');",
-        );
+          final rows = db.select(
+            "SELECT name, value FROM metadata WHERE name IN ('minzoom', 'maxzoom', 'json');",
+          );
 
-        expect(rows.length, greaterThan(0));
+          expect(rows.length, greaterThan(0));
 
-        // Should have zoom levels
-        final hasMinOrMaxZoom =
-            rows.any((r) => r['name'] == 'minzoom') ||
-            rows.any((r) => r['name'] == 'maxzoom');
+          // Should have zoom levels
+          final hasMinOrMaxZoom =
+              rows.any((r) => r['name'] == 'minzoom') ||
+              rows.any((r) => r['name'] == 'maxzoom');
 
-        expect(hasMinOrMaxZoom, isTrue);
+          expect(hasMinOrMaxZoom, isTrue);
 
-        db.close();
-      });
-    });
+          db.close();
+        });
+      },
+    );
 
-    group('Scenario 2: Raster MBTiles (png/jpg/webp)', () {
+    group('Scenario 2: Raster MBTiles (png/jpg/webp)', skip: _ohneKacheln, () {
       test('Can read raster format metadata', () {
         final rasterPath = 'map/tiles-germany/hessen_raster.mbtiles';
         expect(File(rasterPath).existsSync(), isTrue);
@@ -155,7 +167,7 @@ void main() {
       });
     });
 
-    group('Scenario 6: Concurrent access', () {
+    group('Scenario 6: Concurrent access', skip: _ohneKacheln, () {
       test('Multiple connections to same MBTiles file', () {
         final testPath = 'map/tiles-germany/hessen.mbtiles';
 
@@ -174,7 +186,7 @@ void main() {
       });
     });
 
-    group('Scenario 7: Metadata completeness', () {
+    group('Scenario 7: Metadata completeness', skip: _ohneKacheln, () {
       test('Vector MBTiles contains required metadata fields', () {
         final vectorPath = 'map/tiles-germany/hessen.mbtiles';
         final db = sqlite3.open(vectorPath, mode: OpenMode.readOnly);
@@ -208,6 +220,7 @@ void main() {
       test('Summary: All offline scenarios validated', () {
         // This test serves as a summary point
         expect(true, isTrue); // Placeholder for documentation
+        // ignore: avoid_print
         print('''
 ╔════════════════════════════════════════════════════════════╗
 ║        OFFLINE SMOKE TEST MATRIX - SUMMARY RESULTS         ║
