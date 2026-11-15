@@ -25,6 +25,7 @@ export 'src/navigation/route_traffic.dart';
 export 'src/services/gps_nmea_simulator_service.dart';
 export 'src/services/map_downloader.dart';
 export 'src/services/autobahn_traffic_service.dart';
+export 'src/services/datex2_traffic_service.dart';
 export 'src/services/map_error_handler.dart';
 export 'src/services/offline_geocoder.dart';
 export 'src/services/valhalla_routing_service.dart';

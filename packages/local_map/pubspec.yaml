@@ -1,6 +1,6 @@
 name: local_map
 description: "Offline-Kartendarstellung (MBTiles Raster/Vektor, Geocoding, Valhalla-Routing) als wiederverwendbares Flutter-Package."
-version: 0.10.0
+version: 0.11.0
 
 # Private Bibliothek - nicht fuer pub.dev gedacht.
 publish_to: 'none'
@@ -33,6 +33,10 @@ dependencies:
 
   # Settings persistence
   shared_preferences: ^2.3.3
+
+  # DATEX II (Verkehrsmeldungen). Weite Spanne, damit auch aeltere
+  # Dart-SDKs (Gastgeber) eine passende Fassung finden.
+  xml: ">=6.5.0 <8.0.0"
 
 dev_dependencies:
   flutter_test:

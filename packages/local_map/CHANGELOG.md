@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.11.0
+
+- **`Datex2TrafficService`**: Verkehrsmeldungen im europäischen Format
+  DATEX II (v2 und v3, `SituationPublication`, auch im `messageContainer`
+  oder SOAP-Umschlag) aus einer einstellbaren Quelle – Länderdaten wie
+  MobiData BW oder ein Abo der Mobilithek. Staus (mit Stufe und Verlust),
+  Sperrungen, Baustellen, Unfälle und andere Warnungen, je Situation und
+  Fahrtrichtung eine Meldung. Nur Meldungen mit Koordinaten; reine
+  ALERT-C-Ortsangaben fallen weg.
+- Einstellbar: Adresse, Kopfzeilen, Abrufabstand (`freshFor`, 2 min),
+  Ersatzdauer (`keepFor`, 6 h), Korridor um die Route (`corridorMeters`,
+  2 km), angekündigte Meldungen (`includePlanned`).
+  `Datex2TrafficService.withClientCertificate` nimmt ein `.p12`
+  (Maschinenzertifikat der Mobilithek) für gegenseitiges TLS;
+  `mobilithekV2`/`mobilithekV3` bauen die Abruf-Adresse eines Abos.
+- Abruf mit `Accept-Encoding: gzip` und `If-Modified-Since`; 204/304
+  behalten den alten Stand. Gelesen wird in einem eigenen Isolate.
+- Neue Abhängigkeit: `xml` (>=6.5 <8).
+
 ## 0.10.0
 
 - **Verkehr auf der Route.** `LocalMapController(trafficProvider: ...)`

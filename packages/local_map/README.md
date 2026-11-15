@@ -329,6 +329,57 @@ mehr als der Hälfte, bleibt der schwerere.
 Der Verkehr geht nicht in Valhalla ein: Die Route bleibt dieselbe, nur
 Anzeige und Ankunftszeit berücksichtigen ihn.
 
+#### DATEX II (Länder, Mobilithek)
+
+`Datex2TrafficService` liest Verkehrsmeldungen im Format DATEX II (v2 und
+v3) aus einer Quelle, die der Gastgeber einstellt. Er holt jeweils den
+ganzen Stand eines Gebiets und behält die Meldungen in `corridorMeters`
+(2 km) um die Route. Zusammen mit der Autobahn GmbH:
+
+```dart
+final traffic = CombinedTrafficProvider([
+  AutobahnTrafficService(),
+  Datex2TrafficService(
+    name: 'MobiData BW',
+    uri: Uri.parse(
+      'https://api.mobidata-bw.de/datasets/traffic/incidents/incidents_lmsbw.datex2.xml',
+    ),
+  ),
+]);
+```
+
+Ein Abo der Mobilithek braucht ihr Maschinenzertifikat (`.p12`):
+
+```dart
+Datex2TrafficService.withClientCertificate(
+  name: 'Hessen Mobil',
+  uri: Datex2TrafficService.mobilithekV3('<Abo-ID>'), // v2: mobilithekV2
+  pkcs12: File('/etc/carnine/mobilithek.p12').readAsBytesSync(),
+  password: kennwort,
+);
+```
+
+- **Gelesen** werden Staus (`AbnormalTraffic` mit Art), Sperrungen
+  (`roadClosed`/`carriagewayClosures` sperren ganz, Fahrstreifen und
+  Rampen nicht), Baustellen und Warnungen (Unfall, Hindernis, Wetter).
+  Umleitungen und Hinweise der Leitzentrale allein ergeben keine Meldung.
+- **Ort** aus `locationForDisplay`/`coordinatesForDisplay` und der Linie
+  (`gmlLineString`, `linearByCoordinates`, TPEG-Endpunkte). Meldungen, die
+  ihren Ort nur als ALERT-C-Code nennen, fallen weg.
+- **Richtung:** Eine Situation in beiden Richtungen kommt als zwei Records
+  mit gegenläufiger Linie und wird zu zwei Meldungen. Staus und
+  Vollsperrungen sind gerichtet, außer die Quelle sagt `bothDirections`.
+- **Straße** aus `roadNumber` (v3), sonst aus dem Text (`A5 Karlsruhe
+  Richtung Basel` → `A5`, Richtung `Basel`).
+- **Abruf** mit `Accept-Encoding: gzip` und `If-Modified-Since`; 204/304
+  behalten den alten Stand, ein Fehler gibt ihn bis `keepFor` als
+  `cached` weiter. Ein Land sind 1–2 MB XML; gelesen wird in einem
+  eigenen Isolate.
+
+Die Demo-App nimmt eine DATEX-II-Quelle aus der Umgebung:
+`LOCAL_MAP_DATEX2_URL`, `LOCAL_MAP_DATEX2_NAME`, `LOCAL_MAP_DATEX2_P12`,
+`LOCAL_MAP_DATEX2_P12_PASSWORD`.
+
 ### Texte
 
 `PlaceSearchBar`, `DownloadOverlay` und `StorageSettingsDialog` nehmen ihre
@@ -437,6 +488,7 @@ die das Skript seit September 2026 anlegt. Mit einer älteren Datenbank bleibt
   `DownloadStatus`
 - **Services:** `MapDownloader`, `StoragePreferences`, `OfflineGeocoder`,
   `ValhallaRoutingService`, `AutobahnTrafficService`,
+  `Datex2TrafficService`,
   `GpsNmeaSimulatorService`, `MapErrorHandler`
 - **Modelle:** `GeocoderResult`, `RoutingResult`, `RoutingManeuver`,
   `RoutingLane` (mit `valhallaLaneBits`, `laneIndications`), `RoutingPoint`,
