@@ -1,0 +1,69 @@
+# Prueft jeden Push auf master und jeden PR: analyze, Tests, Abdeckung.
+# Die Abdeckung ist nur ein Bericht (Job-Uebersicht + lcov als Artefakt),
+# es gibt keine Mindestgrenze und keinen Upload an fremde Dienste.
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      # Dieselbe Version wie der emb-Bau (emb-workspace/flutter).
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.5
+          channel: stable
+          cache: true
+
+      - name: Pakete holen
+        run: |
+          flutter pub get
+          (cd packages/local_map && flutter pub get)
+
+      - name: Format
+        run: dart format --output=none --set-exit-if-changed lib test packages/local_map/lib packages/local_map/test
+
+      - name: Analyze (App)
+        run: flutter analyze
+
+      - name: Analyze (local_map)
+        working-directory: packages/local_map
+        run: flutter analyze
+
+      - name: Tests mit Abdeckung (local_map)
+        working-directory: packages/local_map
+        run: flutter test --coverage
+
+      # Die Tests mit echten Kacheln (map/ liegt nicht im Repo) werden
+      # hier uebersprungen.
+      - name: Tests mit Abdeckung (App)
+        run: flutter test --coverage
+
+      - name: Abdeckung zusammenfassen
+        if: always()
+        run: |
+          python3 scripts/coverage_summary.py \
+            "local_map=packages/local_map/coverage/lcov.info" \
+            "App=coverage/lcov.info" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Abdeckung als Artefakt
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: coverage-lcov
+          path: |
+            packages/local_map/coverage/lcov.info
+            coverage/lcov.info
+          if-no-files-found: ignore
