@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.2
+
+- **Kacheln aus planetiler** (z. B. vom Yapaia-Kartenserver) öffnen jetzt.
+  planetiler schreibt in die Metadaten `version = 3.16.0`. Das Paket
+  `mbtiles` (0.5.1) liest das Feld als Zahl und brach den Kartenstart ab
+  (`FormatException: Invalid double`). local_map übergibt gzip und die
+  Zoomgrenzen jetzt aus den eigenen, toleranten Metadaten, damit
+  `mbtiles` die Metadaten gar nicht selbst liest.
+- **Zoom über das Ende der Kacheln hinaus:** Neues
+  `MapConfig.overzoomUntil` (Standard `17`). Enden die Kacheln früher
+  (planetiler: z14), darf die Kamera trotzdem bis zu dieser Stufe, und die
+  letzte vorhandene Stufe wird vergrößert. Bisher blieb die Kamera bei
+  `maxzoom` aus den Metadaten stehen. Mit eigenen Kacheln bis z17 ändert
+  sich nichts; `0` schaltet die Regel ab.
+
 ## 0.11.1
 
 - **`LocalMapController.setTrafficEnabled(bool)`** schaltet die

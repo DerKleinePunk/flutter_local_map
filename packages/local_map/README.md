@@ -399,6 +399,7 @@ deutschen Texte; für weitere Sprachen eigene Instanzen übergeben.
 | `center` | `null` | Kartenmittelpunkt beim Start; `null` = Mitte der Kacheln laut MBTiles-Metadaten |
 | `cameraBounds` | `null` | Kamera-Begrenzung; `null` = unbegrenzt |
 | `minZoom` / `maxZoom` / `initialZoom` | `10` / `14` / `11` | Zoom-Grenzen. MBTiles-Metadaten haben für min/max Vorrang |
+| `overzoomUntil` | `17` | Bis hier darf die Kamera, auch wenn die Kacheln früher enden (planetiler: z14); darüber wird die letzte Stufe vergrößert. `0` = aus |
 | `mbtilesFilename` | `germany.mbtiles` | Dateiname, den `MapDownloader` erwartet |
 | `downloadUrl` | Platzhalter | Quelle für `MapDownloader.downloadMap()` |
 | `estimatedFileSizeMB` | `250` | Anzeige im `DownloadOverlay` |

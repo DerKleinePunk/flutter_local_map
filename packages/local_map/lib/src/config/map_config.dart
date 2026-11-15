@@ -47,6 +47,13 @@ class MapConfig {
 
   final double minZoom;
   final double maxZoom;
+
+  /// Bis zu dieser Zoomstufe darf die Kamera, auch wenn die MBTiles schon
+  /// frueher enden (`maxzoom` in den Metadaten); darueber wird die letzte
+  /// vorhandene Stufe vergroessert. Fremde Kacheln aus planetiler enden bei
+  /// z14, die eigenen bei z17. `0` schaltet das ab: dann gilt allein der
+  /// Wert aus den Metadaten.
+  final double overzoomUntil;
   final double initialZoom;
 
   /// Dateiname der MBTiles-Datei im Speicherverzeichnis.
@@ -244,6 +251,7 @@ class MapConfig {
     this.cameraBounds,
     this.minZoom = 10,
     this.maxZoom = 14,
+    this.overzoomUntil = 17,
     this.initialZoom = 11,
     this.mbtilesFilename = 'germany.mbtiles',
     this.downloadUrl = 'https://example.com/artifacts/hessen.mbtiles',
@@ -303,6 +311,7 @@ class MapConfig {
     bool clearCameraBounds = false,
     double? minZoom,
     double? maxZoom,
+    double? overzoomUntil,
     double? initialZoom,
     String? mbtilesFilename,
     String? downloadUrl,
@@ -339,6 +348,7 @@ class MapConfig {
           : (cameraBounds ?? this.cameraBounds),
       minZoom: minZoom ?? this.minZoom,
       maxZoom: maxZoom ?? this.maxZoom,
+      overzoomUntil: overzoomUntil ?? this.overzoomUntil,
       initialZoom: initialZoom ?? this.initialZoom,
       mbtilesFilename: mbtilesFilename ?? this.mbtilesFilename,
       downloadUrl: downloadUrl ?? this.downloadUrl,
