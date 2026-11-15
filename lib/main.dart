@@ -45,6 +45,10 @@ void main() {
           double.tryParse(Platform.environment[name] ?? '');
       LocalMap.ensureInitialized(
         config: MapConfig.hessen.copyWith(
+          // Die Kamera begrenzen die Kacheln selbst (MBTiles `bounds`), nicht
+          // Hessen: auf jeep-pi liegt DACH, und eine Route nach Karlsruhe
+          // muss ganz zu sehen sein.
+          clearCameraBounds: true,
           rasterTilesPerFrame: envInt('LOCAL_MAP_RASTER_TILES_PER_FRAME'),
           memoryTileDataCacheMaxSize: envInt('LOCAL_MAP_TILE_DATA_CACHE'),
           textCacheMaxSize: envInt('LOCAL_MAP_TEXT_CACHE'),
