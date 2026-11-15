@@ -329,6 +329,11 @@ mehr als der Hälfte, bleibt der schwerere.
 Der Verkehr geht nicht in Valhalla ein: Die Route bleibt dieselbe, nur
 Anzeige und Ankunftszeit berücksichtigen ihn.
 
+**Ein- und ausschalten:** Ohne `trafficProvider` oder mit
+`TrafficPolicy(enabled: false)` geht keine Anfrage ins Netz. Zur Laufzeit
+schaltet `map.setTrafficEnabled(bool)` (Zustand in `map.trafficEnabled`):
+aus leert die Lage sofort und stoppt den Takt, ein holt mit Route sofort.
+
 #### DATEX II (Länder, Mobilithek)
 
 `Datex2TrafficService` liest Verkehrsmeldungen im Format DATEX II (v2 und

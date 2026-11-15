@@ -59,6 +59,7 @@ class LocalMapController extends ChangeNotifier {
     DateTime Function()? clock,
   }) : mapController = mapController ?? MapController(),
        _ownsMapController = mapController == null,
+       _trafficEnabled = trafficPolicy.enabled,
        _clock = clock ?? DateTime.now {
     if (positionSource != null) {
       _positionSubscription = positionSource.positions.listen(_onPosition);
@@ -85,8 +86,29 @@ class LocalMapController extends ChangeNotifier {
   final TrafficProvider? trafficProvider;
 
   /// Wie oft [trafficProvider] gefragt wird und wie nah eine Meldung an der
-  /// Route liegen muss.
+  /// Route liegen muss. [TrafficPolicy.enabled] ist nur der Startwert;
+  /// zur Laufzeit schaltet [setTrafficEnabled].
   final TrafficPolicy trafficPolicy;
+
+  bool _trafficEnabled;
+
+  /// Ob Verkehrsmeldungen geholt werden. Startwert aus
+  /// [TrafficPolicy.enabled], umschalten mit [setTrafficEnabled].
+  bool get trafficEnabled => _trafficEnabled;
+
+  /// Schaltet die Verkehrsmeldungen ein oder aus, ohne den Controller neu
+  /// anzulegen - etwa vom Schalter "Verkehrsdaten aus dem Internet".
+  ///
+  /// Aus: kein Abruf mehr, auch kein laufender Takt; [routeTraffic] und
+  /// [trafficDelaySeconds] werden sofort leer, ein Abruf, der gerade
+  /// unterwegs ist, wird verworfen. Ein: mit einer Route wird sofort
+  /// geholt und der Takt läuft wieder.
+  void setTrafficEnabled(bool enabled) {
+    if (_disposed || enabled == _trafficEnabled) return;
+    _trafficEnabled = enabled;
+    _restartTraffic(_route, rerouted: false);
+    _notify();
+  }
 
   final DateTime Function() _clock;
 
@@ -425,10 +447,7 @@ class LocalMapController extends ChangeNotifier {
   Future<void> refreshTraffic() async {
     final provider = trafficProvider;
     final route = _route;
-    if (_disposed ||
-        provider == null ||
-        route == null ||
-        !trafficPolicy.enabled) {
+    if (_disposed || provider == null || route == null || !_trafficEnabled) {
       return;
     }
     final request = ++_trafficRequest;
@@ -475,7 +494,7 @@ class LocalMapController extends ChangeNotifier {
     _trafficTimer?.cancel();
     _trafficTimer = null;
     _isLoadingTraffic = false;
-    if (route == null || trafficProvider == null || !trafficPolicy.enabled) {
+    if (route == null || trafficProvider == null || !_trafficEnabled) {
       _routeTraffic = null;
       _trafficReport = null;
       return;
