@@ -568,7 +568,91 @@ void main() {
       expect(provider.asked, isEmpty);
       expect(controller.routeTraffic, isNull);
     });
+
+    test('zur Laufzeit aus- und wieder einschalten', () async {
+      final provider = _FakeTraffic([_incident(_jamEntry(delay: '12'))]);
+      final controller = LocalMapController(
+        trafficProvider: provider,
+        trafficPolicy: const TrafficPolicy(
+          enabled: false,
+          refreshInterval: Duration(milliseconds: 20),
+        ),
+      );
+      addTearDown(controller.dispose);
+      var notified = 0;
+      controller.addListener(() => notified++);
+
+      controller.setRoute(_route());
+      await pumpEventQueue();
+      expect(controller.trafficEnabled, isFalse);
+      expect(provider.asked, isEmpty);
+
+      // Ein: sofort ein Abruf, der Takt läuft.
+      notified = 0;
+      controller.setTrafficEnabled(true);
+      expect(controller.trafficEnabled, isTrue);
+      expect(notified, greaterThan(0));
+      await pumpEventQueue();
+      expect(provider.asked, hasLength(1));
+      expect(controller.trafficDelaySeconds, 12 * 60);
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+      expect(provider.asked.length, greaterThan(1));
+
+      // Aus: Lage sofort leer, kein Takt mehr.
+      controller.setTrafficEnabled(false);
+      expect(controller.routeTraffic, isNull);
+      expect(controller.trafficDelaySeconds, 0);
+      final asked = provider.asked.length;
+      await Future<void>.delayed(const Duration(milliseconds: 70));
+      expect(provider.asked, hasLength(asked));
+
+      // Doppelt schalten ändert nichts.
+      notified = 0;
+      controller.setTrafficEnabled(false);
+      expect(notified, 0);
+    });
+
+    test('ausschalten verwirft einen laufenden Abruf', () async {
+      final provider = _PendingTraffic();
+      final controller = LocalMapController(trafficProvider: provider);
+      addTearDown(controller.dispose);
+
+      controller.setRoute(_route());
+      await pumpEventQueue();
+      expect(controller.isLoadingTraffic, isTrue);
+
+      controller.setTrafficEnabled(false);
+      expect(controller.isLoadingTraffic, isFalse);
+      provider.complete([_incident(_jamEntry(delay: '12'))]);
+      await pumpEventQueue();
+      expect(controller.routeTraffic, isNull);
+      expect(controller.trafficDelaySeconds, 0);
+    });
+
+    test('einschalten ohne Route fragt nicht', () async {
+      final provider = _FakeTraffic(const []);
+      final controller = LocalMapController(
+        trafficProvider: provider,
+        trafficPolicy: const TrafficPolicy(enabled: false),
+      );
+      addTearDown(controller.dispose);
+      controller.setTrafficEnabled(true);
+      await pumpEventQueue();
+      expect(provider.asked, isEmpty);
+    });
   });
+}
+
+class _PendingTraffic implements TrafficProvider {
+  final _completer = Completer<TrafficReport>();
+
+  void complete(List<TrafficIncident> incidents) => _completer.complete(
+    TrafficReport(incidents: incidents, sources: const []),
+  );
+
+  @override
+  Future<TrafficReport> incidentsAlong(RoutingResult route) =>
+      _completer.future;
 }
 
 class _FakeTraffic implements TrafficProvider {

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.11.1
+
+- **`LocalMapController.setTrafficEnabled(bool)`** schaltet die
+  Verkehrsmeldungen zur Laufzeit, ohne den Controller neu anzulegen (für
+  einen Schalter "Verkehrsdaten aus dem Internet"). Aus: kein Abruf und
+  kein Takt mehr, `routeTraffic` und `trafficDelaySeconds` sofort leer,
+  ein laufender Abruf wird verworfen. Ein: mit Route sofort ein Abruf,
+  dann der Takt. Zustand in `trafficEnabled`, Änderungen über
+  `notifyListeners`. `TrafficPolicy.enabled` ist nur noch der Startwert.
+
 ## 0.11.0
 
 - **`Datex2TrafficService`**: Verkehrsmeldungen im europäischen Format
