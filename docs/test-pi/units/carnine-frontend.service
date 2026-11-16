@@ -1,0 +1,35 @@
+# jeep-pi (Weg B, SSD-Testaufbau): wie carnine-frontend.service aus dem Paket,
+# aber Benutzer pi und Dateien unter ~/carnine-frontend (bisher ~/start_carnine.sh).
+[Unit]
+Description=Carnine Flutter Frontend (jeep-pi)
+After=systemd-udev-settle.service seatd.service carnine-backend.service
+Before=getty@tty1.service
+Conflicts=getty@tty1.service
+Wants=seatd.service carnine-backend.service
+
+[Service]
+Type=notify
+NotifyAccess=all
+TimeoutStartSec=30s
+User=pi
+Group=pi
+SupplementaryGroups=render video input
+Environment=HOME=/home/pi
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=CARNINE_EMBEDDED=1
+Environment=CARNINE_SOCKET_PATH=/home/pi/carnine-test/run/carnine.sock
+Environment=CARNINE_MAP_TILES=/home/pi/.local/share/homescreen/offline_maps/germany.mbtiles
+Environment=CARNINE_LOG_PATH=/home/pi/carnine-frontend/logs/frontend.log
+Environment=LD_LIBRARY_PATH=/home/pi/carnine-frontend/lib
+WorkingDirectory=/home/pi/carnine-frontend
+ExecStartPre=-+/usr/bin/systemctl stop carnine-getty-fallback.timer
+ExecStart=/home/pi/carnine-frontend/homescreen -b . -f -c --enable-mcp
+ExecStopPost=-+/usr/bin/systemd-run --on-active=5s --unit=carnine-getty-fallback -- /usr/bin/systemctl start getty@tty1.service
+Restart=on-failure
+RestartSec=3
+# The settings page restarts the frontend by exiting with 75.
+RestartForceExitStatus=75
+SuccessExitStatus=75
+
+[Install]
+WantedBy=multi-user.target

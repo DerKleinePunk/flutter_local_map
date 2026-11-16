@@ -1,0 +1,25 @@
+# jeep-pi (Weg B, SSD-Testaufbau): wie carnine-backend.service aus dem Paket,
+# aber Benutzer pi und Dateien unter ~/carnine-test (bisher ~/start_carnine.sh).
+[Unit]
+Description=Carnine Backend (jeep-pi)
+After=network.target udisks2.service sound.target alsa-restore.service carnine-ac3.service
+Wants=network.target
+Conflicts=shutdown.target reboot.target halt.target poweroff.target
+Before=shutdown.target reboot.target halt.target poweroff.target
+
+[Service]
+Type=notify
+User=pi
+Group=pi
+SupplementaryGroups=audio video render input dialout
+AmbientCapabilities=CAP_SYS_TIME
+Environment=HOME=/home/pi
+Environment=CARNINE_CONFIG=/home/pi/carnine-test/config.toml
+ExecStart=/home/pi/carnine-test/bin/carnine-backend
+KillSignal=SIGINT
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10s
+
+[Install]
+WantedBy=multi-user.target

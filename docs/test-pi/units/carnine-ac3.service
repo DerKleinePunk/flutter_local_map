@@ -1,0 +1,15 @@
+# Written by carnine-audio-output.sh (audio_output hdmi-ac3).
+[Unit]
+Description=Carnine AC-3 encoder (ALSA loopback to HDMI0)
+After=sound.target alsa-restore.service
+
+[Service]
+User=pi
+Group=pi
+SupplementaryGroups=audio
+ExecStart=/usr/local/sbin/carnine-ac3-encoder
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
