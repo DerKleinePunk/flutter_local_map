@@ -10,7 +10,7 @@
 # Voraussetzung: docker oder podman (Auswahl wie in tilemaker.sh).
 #
 # Nutzung:
-#   ./build_contours.sh [vogelsberg|braunschweig|germany]
+#   ./build_contours.sh [vogelsberg|braunschweig|germany|dach]
 #
 # Umgebungsvariablen:
 #   CONTOUR_INTERVAL    Hauptintervall in Metern (default: 10)
@@ -20,6 +20,7 @@
 #                       Hauptlinien (default: 13)
 #   CONTOUR_MAXZOOM     Tippecanoe Maxzoom          (default: 14)
 #   FORCE_REBUILD       =1 um vorhandene Datei neu zu erzeugen
+#   DEM_PARALLEL        gleichzeitige Downloads der Hoehenkacheln (default: 8)
 #   CONTOURS_WORK_DIR   Arbeitsverzeichnis (default: TILEMAKER_WORK_DIR bzw.
 #                       map/tiles-germany). Bei podman-remote muss es unter
 #                       /mnt/wsl liegen, etwa /mnt/wsl/code/tiles-germany.
@@ -68,6 +69,10 @@ VOGELSBERG_BBOX="8.9,50.22,9.9,50.85"
 BRAUNSCHWEIG_BBOX="10.28,52.12,10.78,52.42"
 # Deutschland – größere BBox damit Rand-Tiles vollständig sind
 GERMANY_BBOX="5.8,47.2,15.1,55.1"
+# DACH folgt der Grenze aus Geofabriks dach.poly statt einem Rechteck: das
+# Rechteck enthielte halb Tschechien, Norditalien und Westungarn (22 270 statt
+# 13 851 Hoehenkacheln), und die Alpen dort kosten die meisten Linien.
+DACH_POLY_URL="https://download.geofabrik.de/europe/dach/dach.poly"
 
 REGION="vogelsberg"
 
@@ -77,6 +82,7 @@ show_usage() {
   echo "  vogelsberg   (default)  Testgebiet Fulda/Vogelsberg"
   echo "  braunschweig            Braunschweig mit Umland"
   echo "  germany                 Ganz Deutschland (langsam, ~mehrere GB DEM)"
+  echo "  dach                    Deutschland, Oesterreich, Schweiz entlang der Grenze"
   echo ""
   echo "Optionale Umgebungsvariablen:"
   echo "  CONTOUR_INTERVAL   Höhenlinien-Abstand in Metern (default: 10)"
@@ -90,6 +96,7 @@ for arg in "$@"; do
     vogelsberg)   REGION="vogelsberg" ;;
     braunschweig) REGION="braunschweig" ;;
     germany)      REGION="germany" ;;
+    dach)         REGION="dach" ;;
     -h|--help) show_usage; exit 0 ;;
     *)
       echo "[error] Unbekannter Parameter: $arg"
@@ -104,6 +111,17 @@ case "$REGION" in
   braunschweig) BBOX="$BRAUNSCHWEIG_BBOX" ;;
   germany)      BBOX="$GERMANY_BBOX" ;;
 esac
+
+POLY_FILE=""
+if [ "$REGION" = "dach" ]; then
+  POLY_FILE="$WORK_DIR/dach.poly"
+  if [ ! -s "$POLY_FILE" ]; then
+    echo "[poly] Lade $DACH_POLY_URL"
+    curl -sSfL -o "$POLY_FILE" "$DACH_POLY_URL" || { echo "[error] dach.poly nicht ladbar"; exit 1; }
+  fi
+  BBOX="$(python3 "$SCRIPT_DIR/contours_tiles.py" bbox "$POLY_FILE")"
+fi
+DEM_PARALLEL="${DEM_PARALLEL:-8}"
 
 CONTOUR_INTERVAL="${CONTOUR_INTERVAL:-10}"
 # Der Navigations-Style von local_map zeichnet Hoehenlinien erst ab z11 und
@@ -174,80 +192,57 @@ if [ -f "$DEM_TIF" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
 fi
 
 if [ ! -f "$DEM_TIF" ]; then
-  rm -rf "$DEM_TILES_DIR"
+  # Vorhandene Kacheln bleiben liegen: ein abgebrochener Lauf (DACH: ~14 000
+  # Kacheln) laedt beim naechsten Mal nur, was fehlt.
   mkdir -p "$DEM_TILES_DIR"
+  TILE_LIST="$WORK_DIR/dem_tiles/$REGION/tiles-z$DEM_ZOOM.txt"
+  if [ -n "$POLY_FILE" ]; then
+    python3 "$SCRIPT_DIR/contours_tiles.py" tiles "$DEM_ZOOM" --poly "$POLY_FILE" > "$TILE_LIST"
+  else
+    python3 "$SCRIPT_DIR/contours_tiles.py" tiles "$DEM_ZOOM" --bbox "$BBOX" > "$TILE_LIST"
+  fi
+  echo "[dem] $(wc -l < "$TILE_LIST") Kachel(n) fuer $REGION, lade fehlende (${DEM_PARALLEL} parallel) ..."
 
-  # XYZ-Tile-Koordinaten aus WGS84-BBox berechnen
-  _lon2x() {
-    python3 - "$1" "$2" <<'PY'
-import sys
-lon = float(sys.argv[1])
-zoom = int(sys.argv[2])
-print(int((lon + 180.0) / 360.0 * (2 ** zoom)))
-PY
-  }
-  _lat2y() {
-    python3 - "$1" "$2" <<'PY'
-import math
-import sys
+  # Je Kachel ein wget; was es nicht gibt (Meer), bleibt einfach weg.
+  xargs -P "$DEM_PARALLEL" -n 2 sh -c '
+        f="'"$DEM_TILES_DIR"'/dem_z'"$DEM_ZOOM"'_$0_$1.tif"
+        [ -s "$f" ] && exit 0
+        wget -q -O "$f.part" "'"$DEM_BASE"'/$0/$1.tif" && mv "$f.part" "$f" || rm -f "$f.part"
+      ' < "$TILE_LIST"
 
-lat = float(sys.argv[1])
-zoom = int(sys.argv[2])
-lat_r = math.radians(lat)
-y = int((1.0 - math.log(math.tan(lat_r) + 1.0 / math.cos(lat_r)) / math.pi) / 2.0 * (2 ** zoom))
-print(y)
-PY
-  }
+  FILE_LIST="$WORK_DIR/dem_tiles/$REGION/files-z$DEM_ZOOM.txt"
+  : > "$FILE_LIST"
+  missing=0
+  while read -r x y; do
+    if [ -s "$DEM_TILES_DIR/dem_z${DEM_ZOOM}_${x}_${y}.tif" ]; then
+      echo "/data/dem_tiles/$REGION/z$DEM_ZOOM/dem_z${DEM_ZOOM}_${x}_${y}.tif" >> "$FILE_LIST"
+    else
+      missing=$((missing + 1))
+    fi
+  done < "$TILE_LIST"
+  echo "[dem] $(wc -l < "$FILE_LIST") vorhanden, $missing nicht verfuegbar"
 
-  TILE_X_MIN=$(_lon2x "$BBOX_WEST"  "$DEM_ZOOM")
-  TILE_X_MAX=$(_lon2x "$BBOX_EAST"  "$DEM_ZOOM")
-  TILE_Y_MIN=$(_lat2y "$BBOX_NORTH" "$DEM_ZOOM")   # Nord → kleinere Y-Zahl
-  TILE_Y_MAX=$(_lat2y "$BBOX_SOUTH" "$DEM_ZOOM")   # Süd  → größere Y-Zahl
-
-  TILE_FILES=()
-  for x in $(seq "$TILE_X_MIN" "$TILE_X_MAX"); do
-    for y in $(seq "$TILE_Y_MIN" "$TILE_Y_MAX"); do
-      tile_url="${DEM_BASE}/${x}/${y}.tif"
-      tile_file="$DEM_TILES_DIR/dem_z${DEM_ZOOM}_${x}_${y}.tif"
-
-      if [ -f "$tile_file" ]; then
-        echo "[skip] Kachel bereits vorhanden: $(basename "$tile_file")"
-      else
-        echo "[dem] Lade Kachel z${DEM_ZOOM}/${x}/${y}"
-        if wget -q --show-progress -O "$tile_file" "$tile_url"; then
-          echo "[ok] Kachel: $(basename "$tile_file")"
-        else
-          echo "[warn] Kachel nicht verfuegbar: z${DEM_ZOOM}/${x}/${y}"
-          rm -f "$tile_file"
-        fi
-      fi
-
-      [ -f "$tile_file" ] && TILE_FILES+=("/data/dem_tiles/$REGION/z$DEM_ZOOM/$(basename "$tile_file")")
-    done
-  done
-
-  if [ "${#TILE_FILES[@]}" -eq 0 ]; then
-    echo "[error] Keine DEM-Kacheln gefunden fuer BBox $BBOX"
+  if [ ! -s "$FILE_LIST" ]; then
+    echo "[error] Keine DEM-Kacheln gefunden fuer $REGION"
     exit 1
   fi
 
-  echo "[dem] Fuege ${#TILE_FILES[@]} Kachel(n) zusammen und clippe auf BBox ..."
-
-  # VRT aus Kacheln bauen und auf BBox clippen – alles in einem Docker-Aufruf
+  if [ -n "$POLY_FILE" ]; then
+    python3 "$SCRIPT_DIR/contours_tiles.py" geojson "$POLY_FILE" "$WORK_DIR/${REGION}_grenze.geojson"
+    echo "[dem] Fuege zusammen und schneide an der Grenze zu ($(basename "$POLY_FILE")) ..."
+    CUT_CMD="gdalwarp -cutline /data/${REGION}_grenze.geojson -crop_to_cutline -dstnodata -32768 \
+      -co COMPRESS=LZW -co TILED=YES -co BIGTIFF=YES -multi -wo NUM_THREADS=ALL_CPUS \
+      /tmp/dem_merged.vrt /data/$(basename "$DEM_TIF")"
+  else
+    echo "[dem] Fuege zusammen und clippe auf BBox ..."
+    CUT_CMD="gdal_translate -projwin $BBOX_WEST $BBOX_NORTH $BBOX_EAST $BBOX_SOUTH \
+      -projwin_srs EPSG:4326 -of GTiff -co COMPRESS=LZW -co TILED=YES -co BIGTIFF=IF_SAFER \
+      /tmp/dem_merged.vrt /data/$(basename "$DEM_TIF")"
+  fi
   "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
     "$GDAL_IMAGE" \
-    bash -c "
-      gdalbuildvrt /tmp/dem_merged.vrt ${TILE_FILES[*]} && \
-      gdal_translate \
-        -projwin $BBOX_WEST $BBOX_NORTH $BBOX_EAST $BBOX_SOUTH \
-        -projwin_srs EPSG:4326 \
-        -of GTiff \
-        -co COMPRESS=LZW \
-        -co TILED=YES \
-        /tmp/dem_merged.vrt \
-        /data/$(basename "$DEM_TIF")
-    "
+    bash -c "gdalbuildvrt -input_file_list /data/dem_tiles/$REGION/files-z$DEM_ZOOM.txt /tmp/dem_merged.vrt && $CUT_CMD"
   echo "[ok] DEM: $DEM_TIF"
 fi
 
