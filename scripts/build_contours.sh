@@ -4,7 +4,7 @@
 # Pipeline:
 #   1. Copernicus DEM 30 m (GLO-30) per GDAL /vsicurl/ herunterladen und clippen
 #   2. gdal_contour  → GeoPackage mit 10-m- und 50-m-Linien
-#   3. ogr2ogr       → GeoJSON (tippecanoe-Eingabe)
+#   3. ogr2ogr       → GeoJSONSeq (tippecanoe-Eingabe), Nebenlinien erst ab z13
 #   4. tippecanoe    → Vektor-MBTiles
 #
 # Voraussetzung: docker oder podman (Auswahl wie in tilemaker.sh).
@@ -14,7 +14,10 @@
 #
 # Umgebungsvariablen:
 #   CONTOUR_INTERVAL    Hauptintervall in Metern (default: 10)
-#   CONTOUR_MINZOOM     Tippecanoe Minzoom          (default: 9)
+#   CONTOUR_MINZOOM     Tippecanoe Minzoom          (default: 11)
+#   CONTOUR_MAJOR       Abstand der Hauptlinien in m (default: 50)
+#   CONTOUR_MINOR_MINZOOM  ab diesem Zoom alle Linien, darunter nur die
+#                       Hauptlinien (default: 13)
 #   CONTOUR_MAXZOOM     Tippecanoe Maxzoom          (default: 14)
 #   FORCE_REBUILD       =1 um vorhandene Datei neu zu erzeugen
 #   CONTOURS_WORK_DIR   Arbeitsverzeichnis (default: TILEMAKER_WORK_DIR bzw.
@@ -103,13 +106,18 @@ case "$REGION" in
 esac
 
 CONTOUR_INTERVAL="${CONTOUR_INTERVAL:-10}"
-CONTOUR_MINZOOM="${CONTOUR_MINZOOM:-9}"
+# Der Navigations-Style von local_map zeichnet Hoehenlinien erst ab z11 und
+# bis z12 nur die Hauptlinien. Was darunter oder dazwischen in den Kacheln
+# laege, wuerde auf dem Pi trotzdem geladen und dekodiert.
+CONTOUR_MINZOOM="${CONTOUR_MINZOOM:-11}"
+CONTOUR_MAJOR="${CONTOUR_MAJOR:-50}"
+CONTOUR_MINOR_MINZOOM="${CONTOUR_MINOR_MINZOOM:-13}"
 CONTOUR_MAXZOOM="${CONTOUR_MAXZOOM:-14}"
 
 OUTPUT_MBTILES="$WORK_DIR/${REGION}_contours.mbtiles"
 DEM_TIF="$WORK_DIR/${REGION}_dem.tif"
 CONTOUR_GPKG="$WORK_DIR/${REGION}_contours.gpkg"
-CONTOUR_GEOJSON="$WORK_DIR/${REGION}_contours.geojson"
+CONTOUR_GEOJSON="$WORK_DIR/${REGION}_contours.geojsonseq"
 
 has_valid_raster_pixels() {
   local raster_path="$1"
@@ -124,7 +132,7 @@ has_vector_features() {
   "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
     "$GDAL_IMAGE" \
-    ogrinfo -so "/data/$(basename "$vector_path")" 2>/dev/null | grep -Eq 'Feature Count: [1-9]'
+    ogrinfo -so -al "/data/$(basename "$vector_path")" 2>/dev/null | grep -Eq 'Feature Count: [1-9]'
 }
 
 # BBox-Teile für GDAL: west,south,east,north → -projwin west north east south
@@ -133,7 +141,7 @@ IFS=',' read -r BBOX_WEST BBOX_SOUTH BBOX_EAST BBOX_NORTH <<< "$BBOX"
 echo "[info] Region:   $REGION"
 echo "[info] BBox:     $BBOX"
 echo "[info] Interval: ${CONTOUR_INTERVAL} m"
-echo "[info] Zoom:     z${CONTOUR_MINZOOM}–z${CONTOUR_MAXZOOM}"
+echo "[info] Zoom:     z${CONTOUR_MINZOOM}–z${CONTOUR_MAXZOOM} (alle Linien ab z${CONTOUR_MINOR_MINZOOM}, darunter nur alle ${CONTOUR_MAJOR} m)"
 echo "[info] Ausgabe:  $OUTPUT_MBTILES"
 
 GDAL_IMAGE="ghcr.io/osgeo/gdal:ubuntu-small-latest"
@@ -270,36 +278,36 @@ if [ ! -f "$CONTOUR_GPKG" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Schritt 3 – GeoPackage → GeoJSON (tippecanoe-Eingabe)
+# Schritt 3 – GeoPackage → GeoJSONSeq (tippecanoe-Eingabe)
 # ---------------------------------------------------------------------------
+# Eine Linie pro Zeile. Jede bekommt `major` (1 = Hauptlinie), Nebenlinien
+# zusaetzlich "tippecanoe":{"minzoom":...}: tippecanoe 1.24 kennt `$zoom` in
+# Filtern (-j) noch nicht, die Mindestzoomstufe je Linie aber schon.
 if [ -f "$CONTOUR_GEOJSON" ] && [ "${FORCE_REBUILD:-0}" != "1" ]; then
-  if python3 - <<'PY' "$CONTOUR_GEOJSON"
-import json, sys
-path = sys.argv[1]
-with open(path, encoding='utf-8') as fh:
-    data = json.load(fh)
-features = data.get('features', [])
-sys.exit(0 if features else 1)
-PY
-  then
-    echo "[skip] GeoJSON bereits vorhanden: $CONTOUR_GEOJSON"
+  if head -n 1 "$CONTOUR_GEOJSON" | grep -q '"major":'; then
+    echo "[skip] GeoJSONSeq bereits vorhanden: $CONTOUR_GEOJSON"
   else
-    echo "[convert] Vorhandenes GeoJSON ist leer, erzeuge neu: $CONTOUR_GEOJSON"
+    echo "[convert] Vorhandenes GeoJSONSeq ist leer oder alt, erzeuge neu: $CONTOUR_GEOJSON"
     rm -f "$CONTOUR_GEOJSON"
   fi
 fi
 
 if [ ! -f "$CONTOUR_GEOJSON" ]; then
-  echo "[convert] Konvertiere GeoPackage → GeoJSON ..."
+  echo "[convert] Konvertiere GeoPackage → GeoJSONSeq ..."
   "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
+    -e MAJOR="$CONTOUR_MAJOR" \
+    -e MINOR_MINZOOM="$CONTOUR_MINOR_MINZOOM" \
+    -e GPKG="/data/$(basename "$CONTOUR_GPKG")" \
+    -e OUT="/data/$(basename "$CONTOUR_GEOJSON")" \
     "$GDAL_IMAGE" \
-    ogr2ogr \
-      -f GeoJSON \
-      -t_srs EPSG:4326 \
-      /data/"$(basename "$CONTOUR_GEOJSON")" \
-      /data/"$(basename "$CONTOUR_GPKG")"
-  echo "[ok] GeoJSON: $CONTOUR_GEOJSON"
+    bash -c 'set -o pipefail
+      ogr2ogr -f GeoJSONSeq -t_srs EPSG:4326 -dialect SQLite \
+        -sql "SELECT *, CASE WHEN CAST(ele AS INTEGER) % $MAJOR = 0 THEN 1 ELSE 0 END AS major FROM contour" \
+        /vsistdout/ "$GPKG" \
+      | sed -E "s/^\{\"type\":\"Feature\",(\"properties\":\{[^}]*\"major\":0\})/{\"type\":\"Feature\",\"tippecanoe\":{\"minzoom\":$MINOR_MINZOOM},\1/" \
+      > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"'
+  echo "[ok] GeoJSONSeq: $CONTOUR_GEOJSON"
 fi
 
 # ---------------------------------------------------------------------------
