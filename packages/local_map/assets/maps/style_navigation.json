@@ -1,9 +1,9 @@
 {
   "version": 8,
   "name": "openmaptiles-offline-navigation",
-  "id": "openmaptiles-offline-navigation-2",
+  "id": "openmaptiles-offline-navigation-3",
   "metadata": {
-    "version": "2",
+    "version": "3",
     "generator": "tilemaker-openmaptiles",
     "offline": true,
     "variant": "navigation"
@@ -16,6 +16,15 @@
       ],
       "minzoom": 0,
       "maxzoom": 16
+    },
+    "contours": {
+      "type": "vector",
+      "local_map:extra": true,
+      "tiles": [
+        "mbtiles://{z}/{x}/{y}.pbf"
+      ],
+      "minzoom": 9,
+      "maxzoom": 14
     }
   },
   "layers": [
@@ -54,6 +63,88 @@
       "paint": {
         "fill-color": "#c4dfab",
         "fill-opacity": 0.88
+      }
+    },
+    {
+      "id": "contour-minor",
+      "type": "line",
+      "source": "contours",
+      "source-layer": "contour",
+      "minzoom": 13,
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "ele"
+          ],
+          0
+        ],
+        [
+          "!=",
+          [
+            "%",
+            [
+              "get",
+              "ele"
+            ],
+            50
+          ],
+          0
+        ]
+      ],
+      "paint": {
+        "line-color": "#c8b89a",
+        "line-width": 0.5,
+        "line-opacity": 0.7
+      }
+    },
+    {
+      "id": "contour-major",
+      "type": "line",
+      "source": "contours",
+      "source-layer": "contour",
+      "minzoom": 11,
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "ele"
+          ],
+          0
+        ],
+        [
+          "==",
+          [
+            "%",
+            [
+              "get",
+              "ele"
+            ],
+            50
+          ],
+          0
+        ]
+      ],
+      "paint": {
+        "line-color": "#b09a74",
+        "line-width": [
+          "interpolate",
+          [
+            "linear"
+          ],
+          [
+            "zoom"
+          ],
+          11,
+          0.6,
+          14,
+          1.1
+        ],
+        "line-opacity": 0.8
       }
     },
     {
@@ -213,6 +304,52 @@
       "paint": {
         "line-color": "#b39a85",
         "line-width": 0.5
+      }
+    },
+    {
+      "id": "contour-label",
+      "type": "symbol",
+      "source": "contours",
+      "source-layer": "contour",
+      "minzoom": 14,
+      "filter": [
+        "all",
+        [
+          "!=",
+          [
+            "get",
+            "ele"
+          ],
+          0
+        ],
+        [
+          "==",
+          [
+            "%",
+            [
+              "get",
+              "ele"
+            ],
+            50
+          ],
+          0
+        ]
+      ],
+      "layout": {
+        "symbol-placement": "line",
+        "text-field": [
+          "to-string",
+          [
+            "get",
+            "ele"
+          ]
+        ],
+        "text-size": 10
+      },
+      "paint": {
+        "text-color": "#8a7656",
+        "text-halo-color": "#f6f4ef",
+        "text-halo-width": 1.1
       }
     },
     {

@@ -215,11 +215,16 @@ Dauer und Status in `build-times.log` im Arbeitsverzeichnis. Die Datei wächst
 
 ## Hoehenlinien (Konturlinien)
 
-Das Skript [scripts/build_contours.sh](scripts/build_contours.sh) erzeugt Vektor-MBTiles mit Hoehenlinien, die beim Raster-Rendering direkt in die PNG-Tiles eingebacken werden.
+Das Skript [scripts/build_contours.sh](scripts/build_contours.sh) erzeugt Vektor-MBTiles mit Hoehenlinien (Ebene `contour`, Felder `ele` und `major`, z11–z14, unter z13 nur die Hauptlinien alle 50 m).
+
+- **Vektormodus (seit local_map 0.12.0):** Die Datei liegt als `contours.mbtiles` neben der Karte und wird ueber `MapConfig.extraVectorSources` als eigene Quelle geladen; `style_navigation.json` zeichnet sie. Fehlt die Datei, bleibt alles wie vorher. Einzelheiten in [packages/local_map/README.md](packages/local_map/README.md#zusatzquellen-höhenlinien). Die Demo-App nimmt `LOCAL_MAP_CONTOURS=<datei>` statt `contours.mbtiles`.
+- **Raster:** Beim Raster-Rendering werden die Linien direkt in die PNG-Tiles eingebacken (siehe unten).
+
+Beispiel fuer podman-remote unter WSL: `CONTAINER_CMD=podman CONTOURS_WORK_DIR=/mnt/wsl/code/tiles-germany ./scripts/build_contours.sh vogelsberg`.
 
 **Datenquelle:** `elevation-tiles-prod` GeoTIFF-DEM auf AWS (`https://s3.amazonaws.com/elevation-tiles-prod/geotiff/{z}/{x}/{y}.tif`). Das sind oeffentlich erreichbare Hoehenkacheln mit echten Hoehenwerten in Metern; im aktuellen Skript wird Zoom `12` verwendet.
 
-**Voraussetzung:** Docker (GDAL und tippecanoe laufen in Containern – keine lokale Installation noetig). Verwendete Images:
+**Voraussetzung:** docker oder podman (GDAL und tippecanoe laufen in Containern – keine lokale Installation noetig). Verwendete Images:
 
 - `ghcr.io/osgeo/gdal:ubuntu-small-latest`
 - `klokantech/tippecanoe:latest`
@@ -230,13 +235,13 @@ Das Skript [scripts/build_contours.sh](scripts/build_contours.sh) erzeugt Vektor
 |---------|------|---------|
 | 1 | Download + `gdalbuildvrt` + `gdal_translate` | `{region}_dem.tif` – DEM aus XYZ-Kacheln zusammengefuegt und auf BBox geclippt |
 | 2 | `gdal_contour` | `{region}_contours.gpkg` – Linien alle 10 m |
-| 3 | `ogr2ogr` | `{region}_contours.geojson` |
-| 4 | `tippecanoe` | `{region}_contours.mbtiles` – z9–z14 |
+| 3 | `ogr2ogr` + `sed` | `{region}_contours.geojsonseq` – je Linie `major`, Nebenlinien mit `"tippecanoe":{"minzoom":13}` |
+| 4 | `tippecanoe` | `{region}_contours.mbtiles` – z11–z14, gzip |
 
 Hinweise zum Cache-/Rebuild-Verhalten:
 
 - DEM-Kacheln werden regionsbezogen unter `map/tiles-germany/dem_tiles/<region>/z12/` gecacht.
-- `FORCE_REBUILD=1` loescht auch alle Zwischenprodukte (`*_dem.tif`, `*_contours.gpkg`, `*_contours.geojson`, finale MBTiles und den regionalen DEM-Cache`) und baut den kompletten Konturlinien-Stack neu auf.
+- `FORCE_REBUILD=1` loescht auch alle Zwischenprodukte (`*_dem.tif`, `*_contours.gpkg`, `*_contours.geojsonseq`, finale MBTiles und den regionalen DEM-Cache`) und baut den kompletten Konturlinien-Stack neu auf.
 - Leere oder ungueltige Zwischenprodukte werden vom Skript automatisch erkannt und neu erzeugt.
 
 Ausfuehrung:
@@ -257,7 +262,10 @@ cd scripts
 Optionale Umgebungsvariablen:
 
 - `CONTOUR_INTERVAL` – Hoehenlinien-Abstand in Metern (Standard: `10`)
-- `CONTOUR_MINZOOM` – Tippecanoe Minzoom (Standard: `9`)
+- `CONTOUR_MINZOOM` – Tippecanoe Minzoom (Standard: `11`)
+- `CONTOUR_MAJOR` – Abstand der Hauptlinien in Metern (Standard: `50`)
+- `CONTOUR_MINOR_MINZOOM` – ab hier alle Linien, darunter nur Hauptlinien (Standard: `13`)
+- `CONTOURS_WORK_DIR` / `CONTAINER_CMD` – Arbeitsverzeichnis und Container-Laufzeit
 - `CONTOUR_MAXZOOM` – Tippecanoe Maxzoom (Standard: `14`)
 - `FORCE_REBUILD=1` – Alle Zwischendateien neu erzeugen
 
@@ -298,7 +306,7 @@ Ausgabedateien (in `map/tiles-germany/`):
 
 - `{region}_dem.tif` – geclipptes DEM (Zwischenprodukt)
 - `{region}_contours.gpkg` – GeoPackage (Zwischenprodukt)
-- `{region}_contours.geojson` – GeoJSON (Zwischenprodukt)
+- `{region}_contours.geojsonseq` – GeoJSONSeq (Zwischenprodukt)
 - `{region}_contours.mbtiles` – **fertige Vektor-MBTiles fuer den Raster-Schritt**
 
 ## Offline-Indizierung und Ortssuche
