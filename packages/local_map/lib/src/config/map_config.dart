@@ -59,6 +59,15 @@ class MapConfig {
   /// Dateiname der MBTiles-Datei im Speicherverzeichnis.
   final String mbtilesFilename;
 
+  /// Weitere Vektor-Quellen in eigenen MBTiles-Dateien, etwa Hoehenlinien.
+  ///
+  /// Schluessel ist der Quellname im Style (`sources` bzw. `source` einer
+  /// Ebene), Wert der Dateiname. Relative Namen liegen neben
+  /// [mbtilesFilename], absolute Pfade werden so genommen. Fehlt eine Datei,
+  /// bleibt die Quelle an der Hauptdatei haengen; deren Kacheln haben die
+  /// gesuchte Ebene nicht, die Style-Ebenen zeichnen dann einfach nichts.
+  final Map<String, String> extraVectorSources;
+
   /// Download-Quelle fuer [MapDownloader.downloadMap].
   final String downloadUrl;
 
@@ -254,6 +263,7 @@ class MapConfig {
     this.overzoomUntil = 17,
     this.initialZoom = 11,
     this.mbtilesFilename = 'germany.mbtiles',
+    this.extraVectorSources = const {},
     this.downloadUrl = 'https://example.com/artifacts/hessen.mbtiles',
     this.estimatedFileSizeMB = 250,
     this.storageLocation = MapStorageLocation.applicationSupport,
@@ -314,6 +324,7 @@ class MapConfig {
     double? overzoomUntil,
     double? initialZoom,
     String? mbtilesFilename,
+    Map<String, String>? extraVectorSources,
     String? downloadUrl,
     int? estimatedFileSizeMB,
     MapStorageLocation? storageLocation,
@@ -351,6 +362,7 @@ class MapConfig {
       overzoomUntil: overzoomUntil ?? this.overzoomUntil,
       initialZoom: initialZoom ?? this.initialZoom,
       mbtilesFilename: mbtilesFilename ?? this.mbtilesFilename,
+      extraVectorSources: extraVectorSources ?? this.extraVectorSources,
       downloadUrl: downloadUrl ?? this.downloadUrl,
       estimatedFileSizeMB: estimatedFileSizeMB ?? this.estimatedFileSizeMB,
       storageLocation: storageLocation ?? this.storageLocation,

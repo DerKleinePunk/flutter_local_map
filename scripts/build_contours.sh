@@ -7,7 +7,7 @@
 #   3. ogr2ogr       → GeoJSON (tippecanoe-Eingabe)
 #   4. tippecanoe    → Vektor-MBTiles
 #
-# Voraussetzung: Docker muss laufen.
+# Voraussetzung: docker oder podman (Auswahl wie in tilemaker.sh).
 #
 # Nutzung:
 #   ./build_contours.sh [vogelsberg|braunschweig|germany]
@@ -17,6 +17,10 @@
 #   CONTOUR_MINZOOM     Tippecanoe Minzoom          (default: 9)
 #   CONTOUR_MAXZOOM     Tippecanoe Maxzoom          (default: 14)
 #   FORCE_REBUILD       =1 um vorhandene Datei neu zu erzeugen
+#   CONTOURS_WORK_DIR   Arbeitsverzeichnis (default: TILEMAKER_WORK_DIR bzw.
+#                       map/tiles-germany). Bei podman-remote muss es unter
+#                       /mnt/wsl liegen, etwa /mnt/wsl/code/tiles-germany.
+#   CONTAINER_CMD       docker|podman|<pfad>; sonst automatisch
 
 set -euo pipefail
 
@@ -35,9 +39,24 @@ trap print_runtime EXIT
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-WORK_DIR="$PROJECT_ROOT/map/tiles-germany"
+WORK_DIR="${CONTOURS_WORK_DIR:-${TILEMAKER_WORK_DIR:-$PROJECT_ROOT/map/tiles-germany}}"
 
 mkdir -p "$WORK_DIR"
+
+# Container-Laufzeit wie in tilemaker.sh: `command -v docker` reicht unter WSL
+# nicht, deshalb zusaetzlich `docker info`.
+CONTAINER_CMD="${CONTAINER_CMD:-}"
+if [ -z "$CONTAINER_CMD" ]; then
+  if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+    CONTAINER_CMD="docker"
+  elif command -v podman >/dev/null 2>&1; then
+    CONTAINER_CMD="podman"
+  else
+    echo "[error] Weder docker noch podman ist erreichbar (CONTAINER_CMD setzen)."
+    exit 1
+  fi
+fi
+echo "[container] Laufzeit: $CONTAINER_CMD"
 
 # ---------------------------------------------------------------------------
 # Regionen (identisch zu tilemaker.sh)
@@ -94,7 +113,7 @@ CONTOUR_GEOJSON="$WORK_DIR/${REGION}_contours.geojson"
 
 has_valid_raster_pixels() {
   local raster_path="$1"
-  docker run --rm \
+  "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
     "$GDAL_IMAGE" \
     gdalinfo -stats "/data/$(basename "$raster_path")" 2>/dev/null | grep -q 'STATISTICS_VALID_PERCENT=[1-9]'
@@ -102,7 +121,7 @@ has_valid_raster_pixels() {
 
 has_vector_features() {
   local vector_path="$1"
-  docker run --rm \
+  "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
     "$GDAL_IMAGE" \
     ogrinfo -so "/data/$(basename "$vector_path")" 2>/dev/null | grep -Eq 'Feature Count: [1-9]'
@@ -207,7 +226,7 @@ PY
   echo "[dem] Fuege ${#TILE_FILES[@]} Kachel(n) zusammen und clippe auf BBox ..."
 
   # VRT aus Kacheln bauen und auf BBox clippen – alles in einem Docker-Aufruf
-  docker run --rm \
+  "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
     "$GDAL_IMAGE" \
     bash -c "
@@ -238,7 +257,7 @@ fi
 
 if [ ! -f "$CONTOUR_GPKG" ]; then
   echo "[contour] Erzeuge Höhenlinien alle ${CONTOUR_INTERVAL} m ..."
-  docker run --rm \
+  "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
     "$GDAL_IMAGE" \
     gdal_contour \
@@ -272,7 +291,7 @@ fi
 
 if [ ! -f "$CONTOUR_GEOJSON" ]; then
   echo "[convert] Konvertiere GeoPackage → GeoJSON ..."
-  docker run --rm \
+  "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
     "$GDAL_IMAGE" \
     ogr2ogr \
@@ -295,8 +314,10 @@ else
     rm -f "$OUTPUT_MBTILES"
   fi
 
+  # Kacheln gzip-gepackt (tippecanoe-Vorgabe) wie in der Hauptkarte: local_map
+  # liest jede Vektorquelle mit gzip, MapLibre fuer den Raster-Bau kann beides.
   echo "[tippecanoe] Erzeuge Vektor-MBTiles z${CONTOUR_MINZOOM}–z${CONTOUR_MAXZOOM} ..."
-  docker run --rm \
+  "$CONTAINER_CMD" run --rm \
     -v "$WORK_DIR:/data" \
     "$TIPPECANOE_IMAGE" \
     tippecanoe \
@@ -307,7 +328,6 @@ else
       --simplification=2 \
       --drop-densest-as-needed \
       --extend-zooms-if-still-dropping \
-      --no-tile-compression \
       --force \
       /data/"$(basename "$CONTOUR_GEOJSON")"
   echo "[ok] MBTiles: $OUTPUT_MBTILES"

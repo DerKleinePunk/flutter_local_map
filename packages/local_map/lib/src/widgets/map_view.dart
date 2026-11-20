@@ -181,6 +181,10 @@ class _MapViewState extends State<MapView>
   /// den Style ohne Neuaufbau der Kachelquelle pruefen muss.
   _MbtilesMetadataInfo? _vectorMetadata;
   TileProviders? _vectorTileProviders;
+
+  /// Zusatzquellen aus [MapConfig.extraVectorSources], Quellname -> Provider.
+  final Map<String, VectorTileProvider> _extraVectorProviders = {};
+  final List<MbTiles> _extraMbTiles = [];
   vtr.Theme? _vectorTheme;
   SpriteStyle? _vectorSprites;
   late double _activeMinZoom;
@@ -314,6 +318,7 @@ class _MapViewState extends State<MapView>
       if (format == 'pbf') {
         final mbtiles = openVectorMbTiles(widget.mbtilesPath!);
         final provider = _vectorProvider(mbtiles, metadata);
+        await _openExtraVectorSources(widget.mbtilesPath!);
 
         vtr.Theme vectorTheme;
         SpriteStyle? vectorSprites;
@@ -472,6 +477,11 @@ class _MapViewState extends State<MapView>
 
     _vectorMbTiles?.close();
     _vectorMbTiles = null;
+    for (final extra in _extraMbTiles) {
+      extra.close();
+    }
+    _extraMbTiles.clear();
+    _extraVectorProviders.clear();
     _vectorMetadata = null;
     _vectorTileProviders = null;
     _vectorTheme = null;
@@ -501,9 +511,57 @@ class _MapViewState extends State<MapView>
       sourceIds.addAll(_knownVectorSourceAliases);
     }
 
-    return TileProviders({
-      for (final sourceId in sourceIds) sourceId: provider,
-    });
+    return TileProviders(
+      assignVectorSourceProviders(
+        sourceIds: sourceIds,
+        main: provider,
+        extras: _extraVectorProviders,
+        configuredExtras: {
+          ..._config.extraVectorSources.keys,
+          ...extraOnlySourceIds(styleJson),
+        },
+      ),
+    );
+  }
+
+  /// Oeffnet die Dateien aus [MapConfig.extraVectorSources]. Was fehlt oder
+  /// nicht passt, wird gemeldet und uebersprungen - die Hauptkarte soll
+  /// davon nie abhaengen.
+  Future<void> _openExtraVectorSources(String mainPath) async {
+    for (final entry in _config.extraVectorSources.entries) {
+      final path = resolveExtraSourcePath(mainPath, entry.value);
+      if (!File(path).existsSync()) {
+        MapErrorHandler.logInfo(
+          'Zusatzquelle fehlt, ihre Ebenen bleiben leer: $path',
+          context: entry.key,
+        );
+        continue;
+      }
+      try {
+        final metadata = await _readMbtilesMetadata(path);
+        if (metadata.format != null && metadata.format != 'pbf') {
+          MapErrorHandler.logInfo(
+            'Zusatzquelle ist keine Vektordatei (${metadata.format}): $path',
+            context: entry.key,
+          );
+          continue;
+        }
+        final mbtiles = openVectorMbTiles(path);
+        _extraMbTiles.add(mbtiles);
+        _extraVectorProviders[entry.key] = _vectorProvider(mbtiles, metadata);
+        MapErrorHandler.logInfo(
+          'Zusatzquelle aktiv: $path',
+          context: entry.key,
+        );
+      } catch (e, stackTrace) {
+        MapErrorHandler.logError(
+          'Zusatzquelle nicht lesbar: $path',
+          error: e,
+          stackTrace: stackTrace,
+          context: entry.key,
+        );
+      }
+    }
   }
 
   TileProviders _buildFallbackVectorTileProviders(VectorTileProvider provider) {

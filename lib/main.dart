@@ -49,6 +49,14 @@ void main() {
           // Hessen: auf jeep-pi liegt DACH, und eine Route nach Karlsruhe
           // muss ganz zu sehen sein.
           clearCameraBounds: true,
+          // Hoehenlinien als eigene Datei neben der Karte. Fehlt sie, bleiben
+          // die Ebenen leer und es kostet nichts - so laesst sich auf dem Pi
+          // mit und ohne vergleichen, ohne neu zu bauen.
+          extraVectorSources: {
+            'contours':
+                Platform.environment['LOCAL_MAP_CONTOURS'] ??
+                'contours.mbtiles',
+          },
           rasterTilesPerFrame: envInt('LOCAL_MAP_RASTER_TILES_PER_FRAME'),
           memoryTileDataCacheMaxSize: envInt('LOCAL_MAP_TILE_DATA_CACHE'),
           textCacheMaxSize: envInt('LOCAL_MAP_TEXT_CACHE'),
