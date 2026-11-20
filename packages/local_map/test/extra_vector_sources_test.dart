@@ -126,6 +126,14 @@ void main() {
     });
   });
 
+  test('Quellenangabe Höhendaten nennt die Pflichtquellen', () {
+    expect(MapConfig.elevationAttributionFull, contains('EU-DEM'));
+    expect(MapConfig.elevationAttributionFull, contains('Copernicus'));
+    expect(MapConfig.elevationAttributionFull, contains('(DGM) Österreich'));
+    expect(MapConfig.elevationAttributionFull, contains('U.S. Geological'));
+    expect(MapConfig.elevationAttributionShort, contains('EU-DEM'));
+  });
+
   group('MapConfig.extraVectorSources', () {
     test('ist ohne Angabe leer', () {
       expect(MapConfig().extraVectorSources, isEmpty);

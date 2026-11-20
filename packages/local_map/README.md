@@ -401,6 +401,7 @@ deutschen Texte; für weitere Sprachen eigene Instanzen übergeben.
 | `minZoom` / `maxZoom` / `initialZoom` | `10` / `14` / `11` | Zoom-Grenzen. MBTiles-Metadaten haben für min/max Vorrang |
 | `overzoomUntil` | `17` | Bis hier darf die Kamera, auch wenn die Kacheln früher enden (planetiler: z14); darüber wird die letzte Stufe vergrößert. `0` = aus |
 | `mbtilesFilename` | `germany.mbtiles` | Dateiname, den `MapDownloader` erwartet |
+| `extraVectorSources` | leer | Weitere Vektor-Quellen in eigenen MBTiles-Dateien, Quellname im Style → Datei (relativ neben der Karte oder absolut), z. B. `{'contours': 'contours.mbtiles'}` für Höhenlinien; siehe [Zusatzquellen](#zusatzquellen-höhenlinien) |
 | `downloadUrl` | Platzhalter | Quelle für `MapDownloader.downloadMap()` |
 | `estimatedFileSizeMB` | `250` | Anzeige im `DownloadOverlay` |
 | `storageLocation` / `storageSubdirectory` / `customStoragePath` | `applicationSupport` / `offline_maps` / `null` | Ablageort der MBTiles |
@@ -450,6 +451,47 @@ Zwei Fallen bei eigenen Styles für Kacheln aus `scripts/tilemaker.sh`:
 
 Die mitgelieferten Styles liegen unter
 `packages/local_map/assets/maps/` und werden automatisch mitgebundelt.
+
+## Zusatzquellen (Höhenlinien)
+
+Eine Quelle im Style kann aus einer eigenen MBTiles-Datei kommen statt aus
+der Karte. So liegen Höhenlinien als eigene Datei neben der Karte und
+passen zu jeder Karte im OpenMapTiles-Schema, auch zu fremden (planetiler).
+
+```dart
+MapConfig(
+  extraVectorSources: const {'contours': 'contours.mbtiles'},
+  attributionText:
+      '${MapConfig.defaultAttributionGerman} · ${MapConfig.elevationAttributionShort}',
+)
+```
+
+Im Style wird die Quelle markiert, damit sie nie aus der Hauptkarte kommt:
+
+```json
+"sources": {
+  "openmaptiles": { "type": "vector", "tiles": ["mbtiles://{z}/{x}/{y}.pbf"] },
+  "contours": { "type": "vector", "local_map:extra": true,
+                "tiles": ["mbtiles://{z}/{x}/{y}.pbf"], "minzoom": 11, "maxzoom": 14 }
+}
+```
+
+- **Fehlt die Datei**, bleiben die Ebenen dieser Quelle leer, und es kostet
+  nichts. Ohne die Markierung hinge die Quelle an der Hauptkarte, und
+  `vector_map_tiles` würde jede Kachel ein zweites Mal laden und dekodieren
+  (es speichert je Quelle zwischen).
+- **Die Kacheln müssen gzip-gepackt sein**, wie die der Karte.
+- `style_navigation.json` bringt die Ebenen mit: Linien alle 50 m ab z11,
+  alle 10 m ab z13, Höhenzahlen ab z14 (Quelle `contours`, Ebene `contour`,
+  Felder `ele` und `major`).
+- **Bauen:** `scripts/build_contours.sh` (DEM → `gdal_contour` → tippecanoe).
+  Die Datei beginnt bei z11 und enthält unter z13 nur die Hauptlinien.
+- **Quellenangabe:** Die Höhendaten (Terrain Tiles) verlangen einen Hinweis.
+  `MapConfig.elevationAttributionShort` ist die Kurzform für die Kartenecke,
+  `MapConfig.elevationAttributionFull` der vorgeschriebene Wortlaut für den
+  DACH-Raum, für eine Seite mit Quellen und Lizenzen.
+- **Gemessen auf dem Pi 4** (Vogelsberg, Fahrt bei z14 mit allen Linien):
+  kein messbarer Unterschied beim Ruckeln, etwa +30 MB Speicher.
 
 ## Geocoding
 

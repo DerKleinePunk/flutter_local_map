@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0
+
+- **Zusatzquellen für Vektorkarten**, etwa Höhenlinien: neues
+  `MapConfig.extraVectorSources` ordnet einer Quelle im Style eine eigene
+  MBTiles-Datei zu (relativ neben der Karte oder absolut). Style-Quellen mit
+  `"local_map:extra": true` kommen nie aus der Hauptkarte; fehlt ihre Datei,
+  bleiben sie leer, statt jede Kachel doppelt zu laden und zu dekodieren.
+- **Höhenlinien in `style_navigation.json`** (Quelle `contours`): Linien
+  alle 50 m ab z11, alle 10 m ab z13, Höhenzahlen ab z14. Ohne Datei
+  ändert sich nichts. Style-`id` und `metadata.version` erhöht.
+- **Quellenangabe der Höhendaten:** `MapConfig.elevationAttributionShort`
+  (Kartenecke) und `MapConfig.elevationAttributionFull` (voller Wortlaut).
+
 ## 0.11.2
 
 - **Kacheln aus planetiler** (z. B. vom Yapaia-Kartenserver) öffnen jetzt.

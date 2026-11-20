@@ -236,6 +236,25 @@ class MapConfig {
   static const String defaultAttributionGerman =
       '© OpenMapTiles © OpenStreetMap-Mitwirkende';
 
+  /// Kurzer Hinweis auf die Höhendaten der Höhenlinien
+  /// (`scripts/build_contours.sh`, Terrain Tiles „elevation-tiles-prod“),
+  /// zum Anhängen an [attributionText], wenn Höhenlinien geladen sind.
+  /// Der volle Wortlaut der Quellen steht in [elevationAttributionFull];
+  /// der gehört auf eine Seite mit Quellen und Lizenzen.
+  static const String elevationAttributionShort =
+      'Höhen: EU-DEM (Copernicus), DGM Österreich, USGS';
+
+  /// Vorgeschriebener Wortlaut der Höhendaten für den DACH-Raum, aus der
+  /// Attributionsliste der Terrain Tiles (tilezen/joerd, docs/attribution.md).
+  /// Für andere Regionen kommen dort weitere Quellen hinzu.
+  static const String elevationAttributionFull =
+      'Europe terrain data produced using Copernicus data and information '
+      'funded by the European Union - EU-DEM layers; '
+      'Austria terrain data © offene Daten Österreichs – Digitales '
+      'Geländemodell (DGM) Österreich; '
+      'United States 3DEP (formerly NED) and global GMTED2010 and SRTM '
+      'terrain data courtesy of the U.S. Geological Survey.';
+
   /// Quellenangabe nur für OpenStreetMap, englisch. Reicht nur für Kacheln,
   /// die nicht nach dem OpenMapTiles-Schema gebaut sind.
   static const String osmAttribution = '© OpenStreetMap contributors';

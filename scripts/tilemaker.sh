@@ -225,11 +225,17 @@ esac
 # aus Deutschland (~4,6 GB) ausgeschnitten.
 if [ "$REGION" = "dach" ]; then
   PBF_FILE="dach-latest.osm.pbf"
-  PBF_URL="https://download.geofabrik.de/europe/dach-latest.osm.pbf"
+  PBF_URL="https://download.geofabrik.de/europe/dach/dach-latest.osm.pbf"
 else
   PBF_FILE="germany-latest.osm.pbf"
-  PBF_URL="https://download.geofabrik.de/europe/germany-latest.osm.pbf"
+  PBF_URL="https://download.geofabrik.de/europe/germany/germany-latest.osm.pbf"
 fi
+# Geofabrik leitet `-latest` weiter (seit Nov. 2026: DACH auf die datierte
+# Datei, Deutschland auf einen Spiegel) und hat dort keine `-latest.md5`
+# mehr. Die Pruefsumme liegt neben dem Ziel der Weiterleitung, also erst
+# auflösen; Datei und Pruefsumme kommen so auch sicher vom selben Stand.
+PBF_URL="$(curl -sSIL -o /dev/null -w '%{url_effective}' "$PBF_URL" 2>/dev/null || echo "$PBF_URL")"
+echo "[pbf] Quelle: $PBF_URL"
 PBF_MD5_URL="${PBF_URL}.md5"
 PBF_MD5_FILE="${PBF_FILE}.md5"
 

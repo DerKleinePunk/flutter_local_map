@@ -3,7 +3,7 @@
   "name": "openmaptiles-offline-navigation",
   "id": "openmaptiles-offline-navigation-3",
   "metadata": {
-    "version": "2",
+    "version": "3",
     "generator": "tilemaker-openmaptiles",
     "offline": true,
     "variant": "navigation"
