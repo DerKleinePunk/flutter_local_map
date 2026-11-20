@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# build_contours.sh – Höhenlinien-MBTiles aus Copernicus-DEM erzeugen
+# build_contours.sh – Höhenlinien-MBTiles aus den Terrain Tiles erzeugen
 #
 # Pipeline:
-#   1. Copernicus DEM 30 m (GLO-30) per GDAL /vsicurl/ herunterladen und clippen
-#   2. gdal_contour  → GeoPackage mit 10-m- und 50-m-Linien
+#   1. Höhenkacheln aus elevation-tiles-prod (Terrain Tiles von tilezen/joerd,
+#      GeoTIFF z12, etwa 40 m) laden, zusammenfügen, auf BBox bzw. Grenze
+#      zuschneiden. Quellenvermerk: MapConfig.elevationAttribution* in local_map.
+#   2. gdal_contour  → GeoPackage mit Linien alle CONTOUR_INTERVAL m (10)
 #   3. ogr2ogr       → GeoJSONSeq (tippecanoe-Eingabe), Nebenlinien erst ab z13
 #   4. tippecanoe    → Vektor-MBTiles
 #
