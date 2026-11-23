@@ -136,3 +136,4 @@ Stunden.
 | 16.11.2026 | `bc`, `tcpdump` | `bc` für Zeitrechnung in Messskripten; `tcpdump` fehlte beim Verkehrs-Gerätetest am 15.11. (Ersatz war `ss -tnp` alle 0,2 s) |
 | 16.11.2026 | `sqlite3` (Kommandozeile) | MBTiles-Metadaten auf dem Pi prüfen (`format`, `bounds`); fehlte am 15.11. |
 | 16.11.2026 | EDID `waveshare-7h-splitter-261013.bin` ins Repo übernommen | lag bisher nur auf jeep-pi unter `/lib/firmware/edid/` |
+| 23.11.2026 | `bluez-alsa-utils`, `libasound2-plugin-bluez`; `bluealsa-aplay.service` maskiert; Drop-in `/etc/systemd/system/bluealsa.service.d/10-carnine-test.conf` (nur `-p a2dp-sink`); Bluetooth per rfkill entsperrt; A55 gekoppelt | Vorab-Test „Musik vom Handy“ (A2DP + AVRCP). Bleibt stehen (Michael 22.11. 09:22). Rückweg: Pakete purgen, Drop-in und Maske weg, `bluetoothctl remove`, `rfkill block bluetooth` |
