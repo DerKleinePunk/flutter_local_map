@@ -175,10 +175,12 @@ Ein Fallstrick für Tests: Hängt ein Pi mit Kabel und WLAN im selben Netz, antw
 | C | Eigene Musik und Handy | Zuletzt gestartet gewinnt. Hört das Handy auf, läuft die eigene Musik nicht von selbst weiter |
 | D | WLAN-Stick | Kein anderer Stick. RTL8822BU am Hub, Handy-Hotspot auf 5 GHz |
 | E | USB-Anschlüsse | **Offen.** Richtung Hub an einem eigenen, geschalteten 5-V-Ausgang (1 A abgesichert). Ob 1 A reicht, klärt eine Strommessung. Kamera und Grabber bleiben direkt am Pi |
-| F | Telefonieren (HFP) | Erwünscht, eigener Schritt nach A2DP |
+| F | Telefonieren (HFP) | Eingeplant als eigener Schritt nach A2DP, zusammen mit Mikrofon und Audio-Manager, ohne Datum |
 | G | Wann | Vorab-Test erledigt, Bauen ab 0.25.0, Musik vom Handy vor der BLE-App |
 
 ## Telefonieren (HFP) – eigener Schritt danach
+
+Eingeplant (23.11.2026) nach Musik vom Handy, ohne Datum. Angefangen ist nichts.
 
 Mikrofon und Echounterdrückung sind in ADR-024 (carnine2, docs/09) schon entschieden. Hier steht nur, was für HFP dazukommt.
 - CarNine ist die Freisprecheinrichtung (HFP „Hands-Free“). Ton geht in beide Richtungen, dazu Klingeln, Nummer, Annehmen, Auflegen.
